@@ -2,27 +2,24 @@ import { Timestamp } from "firebase/firestore";
 
 // ========================================================================
 // 1. ESTRUTURA CENTRAL: A ESTADIA DO HÓSPEDE (O CORAÇÃO DO SISTEMA)
-// Esta interface unifica a jornada do hóspede. Todas as outras ações
-// (pedidos, agendamentos) serão vinculadas a uma única "Stay".
 // ========================================================================
 
 export interface Stay {
   id: string;
-  guestName: string;         // Nome principal do hóspede, vindo do pré-check-in.
-  cabinId: string;           // ID da cabana para referência interna.
-  cabinName: string;         // Nome da cabana (denormalizado para fácil exibição).
-  checkInDate: Timestamp;    // Data de início da estadia.
-  checkOutDate: Timestamp;   // Data de término da estadia.
+  guestName: string;
+  cabinId: string;
+  cabinName: string;
+  checkInDate: Timestamp;
+  checkOutDate: Timestamp;
   numberOfGuests: number;
-  token: string;             // Token de acesso único do hóspede para o portal.
+  token: string;
   status: 'pending_validation' | 'active' | 'checked_out' | 'canceled';
-  preCheckInId: string;      // Link para os dados originais do pré-check-in.
+  preCheckInId: string;
   createdAt: Timestamp;
 }
 
 // ========================================================================
 // 2. PRÉ-CHECK-IN: O DOSSIÊ COMPLETO DO HÓSPEDE
-// Coleta todas as informações necessárias uma única vez.
 // ========================================================================
 
 export interface Guest {
@@ -32,26 +29,21 @@ export interface Guest {
 
 export interface PreCheckIn {
   id: string;
-  // Dados do responsável
   leadGuestCpf: string;
   leadGuestEmail: string;
   leadGuestPhone: string;
   address: string;
-  // Detalhes da Estadia
   estimatedArrivalTime: string;
   vehiclePlate?: string;
   travelReason?: string;
-  // Detalhes dos Hóspedes
   guests: Guest[];
   foodRestrictions?: string;
   isBringingPet: boolean;
-  petPolicyAgreed: boolean; // Confirmação da política de pets
-  // Controle do Admin
+  petPolicyAgreed: boolean;
   createdAt: Timestamp;
   status: 'pendente' | 'validado' | 'arquivado';
   stayId?: string;
 }
-
 
 // ========================================================================
 // 3. AGENDAMENTO DE SERVIÇOS (REESTRUTURADO)
@@ -59,19 +51,18 @@ export interface PreCheckIn {
 
 export interface TimeSlot {
   id: string;
-  startTime: string;
-  endTime: string;
   label: string;
 }
 
 export interface Service {
   id: string;
   name: string;
-  type: 'slots' | 'preference';
+  type: 'slots' | 'preference' | 'on_demand';
   defaultStatus: 'closed' | 'open';
   units: string[];
   timeSlots: TimeSlot[];
   additionalOptions?: string[];
+  instructions?: string;
 }
 
 export interface Booking {
@@ -80,26 +71,21 @@ export interface Booking {
     serviceId: string;
     serviceName: string;
     date: string;
-    
-    // Para 'slots'
     unit?: string; 
     timeSlotId?: string;
     timeSlotLabel?: string;
-    
-    // Para 'preference'
     preferenceTime?: string;
     selectedOptions?: string[];
     hasPet?: boolean;
-    
-    // Controle do Admin
     notes?: string;
     status: 'solicitado' | 'confirmado' | 'em_andamento' | 'concluido' | 'cancelado_pelo_admin' | 'bloqueado';
     createdAt: Timestamp;
 }
 
+// ... (O restante do arquivo permanece o mesmo) ...
+
 // ========================================================================
 // 4. PEDIDOS DE CAFÉ E ITENS (REESTRUTURADO)
-// A interface "Order" antiga foi mantida e agora se conecta a uma "Stay".
 // ========================================================================
 
 export interface ItemPedido {
@@ -113,23 +99,20 @@ export interface ItemPedido {
 
 export interface Order {
   id: string;
-  stayId: string; // <-- Ponto de conexão principal
+  stayId: string;
   horarioEntrega: string;
   status: "Novo" | "Em Preparação" | "Entregue" | "Cancelado";
   timestampPedido: Timestamp;
   itensPedido: ItemPedido[];
   observacoesGerais?: string;
   observacoesPratosQuentes?: string;
-  // Os campos hospedeNome, cabanaNumero, numeroPessoas foram removidos
-  // pois agora virão da "Stay" vinculada.
 }
 
 // ========================================================================
-// 5. CONFIGURAÇÕES GERAIS E CARDÁPIO (Estrutura Mantida e Aprimorada)
+// 5. CONFIGURAÇÕES GERAIS E CARDÁPIO
 // ========================================================================
 
 export interface AppConfig {
-  // Aparência
   logoUrl?: string;
   nomeFazenda: string;
   subtitulo?: string;
@@ -138,8 +121,6 @@ export interface AppConfig {
   corDestaque: string;
   corDestaqueTexto: string;
   corCartao: string;
-  
-  // Mensagens Gerais
   textoBoasVindas?: string;
   textoAgradecimento: string;
   mensagemAtrasoPadrao?: string;
@@ -147,12 +128,8 @@ export interface AppConfig {
   mensagensMotivacionais?: string[];
   preCheckInWelcomeMessage?: string;
   preCheckInSuccessMessage?: string;
-
-  // Controle de Serviços
   isBasketBreakfastOpen: boolean; 
   basketBreakfastClosedMessage: string;
-
-  // Mensagens Personalizáveis (mantidas do sistema anterior)
   welcomeEmoji?: string;
   welcomeTitle?: string;
   welcomeSubtitle?: string;
@@ -208,7 +185,7 @@ export interface AccompanimentItem {
 }
 
 // ========================================================================
-// 6. TIPOS PARA GESTÃO DE ESTOQUE (Estrutura Mantida)
+// 6. TIPOS PARA GESTÃO DE ESTOQUE
 // ========================================================================
 
 export interface Supplier {
@@ -224,8 +201,7 @@ export interface StockItem {
 }
 
 // ========================================================================
-// 7. TIPOS LEGADOS (Mantidos para referência, podem ser removidos no futuro)
-// O sistema de "Comanda" e "OrderState" era do fluxo antigo de token por serviço.
+// 7. TIPOS LEGADOS
 // ========================================================================
 
 export interface Comanda {

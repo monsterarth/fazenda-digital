@@ -18,9 +18,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { toast, Toaster } from 'sonner';
 import { Loader2, PlusCircle, Trash2, Send, PawPrint } from 'lucide-react';
 
-// --- Esquema de Validação com Zod (CORRIGIDO) ---
-// Adicionado .default(false) aos campos booleanos para garantir que
-// o tipo inferido seja 'boolean' e não 'boolean | undefined', resolvendo o conflito.
 const preCheckInSchema = z.object({
   leadGuestCpf: z.string().min(11, "CPF é obrigatório e deve ter 11 dígitos."),
   leadGuestEmail: z.string().email("Forneça um e-mail válido."),
@@ -35,8 +32,8 @@ const preCheckInSchema = z.object({
     fullName: z.string().min(2, "O nome do hóspede é obrigatório.") 
   })).min(1, "Pelo menos um hóspede (o responsável) é necessário."),
 
-  isBringingPet: z.boolean().default(false),
-  petPolicyAgreed: z.boolean().default(false),
+  isBringingPet: z.boolean(),
+  petPolicyAgreed: z.boolean(),
 }).refine(data => {
     if (data.isBringingPet && !data.petPolicyAgreed) {
         return false;
@@ -53,10 +50,17 @@ export default function PreCheckInPage() {
     const form = useForm<PreCheckInFormValues>({
         resolver: zodResolver(preCheckInSchema),
         defaultValues: {
+            leadGuestCpf: '',
+            leadGuestEmail: '',
+            leadGuestPhone: '',
+            address: '',
+            estimatedArrivalTime: '14:00',
+            vehiclePlate: '',
+            travelReason: '',
+            foodRestrictions: '',
             guests: [{ fullName: '' }],
             isBringingPet: false,
             petPolicyAgreed: false,
-            estimatedArrivalTime: '14:00',
         }
     });
 
@@ -96,6 +100,7 @@ export default function PreCheckInPage() {
             form.reset();
 
         } catch (error) {
+            console.error("Firebase submission error:", error); // Adicionado para depuração
             toast.error("Falha ao enviar o formulário.", {
                 id: toastId,
                 description: "Por favor, verifique os dados e tente novamente."

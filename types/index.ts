@@ -19,31 +19,68 @@ export interface Stay {
 }
 
 // ========================================================================
-// 2. PRÉ-CHECK-IN: O DOSSIÊ COMPLETO DO HÓSPEDE
+// 2. PRÉ-CHECK-IN: O DOSSIÊ COMPLETO DO HÓSPEDE (ATUALIZADO)
 // ========================================================================
 
-export interface Guest {
+export interface Address {
+  cep?: string;
+  street: string;
+  number: string;
+  complement?: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  country: string;
+}
+
+export interface Companion {
   fullName: string;
-  isLead: boolean;
+  age: number;
+  cpf?: string;
+}
+
+export interface PetDetails {
+  id: string; // Para o react hook form
+  name: string;
+  species: 'cachorro' | 'gato' | 'outro';
+  breed: string;
+  weight: number;
+  age: string;
+  notes?: string;
 }
 
 export interface PreCheckIn {
   id: string;
-  leadGuestCpf: string;
+  
+  // Dados do Hóspede Responsável
+  leadGuestName: string;
+  isForeigner: boolean;
+  leadGuestDocument: string;
   leadGuestEmail: string;
   leadGuestPhone: string;
-  address: string;
+  
+  // Endereço
+  address: Address;
+  
+  // Detalhes da Chegada
   estimatedArrivalTime: string;
   vehiclePlate?: string;
+  knowsVehiclePlate: boolean;
+  
+  // Acompanhantes e Pets
+  companions: Companion[];
+  pets: PetDetails[];
+
+  // Informações Adicionais
   travelReason?: string;
-  guests: Guest[];
   foodRestrictions?: string;
-  isBringingPet: boolean;
-  petPolicyAgreed: boolean;
+  
+  // Metadados
   createdAt: Timestamp;
   status: 'pendente' | 'validado' | 'arquivado';
   stayId?: string;
 }
+
 
 // ========================================================================
 // 3. AGENDAMENTO DE SERVIÇOS (REESTRUTURADO)
@@ -81,8 +118,6 @@ export interface Booking {
     status: 'solicitado' | 'confirmado' | 'em_andamento' | 'concluido' | 'cancelado_pelo_admin' | 'bloqueado';
     createdAt: Timestamp;
 }
-
-// ... (O restante do arquivo permanece o mesmo) ...
 
 // ========================================================================
 // 4. PEDIDOS DE CAFÉ E ITENS (REESTRUTURADO)

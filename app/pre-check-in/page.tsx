@@ -21,7 +21,7 @@ import { toast, Toaster } from 'sonner';
 import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Home, Car, Phone } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
-// Zod Schema Corrigido e Refinado
+// Zod Schema Final
 const preCheckInSchema = z.object({
     // Etapa 1
     leadGuestName: z.string().min(3, "O nome completo é obrigatório."),
@@ -56,7 +56,7 @@ const preCheckInSchema = z.object({
     pets: z.array(z.object({
         id: z.string(),
         name: z.string().min(2, "Nome do pet é obrigatório."),
-        species: z.enum(['cachorro', 'gato', 'outro'], { required_error: "A espécie é obrigatória."}),
+        species: z.enum(['cachorro', 'gato', 'outro']),
         breed: z.string().min(2, "Raça é obrigatória."),
         weight: z.coerce.number().positive("Peso inválido."),
         age: z.string().min(1, "Idade é obrigatória."),
@@ -177,9 +177,47 @@ export default function PreCheckInPage() {
     };
     
     const onSubmit: SubmitHandler<PreCheckInFormValues> = async (data) => {
-        // Lógica de envio final para o Firebase...
-        console.log(data);
-        toast.success("Formulário enviado com sucesso!");
+        const db = await getFirebaseDb();
+        if (!db) {
+            toast.error("Erro de conexão. Por favor, tente novamente.");
+            return;
+        }
+
+        const toastId = toast.loading("Enviando seus dados...");
+
+        try {
+            // Removendo 'country' e outros campos que não estão na interface PreCheckIn
+            const { country, ...restOfData } = data;
+
+            const preCheckInData: Omit<PreCheckIn, 'id' | 'stayId'> = {
+                ...restOfData,
+                address: {
+                    ...data.address,
+                    country: isForeigner ? data.country || '' : 'Brasil',
+                },
+                // Garante que o objeto de pets só é enviado se houver pets
+                pets: data.pets && data.pets.length > 0 ? data.pets : [],
+                companions: data.companions && data.companions.length > 0 ? data.companions : [],
+                status: 'pendente',
+                createdAt: firestore.Timestamp.now(),
+            };
+
+            await firestore.addDoc(firestore.collection(db, 'preCheckIns'), preCheckInData);
+
+            toast.success("Pré-Check-in enviado com sucesso!", {
+                id: toastId,
+                description: "Sua solicitação foi recebida e será validada pela nossa equipe.",
+            });
+            form.reset();
+            setCurrentStep(0);
+
+        } catch (error) {
+            console.error("Firebase submission error:", error);
+            toast.error("Falha ao enviar o formulário.", {
+                id: toastId,
+                description: "Por favor, verifique os dados e tente novamente."
+            });
+        }
     };
 
     return (

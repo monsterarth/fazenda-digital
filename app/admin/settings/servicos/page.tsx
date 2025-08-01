@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast, Toaster } from 'sonner';
-import { Loader2, PlusCircle, Edit, Trash2, CalendarCog, XIcon, Clock, Wand2, Handshake } from 'lucide-react';
+import { Loader2, PlusCircle, Edit, Trash2, CalendarCog, X, Clock, Wand2, Handshake } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 // Esquema de validação para um único TimeSlot
@@ -29,17 +29,15 @@ const timeSlotSchema = z.object({
 // Esquema de validação principal para o formulário de serviço
 const serviceSchema = z.object({
   name: z.string().min(2, "O nome do serviço é obrigatório."),
-  type: z.enum(['slots', 'preference', 'on_demand'], {
-    error: "O tipo de agendamento é obrigatório."
-  }),
+  type: z.enum(['slots', 'preference', 'on_demand']),
   defaultStatus: z.enum(['open', 'closed']).optional(),
   
   units: z.array(z.string()).optional(),
-  timeSlots: z.array(timeSlotSchema).optional().nullable(),
+  timeSlots: z.array(timeSlotSchema).optional(),
   additionalOptions: z.array(z.string()).optional(),
   instructions: z.string().optional(),
 }).refine(data => {
-  if (data.type === 'slots' && (!data.units || data.units.filter(u => u.trim() !== '').length === 0)) {
+  if (data.type === 'slots' && (!data.units || data.units.filter(u => u && u.trim() !== '').length === 0)) {
     return false;
   }
   return true;
@@ -72,7 +70,7 @@ export default function ManageServicesPage() {
             name: '',
             type: 'slots',
             units: [''],
-            timeSlots: [],
+            timeSlots: [{id: new Date().toISOString(), label: ''}],
             additionalOptions: [''],
             instructions: '',
         }
@@ -80,10 +78,9 @@ export default function ManageServicesPage() {
 
     const serviceType = form.watch('type');
 
-    // CORREÇÃO: Removida a tipagem explícita incorreta
     const { fields: unitFields, append: appendUnit, remove: removeUnit } = useFieldArray({ control: form.control, name: "units" });
     const { fields: timeSlotFields, append: appendTimeSlot, remove: removeTimeSlot } = useFieldArray({ control: form.control, name: "timeSlots" });
-    const { fields: optionFields, append: appendOption, remove: removeOption } = useFieldArray<ServiceFormValues, "additionalOptions">({ control: form.control, name: "additionalOptions" });
+    const { fields: optionFields, append: appendOption, remove: removeOption } = useFieldArray({ control: form.control, name: "additionalOptions" });
 
     useEffect(() => {
         const initializeApp = async () => {
@@ -117,7 +114,7 @@ export default function ManageServicesPage() {
                 type: service.type,
                 defaultStatus: service.defaultStatus,
                 units: service.units && service.units.length > 0 ? service.units : [''],
-                timeSlots: service.timeSlots || [],
+                timeSlots: service.timeSlots || [{id: new Date().toISOString(), label: ''}],
                 additionalOptions: service.additionalOptions && service.additionalOptions.length > 0 ? service.additionalOptions : [''],
                 instructions: service.instructions || '',
             });
@@ -127,7 +124,7 @@ export default function ManageServicesPage() {
                 type: 'slots',
                 defaultStatus: 'open',
                 units: [''],
-                timeSlots: [],
+                timeSlots: [{id: new Date().toISOString(), label: ''}],
                 additionalOptions: [''],
                 instructions: '',
             });
@@ -146,12 +143,16 @@ export default function ManageServicesPage() {
             };
 
             if (data.type === 'slots') {
-                dataToSave.units = data.units?.filter(u => u.trim() !== '') || [];
-                dataToSave.timeSlots = data.timeSlots?.filter(ts => ts.label.trim() !== '') || [];
+                dataToSave.units = data.units?.filter(u => u && u.trim() !== '') || [];
+                dataToSave.timeSlots = data.timeSlots?.filter(ts => ts && ts.label.trim() !== '') || [];
                 dataToSave.defaultStatus = data.defaultStatus || 'open';
-            } else if (data.type === 'preference') {
-                dataToSave.additionalOptions = data.additionalOptions?.filter(opt => opt.trim() !== '') || [];
-            } else { // on_demand
+            }
+            
+            if (data.type === 'preference') {
+                dataToSave.additionalOptions = data.additionalOptions?.filter(opt => opt && opt.trim() !== '') || [];
+            }
+            
+            if (data.type === 'on_demand') {
                 dataToSave.instructions = data.instructions || '';
             }
 
@@ -168,6 +169,19 @@ export default function ManageServicesPage() {
             toast.error("Falha ao salvar o serviço.", { id: toastId, description: error.message });
         }
     };
+
+    const handleDeleteService = async (serviceId: string) => {
+        if(!db) return;
+        if (!confirm("Tem certeza que deseja excluir este serviço? Esta ação não pode ser desfeita.")) return;
+
+        const toastId = toast.loading("Excluindo serviço...");
+        try {
+            await firestore.deleteDoc(firestore.doc(db, 'services', serviceId));
+            toast.success("Serviço excluído com sucesso!", { id: toastId });
+        } catch (error: any) {
+            toast.error("Falha ao excluir serviço.", { id: toastId, description: error.message });
+        }
+    }
     
     const getBadgeVariant = (type: Service['type']) => {
         switch(type) {
@@ -183,7 +197,7 @@ export default function ManageServicesPage() {
             case 'slots': return 'Horários Fixos';
             case 'preference': return 'Preferência';
             case 'on_demand': return 'Sob Demanda';
-            default: return 'N/A';
+            default: 'N/A';
         }
     }
 
@@ -226,11 +240,14 @@ export default function ManageServicesPage() {
                                             <TableCell className="text-sm text-muted-foreground">
                                                 {service.type === 'slots' ? `${service.units?.length || 0} Unidade(s) / ${service.timeSlots?.length || 0} Horários` 
                                                 : service.type === 'preference' ? `${service.additionalOptions?.length || 0} Opções Adicionais`
-                                                : 'Serviço terceirizado'}
+                                                : 'Serviço sob demanda'}
                                             </TableCell>
                                             <TableCell className="text-right space-x-2">
                                                 <Button variant="outline" size="sm" onClick={() => handleOpenModal(service)}>
                                                     <Edit className="mr-2 h-4 w-4" /> Editar
+                                                </Button>
+                                                <Button variant="destructive" size="sm" onClick={() => handleDeleteService(service.id)}>
+                                                    <Trash2 className="mr-2 h-4 w-4" /> Excluir
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -255,7 +272,7 @@ export default function ManageServicesPage() {
                     <Form {...form}>
                         <form id="service-form" onSubmit={form.handleSubmit(handleSaveService)} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
                             <FormField control={form.control} name="name" render={({ field }) => (
-                                <FormItem><FormLabel>Nome do Serviço</FormLabel><FormControl><Input placeholder="Ex: Limpeza de Quarto" {...field} /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>Nome do Serviço</FormLabel><FormControl><Input placeholder="Ex: Massagem Relaxante" {...field} /></FormControl><FormMessage /></FormItem>
                             )}/>
                             <FormField control={form.control} name="type" render={({ field }) => (
                                 <FormItem><FormLabel>Tipo de Agendamento</FormLabel>
@@ -264,7 +281,7 @@ export default function ManageServicesPage() {
                                     <SelectContent>
                                         <SelectItem value="slots"><div className="flex items-center gap-2"><Clock /> Horários Fixos (Ex: Jacuzzi)</div></SelectItem>
                                         <SelectItem value="preference"><div className="flex items-center gap-2"><Wand2 /> Preferência de Horário (Ex: Limpeza)</div></SelectItem>
-                                        <SelectItem value="on_demand"><div className="flex items-center gap-2"><Handshake /> Sob Demanda (Ex: Aula de Surf, Transfer)</div></SelectItem>
+                                        <SelectItem value="on_demand"><div className="flex items-center gap-2"><Handshake /> Sob Demanda (Ex: Aula de Surf)</div></SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -272,26 +289,23 @@ export default function ManageServicesPage() {
                             )}/>
 
                             {serviceType === 'slots' && (
-                                <div className="space-y-4 p-4 border rounded-md">
+                                <div className="space-y-4 p-4 border rounded-md bg-slate-50">
                                     <FormField control={form.control} name="defaultStatus" render={({ field }) => (
                                         <FormItem><FormLabel>Status Padrão dos Horários</FormLabel>
                                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                                             <FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl>
                                             <SelectContent>
-                                                <SelectItem value="open">Abertos (Hóspede pode agendar livremente)</SelectItem>
-                                                <SelectItem value="closed">Fechados (Admin precisa liberar cada horário)</SelectItem>
+                                                <SelectItem value="open">Abertos (Hóspede pode agendar)</SelectItem>
+                                                <SelectItem value="closed">Fechados (Admin precisa liberar)</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         </FormItem>
                                     )}/>
                                     <div className="space-y-2">
-                                        <FormLabel>Unidades (Ex: Jacuzzi 1, Churrasqueira)</FormLabel>
+                                        <FormLabel>Unidades (Ex: Jacuzzi 1)</FormLabel>
                                         {unitFields.map((field, index) => (
                                             <FormField key={field.id} control={form.control} name={`units.${index}`} render={({ field }) => (
-                                                <FormItem className="flex items-center gap-2">
-                                                    <FormControl><Input placeholder={`Unidade ${index + 1}`} {...field} /></FormControl>
-                                                    <Button type="button" variant="ghost" size="icon" onClick={() => removeUnit(index)}><XIcon className="h-4 w-4 text-red-500" /></Button>
-                                                </FormItem>
+                                                <FormItem className="flex items-center gap-2"><FormControl><Input placeholder={`Unidade ${index + 1}`} {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeUnit(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
                                             )}/>
                                         ))}
                                         <Button type="button" variant="outline" size="sm" onClick={() => appendUnit('')}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Unidade</Button>
@@ -301,10 +315,7 @@ export default function ManageServicesPage() {
                                         <FormLabel>Horários Disponíveis</FormLabel>
                                         {timeSlotFields.map((field, index) => (
                                             <FormField key={field.id} control={form.control} name={`timeSlots.${index}.label`} render={({ field }) => (
-                                                <FormItem className="flex items-center gap-2">
-                                                    <FormControl><Input placeholder="Ex: 14:00 - 15:00" {...field} /></FormControl>
-                                                     <Button type="button" variant="ghost" size="icon" onClick={() => removeTimeSlot(index)}><XIcon className="h-4 w-4 text-red-500" /></Button>
-                                                </FormItem>
+                                                <FormItem className="flex items-center gap-2"><FormControl><Input placeholder="Ex: 14:00 - 15:00" {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeTimeSlot(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
                                             )}/>
                                         ))}
                                         <Button type="button" variant="outline" size="sm" onClick={() => appendTimeSlot({id: new Date().toISOString(), label: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Horário</Button>
@@ -314,15 +325,12 @@ export default function ManageServicesPage() {
                             )}
 
                             {serviceType === 'preference' && (
-                                <div className="space-y-4 p-4 border rounded-md">
+                                <div className="space-y-4 p-4 border rounded-md bg-slate-50">
                                     <div className="space-y-2">
                                         <FormLabel>Opções Adicionais (Ex: Troca de toalhas)</FormLabel>
                                         {optionFields.map((field, index) => (
                                             <FormField key={field.id} control={form.control} name={`additionalOptions.${index}`} render={({ field }) => (
-                                                 <FormItem className="flex items-center gap-2">
-                                                    <FormControl><Input placeholder={`Opção ${index + 1}`} {...field} /></FormControl>
-                                                    <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index)}><XIcon className="h-4 w-4 text-red-500" /></Button>
-                                                </FormItem>
+                                                 <FormItem className="flex items-center gap-2"><FormControl><Input placeholder={`Opção ${index + 1}`} {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
                                             )}/>
                                         ))}
                                         <Button type="button" variant="outline" size="sm" onClick={() => appendOption('')}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Opção</Button>
@@ -331,22 +339,20 @@ export default function ManageServicesPage() {
                             )}
                             
                             {serviceType === 'on_demand' && (
-                                 <div className="space-y-4 p-4 border rounded-md">
+                                 <div className="space-y-4 p-4 border rounded-md bg-slate-50">
                                      <FormField control={form.control} name="instructions" render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Instruções para o Hóspede</FormLabel>
-                                            <FormControl>
-                                                <Textarea placeholder="Ex: Após a solicitação, a recepção entrará em contato para confirmar a disponibilidade, valores e realizar o pagamento." {...field} />
-                                            </FormControl>
+                                            <FormControl><Textarea placeholder="Ex: Após a solicitação, a recepção entrará em contato para confirmar a disponibilidade, valores e realizar o pagamento." {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                      )}/>
                                  </div>
                             )}
-
                         </form>
                     </Form>
                     <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
                         <Button type="submit" form="service-form" disabled={form.formState.isSubmitting}>
                             {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Salvar Serviço

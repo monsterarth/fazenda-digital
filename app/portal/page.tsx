@@ -2,7 +2,7 @@
 
 import { useGuest } from '@/context/GuestProvider';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Importar useEffect
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,14 @@ export default function GuestLoginPage() {
     const { login, isAuthenticated, stay } = useGuest();
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
+
+    // CORREÇÃO: Lógica de redirecionamento movida para useEffect
+    useEffect(() => {
+        // Se o hóspede já estiver logado (sessão recuperada), redireciona
+        if (isAuthenticated && stay) {
+            router.push('/portal/dashboard');
+        }
+    }, [isAuthenticated, stay, router]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -28,10 +36,9 @@ export default function GuestLoginPage() {
         setIsLoading(false);
     };
     
-    // Se o hóspede já estiver logado (sessão recuperada), redireciona imediatamente
-    if(isAuthenticated && stay) {
-        router.push('/portal/dashboard');
-        return null; // Evita renderizar o formulário de login desnecessariamente
+    // Se o usuário já está logado, não renderiza nada enquanto o useEffect o redireciona.
+    if (isAuthenticated && stay) {
+        return null; 
     }
 
     return (

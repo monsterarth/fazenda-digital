@@ -1,4 +1,4 @@
-import { Timestamp } from "firebase/firestore";
+import { Timestamp, DocumentReference } from "firebase/firestore";
 
 // ========================================================================
 // 1. ESTRUTURA CENTRAL: A ESTADIA DO HÓSPEDE (O CORAÇÃO DO SISTEMA)
@@ -19,7 +19,7 @@ export interface Stay {
 }
 
 // ========================================================================
-// 2. PRÉ-CHECK-IN: O DOSSIÊ COMPLETO DO HÓSPEDE (ATUALIZADO)
+// 2. PRÉ-CHECK-IN: O DOSSIÊ COMPLETO DO HÓSPEDE
 // ========================================================================
 
 export interface Address {
@@ -40,7 +40,7 @@ export interface Companion {
 }
 
 export interface PetDetails {
-  id: string; // Para o react hook form
+  id: string; 
   name: string;
   species: 'cachorro' | 'gato' | 'outro';
   breed: string;
@@ -51,39 +51,26 @@ export interface PetDetails {
 
 export interface PreCheckIn {
   id: string;
-  
-  // Dados do Hóspede Responsável
   leadGuestName: string;
   isForeigner: boolean;
   leadGuestDocument: string;
   leadGuestEmail: string;
   leadGuestPhone: string;
-  
-  // Endereço
   address: Address;
-  
-  // Detalhes da Chegada
   estimatedArrivalTime: string;
   vehiclePlate?: string;
   knowsVehiclePlate: boolean;
-  
-  // Acompanhantes e Pets
   companions: Companion[];
   pets: PetDetails[];
-
-  // Informações Adicionais
   travelReason?: string;
   foodRestrictions?: string;
-  
-  // Metadados
   createdAt: Timestamp;
   status: 'pendente' | 'validado' | 'arquivado';
   stayId?: string;
 }
 
-
 // ========================================================================
-// 3. AGENDAMENTO DE SERVIÇOS (REESTRUTURADO)
+// 3. AGENDAMENTO DE SERVIÇOS
 // ========================================================================
 
 export interface TimeSlot {
@@ -120,31 +107,44 @@ export interface Booking {
 }
 
 // ========================================================================
-// 4. PEDIDOS DE CAFÉ E ITENS (REESTRUTURADO)
+// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ (NOVO)
 // ========================================================================
 
-export interface ItemPedido {
-  nomeItem: string;
-  quantidade: number;
-  observacao?: string;
-  paraPessoa?: string;
-  categoria?: string;
-  sabor?: string;
-}
-
-export interface Order {
+export interface BreakfastMenuItem {
   id: string;
-  stayId: string;
-  horarioEntrega: string;
-  status: "Novo" | "Em Preparação" | "Entregue" | "Cancelado";
-  timestampPedido: Timestamp;
-  itensPedido: ItemPedido[];
-  observacoesGerais?: string;
-  observacoesPratosQuentes?: string;
+  name: string;
+  description?: string;
+  available: boolean;
+  order: number;
 }
 
+export interface BreakfastMenuCategory {
+  id: string;
+  name: string;
+  order: number;
+  items: BreakfastMenuItem[];
+}
+
+export interface BreakfastOrderItem {
+    itemName: string;
+    categoryName: string;
+    quantity: number;
+}
+
+export interface BreakfastOrder {
+    id: string;
+    stayId: DocumentReference;
+    deliveryDate: Timestamp;
+    numberOfGuests: number;
+    items: BreakfastOrderItem[];
+    generalNotes: string;
+    status: 'pending' | 'printed' | 'delivered' | 'canceled';
+    createdAt: Timestamp;
+}
+
+
 // ========================================================================
-// 5. CONFIGURAÇÕES GERAIS E CARDÁPIO
+// 5. CONFIGURAÇÕES GERAIS
 // ========================================================================
 
 export interface AppConfig {
@@ -188,6 +188,10 @@ export interface Cabin {
   posicao?: number;
 }
 
+// ========================================================================
+// 6. TIPOS DE APOIO E LEGADOS
+// ========================================================================
+
 export interface HotDish {
   id: string;
   nomeItem: string;
@@ -219,10 +223,6 @@ export interface AccompanimentItem {
   descricaoPorcao?: string;
 }
 
-// ========================================================================
-// 6. TIPOS PARA GESTÃO DE ESTOQUE
-// ========================================================================
-
 export interface Supplier {
   id: string;
   name: string;
@@ -235,9 +235,28 @@ export interface StockItem {
   posicao?: number;
 }
 
-// ========================================================================
-// 7. TIPOS LEGADOS
-// ========================================================================
+export interface ItemPedido {
+  nomeItem: string;
+  quantidade: number;
+  observacao?: string;
+  paraPessoa?: string;
+  categoria?: string;
+  sabor?: string;
+}
+
+export interface Order { // Mantido como Order para compatibilidade com a referência
+  id: string;
+  stayId: string;
+  horarioEntrega: string;
+  status: "Novo" | "Em Preparação" | "Entregue" | "Cancelado";
+  timestampPedido: Timestamp;
+  itensPedido: ItemPedido[];
+  observacoesGerais?: string;
+  observacoesPratosQuentes?: string;
+  hospedeNome?: string; // Adicionado para impressão
+  cabanaNumero?: string; // Adicionado para impressão
+  numeroPessoas?: number; // Adicionado para impressão
+}
 
 export interface Comanda {
   id: string;

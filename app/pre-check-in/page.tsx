@@ -18,7 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast, Toaster } from 'sonner';
-import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Home, Car, Phone } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Home, Car, Phone, CheckCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
 // Zod Schema Final
@@ -31,15 +31,15 @@ const preCheckInSchema = z.object({
 
     // Etapa 2
     leadGuestEmail: z.string().email("Forneça um e-mail válido."),
-    leadGuestPhone: z.string().min(10, "Forneça um telefone válido com DDD."),
+    leadGuestPhone: z.string().min(10, "Forneça um telefone válido com DDD.").regex(/^\d+$/, "Apenas números são permitidos."),
     address: z.object({
         cep: z.string().optional(),
         street: z.string().min(3, "O logradouro é obrigatório."),
-        number: z.string().min(1, "O número é obrigatório."),
+        number: z.string().min(1, "O número é obrigatório.").regex(/^\d+$/, "Apenas números são permitidos."),
         complement: z.string().optional(),
         neighborhood: z.string().min(2, "O bairro é obrigatório."),
-        city: z.string().min(2, "A cidade é obrigatória."),
-        state: z.string().min(2, "O estado é obrigatório."),
+        city: z.string().min(2, "A cidade é obrigatória.").regex(/^[a-zA-Z\s]+$/, "Apenas letras e espaços são permitidos."),
+        state: z.string().min(2, "O estado é obrigatório.").regex(/^[a-zA-Z\s]+$/, "Apenas letras e espaços são permitidos."),
     }),
 
     // Etapa 3
@@ -72,7 +72,7 @@ const preCheckInSchema = z.object({
     message: "CPF inválido.",
     path: ["leadGuestDocument"],
 }).refine(data => {
-    if (data.isForeigner && !data.country) {
+    if (data.isForeigner && (!data.country || data.country === 'Brasil')) {
         return false;
     }
     return true;
@@ -84,12 +84,12 @@ const preCheckInSchema = z.object({
 
 type PreCheckInFormValues = z.infer<typeof preCheckInSchema>;
 
-// Mock - No futuro, isso viria do Firestore
 const countries = ["Argentina", "Uruguai", "Chile", "Estados Unidos", "Portugal", "Alemanha"];
 
 export default function PreCheckInPage() {
     const [currentStep, setCurrentStep] = useState(0);
     const [isLoadingCep, setIsLoadingCep] = useState(false);
+    const [isSubmitSuccessful, setIsSubmitSuccessful] = useState(false);
 
     const form = useForm<PreCheckInFormValues>({
         resolver: zodResolver(preCheckInSchema),
@@ -112,7 +112,7 @@ export default function PreCheckInPage() {
             estimatedArrivalTime: '16:00',
             knowsVehiclePlate: true,
             vehiclePlate: '',
-            companions: [],
+            companions: [{ fullName: '', age: 1, cpf: '' }],
             pets: []
         },
     });
@@ -186,7 +186,6 @@ export default function PreCheckInPage() {
         const toastId = toast.loading("Enviando seus dados...");
 
         try {
-            // Removendo 'country' e outros campos que não estão na interface PreCheckIn
             const { country, ...restOfData } = data;
 
             const preCheckInData: Omit<PreCheckIn, 'id' | 'stayId'> = {
@@ -195,21 +194,16 @@ export default function PreCheckInPage() {
                     ...data.address,
                     country: isForeigner ? data.country || '' : 'Brasil',
                 },
-                // Garante que o objeto de pets só é enviado se houver pets
                 pets: data.pets && data.pets.length > 0 ? data.pets : [],
-                companions: data.companions && data.companions.length > 0 ? data.companions : [],
+                companions: data.companions && data.companions.length > 0 ? data.companions.filter(c => c.fullName.trim() !== '') : [],
                 status: 'pendente',
                 createdAt: firestore.Timestamp.now(),
             };
 
             await firestore.addDoc(firestore.collection(db, 'preCheckIns'), preCheckInData);
 
-            toast.success("Pré-Check-in enviado com sucesso!", {
-                id: toastId,
-                description: "Sua solicitação foi recebida e será validada pela nossa equipe.",
-            });
-            form.reset();
-            setCurrentStep(0);
+            toast.dismiss(toastId);
+            setIsSubmitSuccessful(true);
 
         } catch (error) {
             console.error("Firebase submission error:", error);
@@ -220,6 +214,39 @@ export default function PreCheckInPage() {
         }
     };
 
+    const handleNumericInput = (e: React.FormEvent<HTMLInputElement>) => {
+        e.currentTarget.value = e.currentTarget.value.replace(/[^0-9]/g, '');
+    };
+    const handleAlphaInput = (e: React.FormEvent<HTMLInputElement>) => {
+        e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s]/g, '');
+    };
+
+    if (isSubmitSuccessful) {
+        return (
+            <div className="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+                <Card className="w-full max-w-2xl shadow-xl text-center">
+                    <CardHeader>
+                        <div className="mx-auto bg-green-100 rounded-full p-3 w-fit">
+                            <CheckCircle className="h-10 w-10 text-green-600" />
+                        </div>
+                        <CardTitle className="text-3xl mt-4">Tudo Certo!</CardTitle>
+                        <CardDescription>
+                            Seu pré-check-in foi enviado com sucesso. Nossa equipe já está ciente da sua chegada.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-muted-foreground">Caso tenha qualquer dúvida ou precise fazer alguma alteração, não hesite em nos contatar.</p>
+                        <Button asChild size="lg" className="mt-6">
+                            <a href="https://wa.me/5531991096590" target="_blank" rel="noopener noreferrer">
+                                <Phone className="mr-2 h-4 w-4" /> Entrar em contato via WhatsApp
+                            </a>
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
+
     return (
         <div className="bg-gray-50 min-h-screen flex items-center justify-center p-4">
             <Toaster richColors position="top-center" />
@@ -227,7 +254,6 @@ export default function PreCheckInPage() {
                 <CardHeader className="text-center">
                     <CardTitle className="text-3xl">Formulário de Pré-Check-in</CardTitle>
                     <CardDescription>
-                       {/* Mensagem customizável aqui */}
                        Acelere sua chegada! Preencher este formulário simplifica o processo na recepção, permitindo que você pule a burocracia e comece a relaxar mais cedo.
                     </CardDescription>
                 </CardHeader>
@@ -238,7 +264,7 @@ export default function PreCheckInPage() {
                     </div>
 
                     <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                        <form onSubmit={(e) => e.preventDefault()} className="space-y-8">
                             
                             {currentStep === 0 && (
                                 <div className="space-y-4 animate-in fade-in-0">
@@ -262,20 +288,20 @@ export default function PreCheckInPage() {
                                      <p className="text-sm text-muted-foreground">Estas informações são necessárias para o envio de detalhes sobre sua reserva e para a emissão da Nota Fiscal.</p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <FormField name="leadGuestEmail" control={form.control} render={({ field }) => (<FormItem><FormLabel>E-mail</FormLabel><FormControl><Input type="email" placeholder="seu@email.com" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                        <FormField name="leadGuestPhone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Telefone / WhatsApp</FormLabel><FormControl><Input placeholder="(XX) XXXXX-XXXX" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField name="leadGuestPhone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Telefone / WhatsApp</FormLabel><FormControl><Input type="tel" placeholder="(XX) XXXXX-XXXX" {...field} onInput={handleNumericInput} /></FormControl><FormMessage /></FormItem>)} />
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <FormField name="address.cep" control={form.control} render={({ field }) => (<FormItem className="md:col-span-1"><FormLabel>CEP / ZIP Code</FormLabel><FormControl><Input placeholder="00000-000" {...field} onBlur={(e) => handleCepLookup(e.target.value)} /></FormControl>{isLoadingCep && <p className='text-sm text-muted-foreground'>Buscando...</p>}<FormMessage /></FormItem>)} />
                                         <FormField name="address.street" control={form.control} render={({ field }) => (<FormItem className="md:col-span-2"><FormLabel>Logradouro</FormLabel><FormControl><Input placeholder="Rua, Avenida..." {...field} /></FormControl><FormMessage /></FormItem>)} />
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                         <FormField name="address.number" control={form.control} render={({ field }) => (<FormItem><FormLabel>Número</FormLabel><FormControl><Input id="address.number" placeholder="123" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                         <FormField name="address.number" control={form.control} render={({ field }) => (<FormItem><FormLabel>Número</FormLabel><FormControl><Input id="address.number" placeholder="123" {...field} onInput={handleNumericInput} /></FormControl><FormMessage /></FormItem>)} />
                                          <FormField name="address.complement" control={form.control} render={({ field }) => (<FormItem><FormLabel>Complemento</FormLabel><FormControl><Input placeholder="Apto, Bloco..." {...field} /></FormControl><FormMessage /></FormItem>)} />
                                          <FormField name="address.neighborhood" control={form.control} render={({ field }) => (<FormItem><FormLabel>Bairro</FormLabel><FormControl><Input placeholder="Seu bairro" {...field} /></FormControl><FormMessage /></FormItem>)} />
                                     </div>
                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <FormField name="address.city" control={form.control} render={({ field }) => (<FormItem><FormLabel>Cidade</FormLabel><FormControl><Input placeholder="Sua cidade" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                        <FormField name="address.state" control={form.control} render={({ field }) => (<FormItem><FormLabel>Estado / Província</FormLabel><FormControl><Input placeholder="UF" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField name="address.city" control={form.control} render={({ field }) => (<FormItem><FormLabel>Cidade</FormLabel><FormControl><Input placeholder="Sua cidade" {...field} onInput={handleAlphaInput} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField name="address.state" control={form.control} render={({ field }) => (<FormItem><FormLabel>Estado / Província</FormLabel><FormControl><Input placeholder="UF" {...field} onInput={handleAlphaInput} /></FormControl><FormMessage /></FormItem>)} />
                                      </div>
                                 </div>
                             )}
@@ -314,7 +340,7 @@ export default function PreCheckInPage() {
                                                 <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                             </div>
                                         ))}
-                                        <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: 0, cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
+                                        <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: 1, cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
                                      </div>
                                      <div>
                                          <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2"><PawPrint />Pets</h3>
@@ -338,13 +364,13 @@ export default function PreCheckInPage() {
                                         {petPolicyViolations.count && (
                                             <div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md">
                                                 <p className="font-semibold">Atenção: Limite de pets excedido</p>
-                                                <p>Nossa política permite apenas 1 pet por cabana. Por favor, <a href="https://wa.me/SEUNUMERO" target="_blank" rel="noopener noreferrer" className="font-bold underline flex items-center gap-1">entre em contato via WhatsApp <Phone className="h-3 w-3"/></a> para verificarmos a possibilidade de uma exceção.</p>
+                                                <p>Nossa política permite apenas 1 pet por cabana. Por favor, <a href="https://wa.me/5531991096590" target="_blank" rel="noopener noreferrer" className="font-bold underline flex items-center gap-1">entre em contato via WhatsApp <Phone className="h-3 w-3"/></a> para verificarmos a possibilidade de uma exceção.</p>
                                             </div>
                                         )}
                                         {petPolicyViolations.weight && (
                                              <div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md">
                                                 <p className="font-semibold">Atenção: Peso acima do limite</p>
-                                                <p>Nosso limite é de 15kg por pet. Por favor, <a href="https://wa.me/SEUNUMERO" target="_blank" rel="noopener noreferrer" className="font-bold underline flex items-center gap-1">entre em contato via WhatsApp <Phone className="h-3 w-3"/></a> para verificarmos a possibilidade de uma exceção.</p>
+                                                <p>Nosso limite é de 15kg por pet. Por favor, <a href="https://wa.me/5531991096590" target="_blank" rel="noopener noreferrer" className="font-bold underline flex items-center gap-1">entre em contato via WhatsApp <Phone className="h-3 w-3"/></a> para verificarmos a possibilidade de uma exceção.</p>
                                             </div>
                                         )}
                                      </div>
@@ -363,7 +389,7 @@ export default function PreCheckInPage() {
                                         Avançar <ArrowRight className="ml-2 h-4 w-4" />
                                     </Button>
                                 ) : (
-                                    <Button type="submit" size="lg" disabled={form.formState.isSubmitting}>
+                                    <Button type="button" size="lg" disabled={form.formState.isSubmitting} onClick={form.handleSubmit(onSubmit)}>
                                         {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4"/>}
                                         Enviar Pré-Check-in
                                     </Button>

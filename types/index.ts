@@ -303,11 +303,11 @@ export interface OrderState {
 
 export type QuestionType = 
   | 'rating_5_stars' 
-  | 'binary' 
   | 'multiple_choice' 
   | 'nps_0_10'
   | 'text'
-  | 'separator';
+  | 'separator'
+  | 'comment_box';
 
 export interface SurveyCategory {
     id: string;
@@ -332,4 +332,18 @@ export interface Survey {
   description: string;
   isDefault: boolean;
   questions: SurveyQuestion[];
+}
+
+export interface SurveyResponseAnswer {
+    questionId: string;
+    questionText?: string;
+    answer: any;
+}
+
+export interface SurveyResponse {
+    id: string;
+    surveyId: string;
+    stayId: string;
+    submittedAt: Timestamp;
+    answers: SurveyResponseAnswer[];
 }

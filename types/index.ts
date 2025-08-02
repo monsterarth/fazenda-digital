@@ -107,7 +107,7 @@ export interface Booking {
 }
 
 // ========================================================================
-// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ (NOVO)
+// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ
 // ========================================================================
 
 export interface BreakfastMenuItem {
@@ -141,7 +141,6 @@ export interface BreakfastOrder {
     status: 'pending' | 'printed' | 'delivered' | 'canceled';
     createdAt: Timestamp;
 }
-
 
 // ========================================================================
 // 5. CONFIGURAÇÕES GERAIS
@@ -244,7 +243,7 @@ export interface ItemPedido {
   sabor?: string;
 }
 
-export interface Order { // Mantido como Order para compatibilidade com a referência
+export interface Order {
   id: string;
   stayId: string;
   horarioEntrega: string;
@@ -253,9 +252,9 @@ export interface Order { // Mantido como Order para compatibilidade com a refer�
   itensPedido: ItemPedido[];
   observacoesGerais?: string;
   observacoesPratosQuentes?: string;
-  hospedeNome?: string; // Adicionado para impressão
-  cabanaNumero?: string; // Adicionado para impressão
-  numeroPessoas?: number; // Adicionado para impressão
+  hospedeNome?: string;
+  cabanaNumero?: string;
+  numeroPessoas?: number;
 }
 
 export interface Comanda {
@@ -296,4 +295,41 @@ export interface OrderState {
   accompaniments: Record<string, Record<string, number>>;
   globalHotDishNotes: string;
   specialRequests: string;
+}
+
+// ========================================================================
+// 7. PESQUISA DE SATISFAÇÃO
+// ========================================================================
+
+export type QuestionType = 
+  | 'rating_5_stars' 
+  | 'binary' 
+  | 'multiple_choice' 
+  | 'nps_0_10'
+  | 'text'
+  | 'separator';
+
+export interface SurveyCategory {
+    id: string;
+    name: string;
+    order: number;
+}
+
+export interface SurveyQuestion {
+  id: string;
+  type: QuestionType;
+  text: string;
+  subtitle?: string;
+  categoryId?: string;
+  categoryName?: string;
+  options?: string[];
+  allowMultiple?: boolean;
+}
+
+export interface Survey {
+  id: string;
+  title: string;
+  description: string;
+  isDefault: boolean;
+  questions: SurveyQuestion[];
 }

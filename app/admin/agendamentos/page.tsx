@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { toast, Toaster } from 'sonner';
-import { Calendar as CalendarIcon, Loader2, Lock, Unlock, User, CheckSquare, XSquare, Check, X, Info } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Lock, Unlock, User, CheckSquare, XSquare, Check, X } from 'lucide-react';
 import { format, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -130,6 +130,11 @@ export default function BookingsCalendarPage() {
         return () => { unsubServices(); unsubBookings(); };
     }, [db, selectedDate]);
 
+    const preferenceAndOnDemandBookings = useMemo(() => {
+        return bookings.filter(b => b.status === 'solicitado' && 
+            (services.find(s => s.id === b.serviceId)?.type === 'preference' || services.find(s => s.id === b.serviceId)?.type === 'on_demand'));
+    }, [bookings, services]);
+
     const getSlotInfo = (service: Service, unit: string, timeSlot: { id: string; label: string; }): SlotInfo => {
         const id = `${service.id}-${unit}-${timeSlot.id}`;
         const booking = bookings.find(b => b.serviceId === service.id && b.unit === unit && b.timeSlotId === timeSlot.id);
@@ -164,7 +169,7 @@ export default function BookingsCalendarPage() {
         setSelectedSlots(newSelection);
     };
 
-    const handleBulkAction = async (action: 'block' | 'unblock' | 'open') => {
+    const handleBulkAction = async (action: 'block' | 'open') => {
         if (!db || selectedSlots.size === 0) return;
         const toastId = toast.loading(`Processando ${selectedSlots.size} horários...`);
         try {
@@ -174,7 +179,7 @@ export default function BookingsCalendarPage() {
             selectedSlots.forEach(slot => {
                 const bookingExists = !!slot.booking?.id;
 
-                if (action === 'open' || action === 'unblock') {
+                if (action === 'open') {
                     if(bookingExists) batch.delete(firestore.doc(db, 'bookings', slot.booking!.id));
                 } else if (action === 'block') {
                     const blockData = {
@@ -262,11 +267,6 @@ export default function BookingsCalendarPage() {
         }
     }
 
-    const preferenceAndOnDemandBookings = useMemo(() => {
-        return bookings.filter(b => b.status === 'solicitado' && 
-            (services.find(s => s.id === b.serviceId)?.type === 'preference' || services.find(s => s.id === b.serviceId)?.type === 'on_demand'));
-    }, [bookings, services]);
-
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6">
             <Toaster richColors position="top-center" />
@@ -278,7 +278,7 @@ export default function BookingsCalendarPage() {
                         <CardDescription>Gerencie agendamentos e disponibilidade.</CardDescription>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                        <Button variant={selectionMode ? "destructive" : "outline"} onClick={() => setSelectionMode(!selectionMode)}>
+                        <Button variant={selectionMode ? "destructive" : "outline"} onClick={() => { setSelectionMode(!selectionMode); setSelectedSlots(new Map()); }}>
                             {selectionMode ? <XSquare className="h-4 w-4 mr-2"/> : <CheckSquare className="h-4 w-4 mr-2" />}
                             {selectionMode ? "Cancelar Seleção" : "Selecionar Vários"}
                         </Button>

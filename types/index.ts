@@ -40,7 +40,7 @@ export interface Companion {
 }
 
 export interface PetDetails {
-  id: string; 
+  id: string;
   name: string;
   species: 'cachorro' | 'gato' | 'outro';
   breed: string;
@@ -95,7 +95,7 @@ export interface Booking {
     serviceId: string;
     serviceName: string;
     date: string;
-    unit?: string; 
+    unit?: string;
     timeSlotId?: string;
     timeSlotLabel?: string;
     preferenceTime?: string;
@@ -162,7 +162,7 @@ export interface AppConfig {
   mensagensMotivacionais?: string[];
   preCheckInWelcomeMessage?: string;
   preCheckInSuccessMessage?: string;
-  isBasketBreakfastOpen: boolean; 
+  isBasketBreakfastOpen: boolean;
   basketBreakfastClosedMessage: string;
   welcomeEmoji?: string;
   welcomeTitle?: string;
@@ -301,9 +301,9 @@ export interface OrderState {
 // 7. PESQUISA DE SATISFAÇÃO
 // ========================================================================
 
-export type QuestionType = 
-  | 'rating_5_stars' 
-  | 'multiple_choice' 
+export type QuestionType =
+  | 'rating_5_stars'
+  | 'multiple_choice'
   | 'nps_0_10'
   | 'text'
   | 'separator'
@@ -324,7 +324,9 @@ export interface SurveyQuestion {
   categoryName?: string;
   options?: string[];
   allowMultiple?: boolean;
+  position: number; // Adicionado para ordenação
 }
+
 
 export interface Survey {
   id: string;

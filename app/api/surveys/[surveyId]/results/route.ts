@@ -4,12 +4,11 @@ import { initAdminApp } from '@/lib/firebase-admin';
 import { Survey, SurveyResponse, Stay, SurveyQuestion, PreCheckIn } from '@/types';
 import { startOfDay, endOfDay, parseISO, format } from 'date-fns';
 
-// Solução de contorno: usando 'any' para o contexto
 export async function GET(
     request: NextRequest,
-    { params }: { params: { surveyId: string } }
+    { params }: { params: Promise<{ surveyId: string }> } // <-- CORREÇÃO 1: Tipagem como Promise
 ) {
-    const { surveyId } = params;
+    const { surveyId } = await params; // <-- CORREÇÃO 2: Aguardar a promise para obter o ID
     const isAdmin = true;
     if (!isAdmin) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -18,7 +17,7 @@ export async function GET(
     try {
         await initAdminApp();
         const db = getFirestore();
-        const surveyId = context.params.surveyId;
+        // A linha `const surveyId = context.params.surveyId;` foi removida pois estava incorreta.
         const { searchParams } = new URL(request.url);
 
         const surveyRef = db.doc(`surveys/${surveyId}`);
@@ -83,14 +82,14 @@ export async function GET(
         if (uniquePreCheckInIds.length > 0) {
              const BATCH_SIZE = 30;
              for (let i = 0; i < uniquePreCheckInIds.length; i += BATCH_SIZE) {
-                const batchIds = uniquePreCheckInIds.slice(i, i + BATCH_SIZE);
-                 if (batchIds.length > 0) {
-                    const preCheckInsSnap = await db.collection('preCheckIns').where(FieldPath.documentId(), 'in', batchIds).get();
-                    preCheckInsSnap.forEach((doc: QueryDocumentSnapshot) => {
-                        preCheckInsData[doc.id] = { id: doc.id, ...doc.data() } as PreCheckIn;
-                    });
-                }
-            }
+                 const batchIds = uniquePreCheckInIds.slice(i, i + BATCH_SIZE);
+                  if (batchIds.length > 0) {
+                     const preCheckInsSnap = await db.collection('preCheckIns').where(FieldPath.documentId(), 'in', batchIds).get();
+                     preCheckInsSnap.forEach((doc: QueryDocumentSnapshot) => {
+                         preCheckInsData[doc.id] = { id: doc.id, ...doc.data() } as PreCheckIn;
+                     });
+                 }
+             }
         }
 
         const processedResponses = responses
@@ -216,4 +215,3 @@ export async function GET(
         return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
     }
 }
-//test export

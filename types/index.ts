@@ -349,3 +349,37 @@ export interface SurveyResponse {
     submittedAt: Timestamp;
     answers: SurveyResponseAnswer[];
 }
+
+// ========================================================================
+// 8. NOVA ESTRUTURA DE PERSONALIZAÇÃO (WHITE-LABEL)
+// ========================================================================
+
+export interface PropertyColors {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+    card: string;
+    text: string;
+    textOnPrimary: string;
+}
+
+export interface PropertyMessages {
+    preCheckInWelcomeTitle: string;
+    preCheckInWelcomeSubtitle: string;
+    preCheckInSuccessTitle: string;
+    preCheckInSuccessSubtitle: string;
+    portalWelcomeTitle: string;
+    portalWelcomeSubtitle: string;
+    surveySuccessTitle: string;
+    surveySuccessSubtitle: string;
+    breakfastBasketClosed: string;
+}
+
+export interface Property {
+    id: string;
+    name: string;
+    logoUrl: string;
+    colors: PropertyColors;
+    messages: PropertyMessages;
+}

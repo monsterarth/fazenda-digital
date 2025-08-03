@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -13,9 +14,25 @@ const firebaseConfig = {
 // Inicializa o Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-export const getFirebaseDb = async () => {
+async function getFirebaseDb() {
   return db;
-};
+}
 
-export { app, db };
+// **NOVA FUNÇÃO ADICIONADA**
+// Função para fazer upload de um arquivo para o Firebase Storage
+async function uploadFile(file: File, path: string): Promise<string> {
+  const storageRef = ref(storage, path);
+  
+  // 'file' comes from the Blob or File API
+  const snapshot = await uploadBytes(storageRef, file);
+  
+  // Get the download URL
+  const downloadURL = await getDownloadURL(snapshot.ref);
+  
+  return downloadURL;
+}
+
+
+export { getFirebaseDb, uploadFile };

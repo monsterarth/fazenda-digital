@@ -28,10 +28,9 @@ export default function GuestLoginPage() {
   const { property, loading: isPropertyLoading } = useProperty();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Redireciona para o dashboard se o usuário já estiver autenticado
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/portal/dashboard');
+      router.replace('/portal/dashboard');
     }
   }, [isAuthenticated, router]);
 
@@ -44,10 +43,10 @@ export default function GuestLoginPage() {
 
   const onSubmit = async (data: LoginFormValues) => {
     setIsSubmitting(true);
-    const success = await login(data.token.toUpperCase());
+    // A conversão para toUpperCase() foi removida daqui.
+    const success = await login(data.token); 
     if (success) {
       toast.success('Login realizado com sucesso! Redirecionando...');
-      // O useEffect cuidará do redirecionamento
     } else {
       toast.error('Token inválido ou expirado. Verifique o código e tente novamente.');
       form.reset();
@@ -57,10 +56,6 @@ export default function GuestLoginPage() {
 
   const pageIsLoading = isGuestLoading || isPropertyLoading;
 
-  // ## CORREÇÃO PRINCIPAL ##
-  // A página de login só mostra o loader global se os provedores estiverem carregando.
-  // Ela não mostra mais um loader se 'isAuthenticated' for verdadeiro, permitindo que o
-  // useEffect acima faça o redirecionamento.
   if (pageIsLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -69,8 +64,6 @@ export default function GuestLoginPage() {
     );
   }
   
-  // Se o usuário já estiver autenticado, o useEffect irá redirecionar, mas
-  // enquanto isso não acontece, retornamos null para evitar piscar o formulário.
   if(isAuthenticated) {
     return null;
   }

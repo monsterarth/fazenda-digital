@@ -1,48 +1,38 @@
-import { NextResponse } from 'next/server';
-import { getFirestore } from 'firebase-admin/firestore';
-import { initAdminApp } from '@/lib/firebase-admin';
+import { getFirebaseDb } from '@/lib/firebase';
 import { Stay } from '@/types';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { NextRequest, NextResponse } from 'next/server';
 
-// Rota para o método POST
-export async function POST(request: Request) {
-  // Garante que o Firebase Admin esteja inicializado
-  await initAdminApp();
-  const db = getFirestore();
+export async function POST(req: NextRequest) {
+    try {
+        const db = await getFirebaseDb();
+        const { token } = await req.json();
 
-  try {
-    const { token } = await request.json();
+        if (!token || typeof token !== 'string') {
+            return NextResponse.json({ error: 'Token is required' }, { status: 400 });
+        }
+        
+        const upperCaseToken = token.toUpperCase();
+        const staysCollection = collection(db, 'stays');
+        
+        const q = query(
+            staysCollection, 
+            where("token", "==", upperCaseToken)
+        );
+        
+        const querySnapshot = await getDocs(q);
 
-    // Validação básica do input
-    if (!token || typeof token !== 'string') {
-      return NextResponse.json({ error: 'Token inválido.' }, { status: 400 });
+        if (querySnapshot.empty) {
+            return NextResponse.json({ error: 'Invalid or expired token' }, { status: 404 });
+        }
+
+        const stayDoc = querySnapshot.docs[0];
+        const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
+
+        return NextResponse.json(stayData, { status: 200 });
+
+    } catch (error) {
+        console.error('LOGIN API ERROR:', error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
-
-    // Busca na coleção 'stays' por um documento com o token correspondente e status 'active'
-    const staysRef = db.collection('stays');
-    const q = staysRef.where('token', '==', token.toUpperCase().trim()).where('status', '==', 'active').limit(1);
-    
-    const snapshot = await q.get();
-
-    // Se nenhum documento for encontrado, o token é inválido ou a estadia não está ativa
-    if (snapshot.empty) {
-      return NextResponse.json({ error: 'Token não encontrado ou estadia não está ativa.' }, { status: 404 });
-    }
-    
-    const stayDoc = snapshot.docs[0];
-    const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
-
-    // Converte os Timestamps do Firestore para um formato serializável (ISO string) antes de enviar ao cliente
-    const serializableStay = {
-        ...stayData,
-        checkInDate: (stayData.checkInDate as any).toDate().toISOString(),
-        checkOutDate: (stayData.checkOutDate as any).toDate().toISOString(),
-        createdAt: (stayData.createdAt as any).toDate().toISOString(),
-    }
-
-    return NextResponse.json(serializableStay);
-
-  } catch (error: any) {
-    console.error("Error validating token:", error);
-    return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
-  }
 }

@@ -2,7 +2,6 @@
 
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
 import { Stay, Booking } from '@/types';
-import { Loader2 } from 'lucide-react';
 import { getFirebaseDb } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -18,7 +17,7 @@ const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
 export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const [stay, setStay] = useState<Stay | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] =useState(true);
 
   const fetchAndSetBookings = useCallback(async (stayData: Stay) => {
     if (!stayData) return stayData;
@@ -27,40 +26,41 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
       const bookingsQuery = query(collection(db, "bookings"), where("stayId", "==", stayData.id));
       const bookingsSnapshot = await getDocs(bookingsQuery);
       const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-      
       const stayWithBookings = { ...stayData, bookings: bookingsData };
-      
-      setStay(stayWithBookings);
       sessionStorage.setItem('synapse-stay', JSON.stringify(stayWithBookings));
       return stayWithBookings;
-
     } catch (error) {
       console.error("Failed to fetch bookings:", error);
       return stayData;
     }
   }, []);
 
-
   useEffect(() => {
+    let isMounted = true;
     const initializeSession = async () => {
-      setIsLoading(true);
       try {
         const savedStayJSON = sessionStorage.getItem('synapse-stay');
         if (savedStayJSON) {
-          const savedStay = JSON.parse(savedStayJSON);
-          await fetchAndSetBookings(savedStay);
+          const savedStayData = JSON.parse(savedStayJSON);
+          const stayWithBookings = await fetchAndSetBookings(savedStayData);
+          if (isMounted) {
+            setStay(stayWithBookings);
+          }
         }
       } catch (error) {
         console.error("Failed to parse stay from sessionStorage", error);
         sessionStorage.removeItem('synapse-stay');
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
     initializeSession();
-    // ## CORREÇÃO PRINCIPAL ##
-    // A dependência [fetchAndSetBookings] foi removida para garantir que este efeito rode APENAS UMA VEZ.
-  }, []);
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchAndSetBookings]);
 
   const login = async (token: string): Promise<boolean> => {
     setIsLoading(true);
@@ -70,18 +70,16 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
       });
-
       if (!response.ok) {
-        throw new Error("Token inválido ou estadia não ativa.");
+        throw new Error("Token inválido ou não encontrado na API.");
       }
-
-      const stayData: Stay = await response.json();
       
-      await fetchAndSetBookings(stayData);
-
+      const stayData = await response.json();
+      const stayWithBookings = await fetchAndSetBookings(stayData);
+      setStay(stayWithBookings);
       return true;
     } catch (error) {
-      console.error(error);
+      console.error("Erro na função de login:", error);
       logout();
       return false;
     } finally {
@@ -92,15 +90,8 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     setStay(null);
     sessionStorage.removeItem('synapse-stay');
+    setIsLoading(false);
   };
-
-  if (isLoading) {
-    return (
-        <div className="flex h-screen w-full items-center justify-center bg-background">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-    );
-  }
 
   return (
     <GuestContext.Provider value={{ stay, isAuthenticated: !!stay, isLoading, login, logout }}>

@@ -251,7 +251,6 @@ export interface Order {
   timestampPedido: Timestamp;
   itensPedido: ItemPedido[];
   observacoesGerais?: string;
-  observacoesPratosQuentes?: string;
   hospedeNome?: string;
   cabanaNumero?: string;
   numeroPessoas?: number;
@@ -383,3 +382,11 @@ export interface Property {
     colors: PropertyColors;
     messages: PropertyMessages;
 }
+
+// ========================================================================
+// 9. TIPOS COMBINADOS (HELPER TYPES)
+// ========================================================================
+
+export type OrderWithStay = BreakfastOrder & {
+  stayInfo?: Stay;
+};

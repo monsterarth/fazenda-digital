@@ -3,11 +3,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, DocumentReference } from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase';
-import type { BreakfastOrder, AppConfig, Stay } from '@/types';
+// Importação dos tipos necessários, incluindo o legado 'Order' e o novo 'OrderWithStay'
+import type { BreakfastOrder, AppConfig, Stay, OrderWithStay, Order } from '@/types';
 import { toast, Toaster } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,9 +21,41 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 
-type OrderWithStay = BreakfastOrder & { stayInfo?: Stay };
+// Função para mapear o status do novo formato para o antigo
+const mapStatusToLegacy = (status: BreakfastOrder['status']): Order['status'] => {
+  switch (status) {
+    case 'pending': return 'Novo';
+    case 'printed': return 'Em Preparação';
+    case 'delivered': return 'Entregue';
+    case 'canceled': return 'Cancelado';
+    default: return 'Novo';
+  }
+};
+
+// Função que transforma o pedido novo no formato legado que o componente de impressão espera
+const transformToLegacyOrder = (order: OrderWithStay): Order & { stayInfo?: Stay } => {
+  return {
+    id: order.id,
+    stayId: (order.stayId as DocumentReference)?.path || '',
+    horarioEntrega: order.deliveryDate ? format(order.deliveryDate.toDate(), "dd/MM/yyyy") : 'N/A',
+    status: mapStatusToLegacy(order.status),
+    timestampPedido: order.createdAt,
+    itensPedido: order.items.map(item => ({
+      nomeItem: item.itemName,
+      quantidade: item.quantity,
+      observacao: '', // O tipo legado espera essa propriedade
+    })),
+    observacoesGerais: order.generalNotes,
+    hospedeNome: order.stayInfo?.guestName,
+    cabanaNumero: order.stayInfo?.cabinName,
+    numeroPessoas: order.numberOfGuests,
+    // Adicionando a informação da estadia que o componente também pode precisar
+    stayInfo: order.stayInfo,
+  };
+};
 
 export default function ManageBreakfastOrdersPage() {
+  // O estado agora usa o tipo unificado importado de @/types
   const [orders, setOrders] = useState<OrderWithStay[]>([]);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,6 +125,12 @@ export default function ManageBreakfastOrdersPage() {
     toast.success(`Pedido marcado como "${status}"`);
   };
 
+  // Função para lidar com a impressão, fazendo a transformação dos dados
+  const handlePrintSummary = () => {
+    const legacyOrders = selectedOrders.map(transformToLegacyOrder);
+    printComponent(<OrdersSummaryLayout orders={legacyOrders as any} config={appConfig} />);
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando pedidos...</div>;
   }
@@ -115,7 +153,8 @@ export default function ManageBreakfastOrdersPage() {
                   <span>{hideDelivered ? 'Esconder Entregues' : 'Mostrar Todos'}</span>
                 </Label>
               </div>
-              <Button onClick={() => printComponent(<OrdersSummaryLayout orders={selectedOrders} config={appConfig} />)} disabled={isPrinting || selectedOrders.length === 0}>
+              {/* O botão agora chama a função de transformação */}
+              <Button onClick={handlePrintSummary} disabled={isPrinting || selectedOrders.length === 0}>
                 {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
                 Imprimir Resumo ({selectedOrders.length})
               </Button>

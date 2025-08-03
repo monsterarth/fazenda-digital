@@ -65,7 +65,10 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const login = async (token: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/portal/login`, {
+      // --- CORREÇÃO ADICIONADA AQUI ---
+      // Usar a variável de ambiente para um URL absoluto previne erros 404 no ambiente de produção (Vercel).
+      // Certifique-se de que NEXT_PUBLIC_URL está definida no seu .env.local e nas variáveis de ambiente da Vercel.
+      const response = await fetch(`${process.env.NEXT_PUBLIC_URL}/api/portal/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),

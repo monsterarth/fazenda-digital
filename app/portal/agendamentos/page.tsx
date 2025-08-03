@@ -25,15 +25,17 @@ import { Badge } from '@/components/ui/badge';
 import { toast, Toaster } from 'sonner';
 import { Loader2, CalendarPlus, Clock, Wand2, Handshake, Info, Send, Calendar as CalendarIcon } from 'lucide-react';
 
-// --- Esquemas de Validação para os Modais ---
+// ## INÍCIO DA CORREÇÃO ##
+// Corrigido o schema. z.date() por si só já torna o campo obrigatório.
 const bookingSchema = z.object({
-    date: z.date({ required_error: "A data é obrigatória." }),
+    date: z.date(),
     unit: z.string().optional(),
     timeSlotId: z.string().optional(),
     preferenceTime: z.string().optional(),
     selectedOptions: z.array(z.string()).optional(),
     notes: z.string().optional(),
 });
+// ## FIM DA CORREÇÃO ##
 
 type BookingFormValues = z.infer<typeof bookingSchema>;
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Order, AppConfig, Stay } from '@/types'; // Corrigido para usar o tipo 'Order'
+import { Order, AppConfig, Stay } from '@/types';
 import { format } from 'date-fns';
 
 type OrderWithStay = Order & { stayInfo?: Stay };
@@ -53,11 +53,14 @@ export const OrdersSummaryLayout: React.FC<OrdersSummaryLayoutProps> = ({ orders
         <h2 className="text-2xl font-bold mb-4">Observações Gerais</h2>
         <ul className="list-disc list-inside space-y-2">
             {orders.map(order => (
-                (order.observacoesGerais || order.observacoesPratosQuentes) && (
+                // ## INÍCIO DA CORREÇÃO ##
+                // Removido 'order.observacoesPratosQuentes' que não existe.
+                order.observacoesGerais && (
                     <li key={order.id}>
-                        <strong>{order.stayInfo?.guestName} (Cabana {order.stayInfo?.cabinName}):</strong> {order.observacoesGerais} {order.observacoesPratosQuentes}
+                        <strong>{order.stayInfo?.guestName} (Cabana {order.stayInfo?.cabinName}):</strong> {order.observacoesGerais}
                     </li>
                 )
+                // ## FIM DA CORREÇÃO ##
             ))}
         </ul>
       </section>

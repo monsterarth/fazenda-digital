@@ -35,4 +35,4 @@ async function uploadFile(file: File, path: string): Promise<string> {
 }
 
 
-export { getFirebaseDb, uploadFile };
+export { getFirebaseDb, uploadFile, db };

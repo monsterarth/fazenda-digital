@@ -1,5 +1,6 @@
 import React from 'react';
-import { Order, AppConfig, Stay } from '@/types'; // Corrigido para usar o tipo 'Order'
+// Adicionado ItemPedido para a tipagem correta
+import { Order, AppConfig, Stay, ItemPedido } from '@/types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -12,7 +13,11 @@ interface OrderPrintLayoutProps {
 }
 
 export const OrderPrintLayout: React.FC<OrderPrintLayoutProps> = ({ order, config }) => {
-  const groupedItems = (order.itensPedido || []).reduce((acc: Record<string, typeof order.itensPedido>, item) => {
+  
+  // ## INÍCIO DA CORREÇÃO ##
+  // A tipagem do acumulador (acc) foi corrigida para Record<string, ItemPedido[]>.
+  // Isso garante ao TypeScript que 'items' será sempre um array, nunca undefined.
+  const groupedItems = (order.itensPedido || []).reduce((acc: Record<string, ItemPedido[]>, item) => {
     const category = item.categoria || 'Outros';
     if (!acc[category]) {
       acc[category] = [];
@@ -20,6 +25,7 @@ export const OrderPrintLayout: React.FC<OrderPrintLayoutProps> = ({ order, confi
     acc[category].push(item);
     return acc;
   }, {});
+  // ## FIM DA CORREÇÃO ##
 
   return (
     <div className="p-8 font-sans bg-white text-black">

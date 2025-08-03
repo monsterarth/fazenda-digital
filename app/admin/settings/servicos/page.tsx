@@ -26,27 +26,28 @@ const timeSlotSchema = z.object({
   label: z.string().min(1, "O rótulo é obrigatório."),
 });
 
-// Esquema de validação principal para o formulário de serviço
+// ## INÍCIO DA CORREÇÃO ##
+// Ajustado o schema para usar array de objetos, que é o padrão esperado pelo useFieldArray.
 const serviceSchema = z.object({
-  name: z.string().min(2, "O nome do serviço é obrigatório."),
-  type: z.enum(['slots', 'preference', 'on_demand']),
-  defaultStatus: z.enum(['open', 'closed']).optional(),
-  
-  units: z.array(z.string()).optional(),
-  timeSlots: z.array(timeSlotSchema).optional(),
-  additionalOptions: z.array(z.string()).optional(),
-  instructions: z.string().optional(),
+    name: z.string().min(2, "O nome do serviço é obrigatório."),
+    type: z.enum(['slots', 'preference', 'on_demand']),
+    defaultStatus: z.enum(['open', 'closed']).optional(),
+    
+    units: z.array(z.object({ value: z.string() })).optional(),
+    timeSlots: z.array(timeSlotSchema).optional(),
+    additionalOptions: z.array(z.object({ value: z.string() })).optional(),
+    instructions: z.string().optional(),
 }).refine(data => {
-  if (data.type === 'slots' && (!data.units || data.units.filter(u => u && u.trim() !== '').length === 0)) {
-    return false;
-  }
-  return true;
+    if (data.type === 'slots' && (!data.units || data.units.filter(u => u.value && u.value.trim() !== '').length === 0)) {
+        return false;
+    }
+    return true;
 }, {
-  message: "Serviços do tipo 'slots' devem ter pelo menos uma unidade.",
-  path: ["units"],
+    message: "Serviços do tipo 'slots' devem ter pelo menos uma unidade.",
+    path: ["units"],
 }).refine(data => {
     if (data.type === 'slots' && (!data.timeSlots || data.timeSlots.length === 0)) {
-      return false;
+        return false;
     }
     return true;
 }, {
@@ -55,6 +56,7 @@ const serviceSchema = z.object({
 });
 
 type ServiceFormValues = z.infer<typeof serviceSchema>;
+// ## FIM DA CORREÇÃO ##
 
 export default function ManageServicesPage() {
     const [db, setDb] = useState<firestore.Firestore | null>(null);
@@ -69,9 +71,9 @@ export default function ManageServicesPage() {
         defaultValues: {
             name: '',
             type: 'slots',
-            units: [''],
+            units: [{ value: '' }],
             timeSlots: [{id: new Date().toISOString(), label: ''}],
-            additionalOptions: [''],
+            additionalOptions: [{ value: '' }],
             instructions: '',
         }
     });
@@ -113,9 +115,10 @@ export default function ManageServicesPage() {
                 name: service.name,
                 type: service.type,
                 defaultStatus: service.defaultStatus,
-                units: service.units && service.units.length > 0 ? service.units : [''],
+                // Ajustado para converter de string[] para {value: string}[]
+                units: service.units && service.units.length > 0 ? service.units.map(u => ({ value: u })) : [{ value: '' }],
                 timeSlots: service.timeSlots || [{id: new Date().toISOString(), label: ''}],
-                additionalOptions: service.additionalOptions && service.additionalOptions.length > 0 ? service.additionalOptions : [''],
+                additionalOptions: service.additionalOptions && service.additionalOptions.length > 0 ? service.additionalOptions.map(opt => ({ value: opt })) : [{ value: '' }],
                 instructions: service.instructions || '',
             });
         } else {
@@ -123,9 +126,9 @@ export default function ManageServicesPage() {
                 name: '',
                 type: 'slots',
                 defaultStatus: 'open',
-                units: [''],
+                units: [{ value: '' }],
                 timeSlots: [{id: new Date().toISOString(), label: ''}],
-                additionalOptions: [''],
+                additionalOptions: [{ value: '' }],
                 instructions: '',
             });
         }
@@ -142,14 +145,15 @@ export default function ManageServicesPage() {
                 type: data.type,
             };
 
+            // Ajustado para extrair o 'value' do objeto antes de salvar
             if (data.type === 'slots') {
-                dataToSave.units = data.units?.filter(u => u && u.trim() !== '') || [];
+                dataToSave.units = data.units?.map(u => u.value).filter(u => u && u.trim() !== '') || [];
                 dataToSave.timeSlots = data.timeSlots?.filter(ts => ts && ts.label.trim() !== '') || [];
                 dataToSave.defaultStatus = data.defaultStatus || 'open';
             }
             
             if (data.type === 'preference') {
-                dataToSave.additionalOptions = data.additionalOptions?.filter(opt => opt && opt.trim() !== '') || [];
+                dataToSave.additionalOptions = data.additionalOptions?.map(opt => opt.value).filter(opt => opt && opt.trim() !== '') || [];
             }
             
             if (data.type === 'on_demand') {
@@ -304,11 +308,13 @@ export default function ManageServicesPage() {
                                     <div className="space-y-2">
                                         <FormLabel>Unidades (Ex: Jacuzzi 1)</FormLabel>
                                         {unitFields.map((field, index) => (
-                                            <FormField key={field.id} control={form.control} name={`units.${index}`} render={({ field }) => (
+                                            // Ajustado para registrar 'units.[index].value'
+                                            <FormField key={field.id} control={form.control} name={`units.${index}.value`} render={({ field }) => (
                                                 <FormItem className="flex items-center gap-2"><FormControl><Input placeholder={`Unidade ${index + 1}`} {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeUnit(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
                                             )}/>
                                         ))}
-                                        <Button type="button" variant="outline" size="sm" onClick={() => appendUnit('')}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Unidade</Button>
+                                        {/* Ajustado para adicionar um objeto ao array */}
+                                        <Button type="button" variant="outline" size="sm" onClick={() => appendUnit({ value: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Unidade</Button>
                                         <FormMessage>{form.formState.errors.units?.message}</FormMessage>
                                     </div>
                                     <div className="space-y-2">
@@ -329,11 +335,13 @@ export default function ManageServicesPage() {
                                     <div className="space-y-2">
                                         <FormLabel>Opções Adicionais (Ex: Troca de toalhas)</FormLabel>
                                         {optionFields.map((field, index) => (
-                                            <FormField key={field.id} control={form.control} name={`additionalOptions.${index}`} render={({ field }) => (
+                                            // Ajustado para registrar 'additionalOptions.[index].value'
+                                            <FormField key={field.id} control={form.control} name={`additionalOptions.${index}.value`} render={({ field }) => (
                                                  <FormItem className="flex items-center gap-2"><FormControl><Input placeholder={`Opção ${index + 1}`} {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
                                             )}/>
                                         ))}
-                                        <Button type="button" variant="outline" size="sm" onClick={() => appendOption('')}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Opção</Button>
+                                        {/* Ajustado para adicionar um objeto ao array */}
+                                        <Button type="button" variant="outline" size="sm" onClick={() => appendOption({ value: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Opção</Button>
                                     </div>
                                 </div>
                             )}

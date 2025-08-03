@@ -24,17 +24,20 @@ import { Loader2, CalendarIcon, Users, Edit, FileCheck, KeyRound, PawPrint, User
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 
-// Zod schema para o formulário de validação do admin
+// ## INÍCIO DA CORREÇÃO ##
+// Corrigido o schema para usar a sintaxe correta. O z.date() não aceita 'required_error' diretamente.
 const validationSchema = z.object({
     cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
     dates: z.object({
-        from: z.date({ required_error: "A data de check-in é obrigatória." }),
-        to: z.date({ required_error: "A data de check-out é obrigatória." }),
+        from: z.date(), // Apenas z.date() já torna o campo obrigatório.
+        to: z.date(),   // A validação de existência é feita no .refine() abaixo.
     }).refine(data => !!data.from && !!data.to, {
         message: "As datas de check-in e check-out são obrigatórias.",
-        path: ["from"],
+        path: ["from"], // O erro será aplicado ao primeiro campo de data.
     }),
 });
+// ## FIM DA CORREÇÃO ##
+
 type ValidationFormValues = z.infer<typeof validationSchema>;
 
 // Função para gerar token
@@ -214,7 +217,7 @@ export default function ManageStaysPage() {
                         </DialogHeader>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                           
+                            
                             {/* Coluna da Esquerda: Dados do Hóspede e Endereço */}
                             <div className="space-y-6">
                                 <section>

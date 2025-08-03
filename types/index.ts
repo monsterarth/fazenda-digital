@@ -245,11 +245,11 @@ export interface ItemPedido {
 
 export interface Order {
   id: string;
-  stayId: string;
-  horarioEntrega: string;
+  stayId: DocumentReference; // <-- AQUI ESTÁ A CORREÇÃO
+  horarioEntrega?: string;
   status: "Novo" | "Em Preparação" | "Entregue" | "Cancelado";
-  timestampPedido: Timestamp;
-  itensPedido: ItemPedido[];
+  timestampPedido?: Timestamp;
+  itensPedido?: ItemPedido[];
   observacoesGerais?: string;
   hospedeNome?: string;
   cabanaNumero?: string;

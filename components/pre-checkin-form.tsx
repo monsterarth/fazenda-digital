@@ -21,7 +21,9 @@ import { toast, Toaster } from 'sonner';
 import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Home, Car, Phone, CheckCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
-// Zod Schema
+// ## INÍCIO DA CORREÇÃO ##
+// O schema agora aceita 'age' e 'weight' como strings para evitar o erro de tipo.
+// A conversão para número será feita manualmente antes de salvar no banco.
 const preCheckInSchema = z.object({
     leadGuestName: z.string().min(3, "O nome completo é obrigatório."),
     isForeigner: z.boolean(),
@@ -43,7 +45,7 @@ const preCheckInSchema = z.object({
     vehiclePlate: z.string().optional(),
     companions: z.array(z.object({
         fullName: z.string().min(3, "Nome do acompanhante é obrigatório."),
-        age: z.coerce.number().int().nonnegative("Idade inválida."),
+        age: z.string().min(1, "Idade é obrigatória."), // Aceita como string
         cpf: z.string().optional()
     })).optional(),
     pets: z.array(z.object({
@@ -51,7 +53,7 @@ const preCheckInSchema = z.object({
         name: z.string().min(2, "Nome do pet é obrigatório."),
         species: z.enum(['cachorro', 'gato', 'outro']),
         breed: z.string().min(2, "Raça é obrigatória."),
-        weight: z.coerce.number().positive("Peso inválido."),
+        weight: z.string().min(1, "Peso é obrigatório."), // Aceita como string
         age: z.string().min(1, "Idade é obrigatória."),
         notes: z.string().optional()
     })).optional(),
@@ -63,7 +65,7 @@ const preCheckInSchema = z.object({
     if (data.isForeigner && (!data.country || data.country === 'Brasil')) return false;
     return true;
 }, { message: "A seleção do país é obrigatória para estrangeiros.", path: ["country"] });
-
+// ## FIM DA CORREÇÃO ##
 
 type PreCheckInFormValues = z.infer<typeof preCheckInSchema>;
 
@@ -98,7 +100,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
     const petValues = form.watch('pets');
     const petPolicyViolations = {
         count: petValues ? petValues.length > 1 : false,
-        weight: petValues ? petValues.some(p => p.weight > 15) : false,
+        weight: petValues ? petValues.some(p => parseFloat(p.weight) > 15) : false,
     };
 
     const totalSteps = 4;
@@ -156,8 +158,9 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
             const preCheckInData: Omit<PreCheckIn, 'id' | 'stayId'> = {
                 ...restOfData,
                 address: { ...data.address, country: isForeigner ? data.country || '' : 'Brasil' },
-                pets: data.pets || [],
-                companions: data.companions?.filter(c => c.fullName.trim() !== '') || [],
+                // Conversão manual para número antes de salvar
+                pets: data.pets?.map(p => ({ ...p, weight: parseFloat(p.weight) || 0 })) || [],
+                companions: data.companions?.filter(c => c.fullName.trim() !== '').map(c => ({...c, age: parseInt(c.age, 10) || 0 })) || [],
                 status: 'pendente',
                 createdAt: firestore.Timestamp.now(),
             };
@@ -254,7 +257,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                     <FormField name="knowsVehiclePlate" control={form.control} render={({ field }) => (<FormItem className="flex flex-row items-center space-x-2 space-y-0 pb-2"><FormControl><Checkbox checked={!field.value} onCheckedChange={(checked) => field.onChange(!checked)} /></FormControl><FormLabel className="font-normal text-sm">Não sei / Sem carro</FormLabel></FormItem>)} />
                                 </div>
                             </div>
-                         )}
+                           )}
                         {currentStep === 3 && (
                              <div className="space-y-6 animate-in fade-in-0">
                                  <div>
@@ -267,7 +270,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                             <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                         </div>
                                     ))}
-                                    <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: 0, cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: '', cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
                                  </div>
                                  <div>
                                      <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2"><PawPrint />Pets</h3>
@@ -286,12 +289,12 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                              </div>
                                         </div>
                                     ))}
-                                    <Button type="button" variant="outline" size="sm" onClick={() => appendPet({ id: crypto.randomUUID(), name: '', species: 'cachorro', breed: '', weight: 1, age: '', notes: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pet</Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => appendPet({ id: crypto.randomUUID(), name: '', species: 'cachorro', breed: '', weight: '', age: '', notes: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pet</Button>
                                     {petPolicyViolations.count && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Limite de pets excedido</p><p>Nossa política permite apenas 1 pet por cabana. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
                                     {petPolicyViolations.weight && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Peso acima do limite</p><p>Nosso limite é de 15kg por pet. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
                                  </div>
-                            </div>
-                        )}
+                             </div>
+                           )}
                         <div className="flex justify-between items-center pt-4">
                             {currentStep > 0 ? (<Button type="button" variant="ghost" onClick={handlePrevStep}><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button>) : <div />}
                             {currentStep < totalSteps - 1 ? (<Button type="button" onClick={handleNextStep}>Avançar <ArrowRight className="ml-2 h-4 w-4" /></Button>) : (<Button type="button" size="lg" disabled={form.formState.isSubmitting} onClick={form.handleSubmit(onSubmit)}>{form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4"/>} Enviar</Button>)}

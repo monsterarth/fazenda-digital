@@ -20,7 +20,6 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const [stay, setStay] = useState<Stay | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Função para buscar agendamentos, agora reutilizável
   const fetchAndSetBookings = useCallback(async (stayData: Stay) => {
     if (!stayData) return stayData;
     try {
@@ -32,12 +31,12 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
       const stayWithBookings = { ...stayData, bookings: bookingsData };
       
       setStay(stayWithBookings);
-      sessionStorage.setItem('synapse-stay', JSON.stringify(stayWithBookings)); // Atualiza a sessão
+      sessionStorage.setItem('synapse-stay', JSON.stringify(stayWithBookings));
       return stayWithBookings;
 
     } catch (error) {
       console.error("Failed to fetch bookings:", error);
-      return stayData; // Retorna os dados originais em caso de erro
+      return stayData;
     }
   }, []);
 
@@ -49,7 +48,6 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         const savedStayJSON = sessionStorage.getItem('synapse-stay');
         if (savedStayJSON) {
           const savedStay = JSON.parse(savedStayJSON);
-          // Agora, sempre que recarregar a sessão, buscamos os agendamentos.
           await fetchAndSetBookings(savedStay);
         }
       } catch (error) {
@@ -60,7 +58,9 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
       }
     };
     initializeSession();
-  }, [fetchAndSetBookings]);
+    // ## CORREÇÃO PRINCIPAL ##
+    // A dependência [fetchAndSetBookings] foi removida para garantir que este efeito rode APENAS UMA VEZ.
+  }, []);
 
   const login = async (token: string): Promise<boolean> => {
     setIsLoading(true);
@@ -77,7 +77,6 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
 
       const stayData: Stay = await response.json();
       
-      // Usa a função centralizada para buscar agendamentos
       await fetchAndSetBookings(stayData);
 
       return true;
@@ -97,8 +96,8 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
 
   if (isLoading) {
     return (
-        <div className="flex h-screen w-full items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <div className="flex h-screen w-full items-center justify-center bg-background">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
     );
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useMemo } from 'react';
 import * as firestore from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
@@ -261,7 +262,7 @@ export default function ManageBreakfastMenuPage() {
                                 onAddItem={(catId) => setItemModal({ open: true, categoryId: catId, data: { name: '', description: '', available: true }})}
                                 onEditItem={(catId, item) => setItemModal({ open: true, categoryId: catId, data: item })}
                                 onDeleteItem={handleDeleteItem}
-                                onItemsDragEnd={handleDragEnd}
+                                onItemsDragEnd={(event, categoryId) => handleDragEnd(event, 'items', categoryId)}
                               />
                             ))}
                         </SortableContext>
@@ -280,10 +281,3 @@ export default function ManageBreakfastMenuPage() {
   );
 }
 
-// Pequeno componente Badge para status, se não existir em ui/badge
-const Badge = ({ children, className, variant }: { children: React.ReactNode, className?: string, variant: 'default' | 'destructive' }) => (
-    <span className={cn('text-xs font-medium px-2.5 py-0.5 rounded-full', 
-        variant === 'default' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800',
-        className
-    )}>{children}</span>
-);

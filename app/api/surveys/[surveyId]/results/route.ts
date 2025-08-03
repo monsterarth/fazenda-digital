@@ -7,8 +7,9 @@ import { startOfDay, endOfDay, parseISO, format } from 'date-fns';
 // Solução de contorno: usando 'any' para o contexto
 export async function GET(
     request: NextRequest,
-    context: any
+    { params }: { params: { surveyId: string } }
 ) {
+    const { surveyId } = params;
     const isAdmin = true;
     if (!isAdmin) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

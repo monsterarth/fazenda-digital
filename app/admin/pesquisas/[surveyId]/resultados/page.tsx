@@ -13,17 +13,17 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import { KPICard } from '@/components/kpi-card';
 import { FeedbackList } from '@/components/feedback-list';
-import { Calendar as CalendarIcon, Hash, MessageSquareText, Star, X as XIcon, Download, Loader2, ArrowLeft } from 'lucide-react';
+import { Calendar as CalendarIcon, Hash, Star, X as XIcon, Download, Loader2, ArrowLeft } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { CSVLink } from 'react-csv';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
 
 import { NpsDisplay } from '@/components/nps-display';
 import { InsightCard } from '@/components/insight-card';
-import { SatisfactionLineChart } from '@/components/satisfaction-line-chart';
 
-
+// **CORREÇÃO DE HIDRATAÇÃO**: Carregamento dinâmico com ssr: false
+const SatisfactionLineChart = dynamic(() => import('@/components/satisfaction-line-chart').then(mod => mod.SatisfactionLineChart), { ssr: false, loading: () => <Skeleton className="h-full w-full min-h-[300px]" /> });
 const CategoryBarChart = dynamic(() => import('@/components/category-bar-chart'), { ssr: false, loading: () => <Skeleton className="h-full w-full min-h-[400px]" /> });
 
 interface FilterOptions {
@@ -38,7 +38,7 @@ interface KpiResults {
     nps: { score: number; promoters: number; passives: number; detractors: number; total: number; };
     overallAverage: number;
     averageByCategory: { category: string; average: number }[];
-    textFeedback: { text: string; guestName: string; cabinName: string; }[];
+    textFeedback: Record<string, { text: string; guestName: string; cabinName: string; }[]>;
     satisfactionOverTime: { date: string; averageRating: number }[];
     insights: { weakest?: { category: string; average: number }; strongest?: { category: string; average: number } };
 }
@@ -53,8 +53,17 @@ const SurveyResultsPage: React.FC = () => {
     const router = useRouter();
     const surveyId = params?.surveyId as string | undefined;
 
+    // **CORREÇÃO DE HIDRATAÇÃO**: Estado para controlar quando o componente está no cliente
+    const [isClient, setIsClient] = useState(false);
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
+
     const [date, setDate] = useState<DateRange | undefined>({ from: addDays(new Date(), -90), to: new Date() });
     const [selectedCabin, setSelectedCabin] = useState('');
+    const [selectedCountry, setSelectedCountry] = useState('');
+    const [selectedState, setSelectedState] = useState('');
+    const [selectedCity, setSelectedCity] = useState('');
     const [isExporting, setIsExporting] = useState(false);
     const [exportData, setExportData] = useState<any[]>([]);
     const csvLinkRef = useRef<CSVLink & HTMLAnchorElement & { link: HTMLAnchorElement }>(null);
@@ -66,9 +75,12 @@ const SurveyResultsPage: React.FC = () => {
         
         const urlParams = new URLSearchParams({ startDate, endDate });
         if (selectedCabin) urlParams.append('cabin', selectedCabin);
+        if (selectedCountry) urlParams.append('country', selectedCountry);
+        if (selectedState) urlParams.append('state', selectedState);
+        if (selectedCity) urlParams.append('city', selectedCity);
         
         return `/api/surveys/${surveyId}/results?${urlParams.toString()}`;
-    }, [surveyId, date, selectedCabin]);
+    }, [surveyId, date, selectedCabin, selectedCountry, selectedState, selectedCity]);
 
     const { data, isLoading, error } = useFetchData<ResultsApiResponse>(apiUrl);
     const results = data?.results;
@@ -89,13 +101,14 @@ const SurveyResultsPage: React.FC = () => {
             const data = await res.json();
             if (data.length === 0) {
                 toast.info("Nenhum dado para exportar com os filtros atuais.");
+                setIsExporting(false);
                 return;
             }
             setExportData(data);
         } catch (err: any) {
             toast.error("Erro na exportação", { description: err.message });
         } finally {
-            setIsExporting(false);
+            // A exportação será concluída no useEffect
         }
     };
     
@@ -103,16 +116,19 @@ const SurveyResultsPage: React.FC = () => {
         if (exportData.length > 0 && csvLinkRef.current) {
             csvLinkRef.current.link.click();
             setExportData([]);
+            setIsExporting(false); // Resetar o estado de exportação
         }
     }, [exportData]);
 
     const clearFilters = () => {
         setSelectedCabin('');
+        setSelectedCountry('');
+        setSelectedState('');
+        setSelectedCity('');
     }
 
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6">
-             <Toaster richColors position="top-center" />
             <div className="flex flex-col md:flex-row gap-4 justify-between md:items-center">
                 <div>
                      <Button variant="outline" size="sm" className="mb-4" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> Voltar</Button>
@@ -120,7 +136,7 @@ const SurveyResultsPage: React.FC = () => {
                     <p className="text-muted-foreground">Filtre e analise as respostas recebidas.</p>
                 </div>
                 <div className="flex flex-shrink-0 gap-2">
-                    <Button variant="outline" onClick={handleExport} disabled={isExporting}>
+                    <Button variant="outline" onClick={handleExport} disabled={isExporting || isLoading}>
                         {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                         Exportar CSV
                     </Button>
@@ -142,13 +158,14 @@ const SurveyResultsPage: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-end">
                     <div className="col-span-2 md:col-span-1">
                         <Label>Cabana</Label>
-                        <Select value={selectedCabin} onValueChange={setSelectedCabin} disabled={!filters?.cabins?.length}>
+                        <Select value={selectedCabin} onValueChange={setSelectedCabin} disabled={isLoading || !filters?.cabins?.length}>
                             <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                            <SelectContent>{filters?.cabins?.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                            <SelectContent>{filters?.cabins?.sort().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
-                    {/* Placeholder for more filters */}
-                    <div className="col-span-2 md:col-span-3" />
+                    <div><Label>País</Label><Select value={selectedCountry} onValueChange={setSelectedCountry} disabled={isLoading || !filters?.countries?.length}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent>{filters?.countries?.sort().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
+                    <div><Label>Estado</Label><Select value={selectedState} onValueChange={setSelectedState} disabled={isLoading || !filters?.states?.length}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent>{filters?.states?.sort().map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
+                    <div><Label>Cidade</Label><Select value={selectedCity} onValueChange={setSelectedCity} disabled={isLoading || !filters?.cities?.length}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent>{filters?.cities?.sort().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
                     <Button onClick={clearFilters} variant="ghost"><XIcon className="mr-2 h-4 w-4"/>Limpar Filtros</Button>
                 </div>
             </div>
@@ -156,7 +173,8 @@ const SurveyResultsPage: React.FC = () => {
             {isLoading && (<div className="space-y-6"><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"><Skeleton className="h-36" /><Skeleton className="h-36" /><Skeleton className="h-36" /><Skeleton className="h-36" /></div><div className="grid gap-4 lg:grid-cols-3"><Skeleton className="h-96 lg:col-span-2" /><Skeleton className="h-96" /></div></div>)}
             {error && <p className="text-red-500 text-center py-10">Erro ao carregar resultados: {error.message}</p>}
             
-            {!isLoading && !error && results && (
+            {/* **CORREÇÃO DE HIDRATAÇÃO**: Renderização condicional */}
+            {isClient && !isLoading && !error && results && (
                 <div className="space-y-6">
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <KPICard title="Respostas (Filtrado)" value={results.totalResponses ?? 0} icon={<Hash />} />
@@ -166,18 +184,19 @@ const SurveyResultsPage: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                         <div className="lg:col-span-2"><SatisfactionLineChart data={results.satisfactionOverTime || []} /></div>
-                        {results.nps && results.nps.total > 0 ? <NpsDisplay {...results.nps} /> : <KPICard title="Net Promoter Score (NPS)" value="N/A" icon={<MessageSquareText />} description="Nenhuma resposta NPS no período." />}
+                        {results.nps && results.nps.total > 0 ? <NpsDisplay {...results.nps} /> : <KPICard title="Net Promoter Score (NPS)" value="N/A" description="Nenhuma resposta NPS no período." icon={<Star />} />}
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                         <div className="lg:col-span-2">
                            {results.averageByCategory && results.averageByCategory.length > 0 && <CategoryBarChart data={(results.averageByCategory || []).map(item => ({ name: item.category, value: parseFloat((item.average || 0).toFixed(2)) }))} />}
                         </div>
-                        <FeedbackList feedbacks={results.textFeedback || []} />
+                        <FeedbackList feedbacks={results.textFeedback || {}} />
                     </div>
                 </div>
             )}
             
-            <CSVLink data={exportData} filename={`export_pesquisa_${format(new Date(), 'yyyy-MM-dd')}.csv`} className="hidden" ref={csvLinkRef} target="_blank" />
+            {/* **CORREÇÃO DE HIDRATAÇÃO**: Renderização condicional */}
+            {isClient && <CSVLink data={exportData} filename={`export_pesquisa_${format(new Date(), 'yyyy-MM-dd')}.csv`} className="hidden" ref={csvLinkRef} target="_blank" />}
         </div>
     );
 }

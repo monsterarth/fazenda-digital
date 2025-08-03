@@ -4,10 +4,10 @@ import { initAdminApp } from '@/lib/firebase-admin';
 import { Survey, SurveyResponse, Stay, SurveyQuestion, PreCheckIn } from '@/types';
 import { startOfDay, endOfDay, parseISO, format } from 'date-fns';
 
-// Correção na assinatura da função GET
+// Solução de contorno: usando 'any' para o contexto
 export async function GET(
     request: NextRequest,
-    context: { params: { surveyId: string } }
+    context: any
 ) {
     const isAdmin = true;
     if (!isAdmin) {

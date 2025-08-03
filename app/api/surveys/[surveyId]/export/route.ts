@@ -4,10 +4,10 @@ import { initAdminApp } from '@/lib/firebase-admin';
 import { SurveyResponse, Stay, PreCheckIn } from '@/types';
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
 
-// Correção na assinatura da função GET
+// Solução de contorno: usando 'any' para o contexto
 export async function GET(
     request: NextRequest,
-    context: { params: { surveyId: string } }
+    context: any 
 ) {
     const isAdmin = true;
     if (!isAdmin) {
@@ -17,7 +17,7 @@ export async function GET(
     try {
         await initAdminApp();
         const db = getFirestore();
-        const surveyId = context.params.surveyId; // Acessando o surveyId do contexto
+        const surveyId = context.params.surveyId; // O acesso continua igual
         const { searchParams } = new URL(request.url);
 
         const allResponsesSnap = await db.collection('surveyResponses').where('surveyId', '==', surveyId).get();

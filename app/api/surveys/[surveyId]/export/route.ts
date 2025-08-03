@@ -1,14 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, Timestamp, FieldPath, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { initAdminApp } from '@/lib/firebase-admin';
 import { SurveyResponse, Stay, PreCheckIn } from '@/types';
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
 
-// A tipagem de `RouteContext` não é mais necessária e foi removida.
-
+// Correção na assinatura da função GET
 export async function GET(
-    request: Request,
-    { params }: { params: { surveyId: string } } // <- CORREÇÃO APLICADA AQUI
+    request: NextRequest,
+    context: { params: { surveyId: string } }
 ) {
     const isAdmin = true;
     if (!isAdmin) {
@@ -18,7 +17,7 @@ export async function GET(
     try {
         await initAdminApp();
         const db = getFirestore();
-        const surveyId = params.surveyId; // Acessando o surveyId diretamente dos params
+        const surveyId = context.params.surveyId; // Acessando o surveyId do contexto
         const { searchParams } = new URL(request.url);
 
         const allResponsesSnap = await db.collection('surveyResponses').where('surveyId', '==', surveyId).get();

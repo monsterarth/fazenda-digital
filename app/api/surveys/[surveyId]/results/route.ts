@@ -1,17 +1,14 @@
-import { NextResponse } from 'next/server';
-import { getFirestore, Timestamp, Query, FieldPath, QueryDocumentSnapshot } from 'firebase-admin/firestore';
+import { NextRequest, NextResponse } from 'next/server';
+import { getFirestore, Timestamp, FieldPath, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { initAdminApp } from '@/lib/firebase-admin';
 import { Survey, SurveyResponse, Stay, SurveyQuestion, PreCheckIn } from '@/types';
 import { startOfDay, endOfDay, parseISO, format } from 'date-fns';
 
-type RouteContext = {
-    params: {
-        surveyId: string;
-    }
-}
-
-export async function GET(request: Request, context: RouteContext) {
-    const { params } = context; // Correção: Acessar params a partir do segundo argumento (context)
+// Correção na assinatura da função GET
+export async function GET(
+    request: NextRequest,
+    context: { params: { surveyId: string } }
+) {
     const isAdmin = true;
     if (!isAdmin) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,7 +17,7 @@ export async function GET(request: Request, context: RouteContext) {
     try {
         await initAdminApp();
         const db = getFirestore();
-        const surveyId = params.surveyId;
+        const surveyId = context.params.surveyId;
         const { searchParams } = new URL(request.url);
 
         const surveyRef = db.doc(`surveys/${surveyId}`);

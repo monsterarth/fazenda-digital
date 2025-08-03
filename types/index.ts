@@ -16,6 +16,8 @@ export interface Stay {
   status: 'pending_validation' | 'active' | 'checked_out' | 'canceled';
   preCheckInId: string;
   createdAt: Timestamp;
+  bookings?: Booking[];
+
 }
 
 // ========================================================================
@@ -381,8 +383,10 @@ export interface Property {
     logoUrl: string;
     colors: PropertyColors;
     messages: PropertyMessages;
+    breakfast?: { // <-- CAMPO ADICIONADO AQUI
+      type: 'delivery' | 'on-site';
+    };
 }
-
 // ========================================================================
 // 9. TIPOS COMBINADOS (HELPER TYPES)
 // ========================================================================

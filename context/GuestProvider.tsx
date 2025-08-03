@@ -1,8 +1,10 @@
 "use client";
 
-import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
-import { Stay } from '@/types';
+import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
+import { Stay, Booking } from '@/types';
 import { Loader2 } from 'lucide-react';
+import { getFirebaseDb } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface GuestContextType {
   stay: Stay | null;
@@ -16,27 +18,53 @@ const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
 export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const [stay, setStay] = useState<Stay | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Começa como true para verificar a sessão
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Ao carregar o provider, verifica se há uma sessão salva no sessionStorage
+  // Função para buscar agendamentos, agora reutilizável
+  const fetchAndSetBookings = useCallback(async (stayData: Stay) => {
+    if (!stayData) return stayData;
     try {
-      const savedStay = sessionStorage.getItem('synapse-stay');
-      if (savedStay) {
-        setStay(JSON.parse(savedStay));
-      }
+      const db = await getFirebaseDb();
+      const bookingsQuery = query(collection(db, "bookings"), where("stayId", "==", stayData.id));
+      const bookingsSnapshot = await getDocs(bookingsQuery);
+      const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      
+      const stayWithBookings = { ...stayData, bookings: bookingsData };
+      
+      setStay(stayWithBookings);
+      sessionStorage.setItem('synapse-stay', JSON.stringify(stayWithBookings)); // Atualiza a sessão
+      return stayWithBookings;
+
     } catch (error) {
-      console.error("Failed to parse stay from sessionStorage", error);
-      sessionStorage.removeItem('synapse-stay');
-    } finally {
-      setIsLoading(false);
+      console.error("Failed to fetch bookings:", error);
+      return stayData; // Retorna os dados originais em caso de erro
     }
   }, []);
+
+
+  useEffect(() => {
+    const initializeSession = async () => {
+      setIsLoading(true);
+      try {
+        const savedStayJSON = sessionStorage.getItem('synapse-stay');
+        if (savedStayJSON) {
+          const savedStay = JSON.parse(savedStayJSON);
+          // Agora, sempre que recarregar a sessão, buscamos os agendamentos.
+          await fetchAndSetBookings(savedStay);
+        }
+      } catch (error) {
+        console.error("Failed to parse stay from sessionStorage", error);
+        sessionStorage.removeItem('synapse-stay');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    initializeSession();
+  }, [fetchAndSetBookings]);
 
   const login = async (token: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      // Faz a chamada para nossa API de login
       const response = await fetch(`/api/portal/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -48,13 +76,14 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const stayData: Stay = await response.json();
-      setStay(stayData);
-      // Salva a sessão no sessionStorage para persistência
-      sessionStorage.setItem('synapse-stay', JSON.stringify(stayData));
+      
+      // Usa a função centralizada para buscar agendamentos
+      await fetchAndSetBookings(stayData);
+
       return true;
     } catch (error) {
       console.error(error);
-      logout(); // Limpa qualquer estado inválido
+      logout();
       return false;
     } finally {
       setIsLoading(false);
@@ -66,7 +95,6 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
     sessionStorage.removeItem('synapse-stay');
   };
 
-  // Exibe um loader global enquanto verifica a sessão inicial
   if (isLoading) {
     return (
         <div className="flex h-screen w-full items-center justify-center">

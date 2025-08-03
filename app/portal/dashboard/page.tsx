@@ -1,96 +1,123 @@
 "use client";
 
 import { useGuest } from '@/context/GuestProvider';
+import { useProperty } from '@/context/PropertyContext';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ArrowRight, CalendarClock, Coffee, Utensils } from 'lucide-react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { 
+    ArrowRight, Calendar, Coffee, MessageSquareHeart, Star, Utensils,
+    CalendarPlus, BookOpenCheck 
+} from 'lucide-react';
 import Link from 'next/link';
+import { ActionCard } from '@/components/portal/ActionCard';
+import { BookingsList } from '@/components/portal/BookingsList'; // <-- Importe o componente correto
 
 export default function GuestDashboardPage() {
-    const { stay, isAuthenticated, isLoading } = useGuest();
+    const { stay, isLoading: isGuestLoading } = useGuest();
+    const { property, loading: isPropertyLoading } = useProperty();
     const router = useRouter();
 
-    // Efeito para proteger a rota: se não estiver autenticado e o carregamento inicial terminar, redireciona
     useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
+        if (!isGuestLoading && !stay) {
             router.push('/portal');
         }
-    }, [isAuthenticated, isLoading, router]);
+    }, [stay, isGuestLoading, router]);
 
-    // Não renderiza nada até que a verificação de autenticação seja concluída para evitar piscar a tela
-    if (isLoading || !isAuthenticated || !stay) {
-        return null; // O loader principal já é exibido no GuestProvider
+    if (isGuestLoading || isPropertyLoading || !stay || !property) {
+        return null;
     }
-
-    // Função para formatar as datas de forma segura
-    const formatDate = (date: any) => {
-        // O `stay` vindo do sessionStorage terá datas como strings ISO
-        const dateObj = typeof date === 'string' ? new Date(date) : date.toDate();
-        return format(dateObj, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-    };
+    
+    const breakfastType = property.breakfast?.type || 'delivery'; 
+    const bookings = stay.bookings || [];
 
     return (
-        <div className="min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8">
-            <div className="max-w-4xl mx-auto space-y-8">
+        <div className="space-y-8">
+            <header>
+                <h1 className="text-3xl font-bold text-foreground">Olá, {stay.guestName.split(' ')[0]}!</h1>
+                <p className="text-lg text-muted-foreground">O que você gostaria de fazer hoje?</p>
+            </header>
+
+            {/* Usando o novo componente BookingsList */}
+            <BookingsList
+              bookings={bookings}
+              title="Seus Próximos Agendamentos"
+              description="Fique por dentro das suas próximas experiências na Fazenda."
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 
-                {/* Cabeçalho de Boas-Vindas */}
-                <header>
-                    <h1 className="text-3xl font-bold text-gray-800">Olá, {stay.guestName.split(' ')[0]}!</h1>
-                    <p className="text-md text-gray-600">Seja bem-vindo(a) à sua estadia na {stay.cabinName}.</p>
-                    <p className="text-sm text-gray-500 mt-1">
-                        Sua reserva é de {formatDate(stay.checkInDate)} a {formatDate(stay.checkOutDate)}.
-                    </p>
-                </header>
+                <ActionCard 
+                    href={breakfastType === 'delivery' ? "/portal/cafe" : ''}
+                    icon={<Coffee size={24} />}
+                    title="Café da Manhã"
+                    description={
+                        breakfastType === 'delivery'
+                        ? "Escolha os itens da sua cesta de café da manhã para receber na cabana."
+                        : "Nosso café é servido diariamente no salão principal das 08h às 10h."
+                    }
+                >
+                    {breakfastType === 'delivery' && (
+                        <Button className="w-full">
+                            Montar minha cesta <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                    )}
+                </ActionCard>
 
-                {/* Grid de Ações Rápidas */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card className="hover:shadow-lg transition-shadow">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Coffee /> Café da Manhã</CardTitle>
-                            <CardDescription>Monte a sua cesta de café da manhã com nossos itens artesanais.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button asChild className="w-full" disabled>
-                                <Link href="/portal/cafe">
-                                    Pedir Café da Manhã <ArrowRight className="ml-2 h-4 w-4" />
-                                </Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
+                <ActionCard 
+                    href="/portal/agendamentos"
+                    icon={<Calendar size={24} />}
+                    title="Agendar Experiências"
+                    description="Reserve seu horário para o ofurô, massagens e outras atividades exclusivas."
+                >
+                    <Button variant="outline" className="w-full">
+                        Ver todas as experiências
+                    </Button>
+                </ActionCard>
+                
+                <ActionCard 
+                    href="/portal/regras"
+                    icon={<BookOpenCheck size={24} />}
+                    title="Guias e Regras"
+                    description="Acesse nossas políticas, regras da pousada e guias locais para aproveitar ao máximo."
+                >
+                     <Button variant="outline" className="w-full">
+                        Consultar informações
+                    </Button>
+                </ActionCard>
 
-                    <Card className="hover:shadow-lg transition-shadow">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><CalendarClock /> Agendar Serviços</CardTitle>
-                            <CardDescription>Reserve seu horário para o ofurô, massagem e outras experiências.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                             <Button asChild className="w-full" disabled>
-                                <Link href="/portal/agendamentos">
-                                    Ver Serviços <ArrowRight className="ml-2 h-4 w-4" />
-                                </Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
+                <ActionCard 
+                    href="/portal/pesquisas"
+                    icon={<Star size={24} />}
+                    title="Avalie a Fazenda"
+                    description="Sua opinião é muito importante! Conte-nos como foi a sua experiência conosco."
+                >
+                     <Button variant="outline" className="w-full">
+                        Responder pesquisas
+                    </Button>
+                </ActionCard>
 
-                     <Card className="hover:shadow-lg transition-shadow md:col-span-2">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Utensils /> Cardápio Digital</CardTitle>
-                            <CardDescription>Explore nosso cardápio de pratos, porções e bebidas para pedir diretamente na sua cabana.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                             <Button asChild className="w-full" disabled>
-                                <Link href="/portal/cardapio">
-                                    Acessar Cardápio <ArrowRight className="ml-2 h-4 w-4" />
-                                </Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </div>
-
+                <ActionCard 
+                    href="#"
+                    icon={<Utensils size={24} />}
+                    title="Cardápio Digital"
+                    description="Explore nosso cardápio e peça pratos e bebidas direto na sua cabana."
+                    isComingSoon
+                />
+                <ActionCard 
+                    href="#"
+                    icon={<MessageSquareHeart size={24} />}
+                    title="Solicitações à Recepção"
+                    description="Precisa de toalhas extras, lenha para a lareira ou alguma outra ajuda?"
+                    isComingSoon
+                />
+                <ActionCard 
+                    href="#"
+                    icon={<CalendarPlus size={24} />}
+                    title="Alterar Reserva"
+                    description="Solicite uma saída mais tardia (late check-out) ou estenda sua estadia conosco."
+                    isComingSoon
+                />
             </div>
         </div>
     );

@@ -1,17 +1,27 @@
-import type { Metadata } from "next";
-import { Inter as FontSans } from "next/font/google"
-import "./globals.css";
-import { cn } from "@/lib/utils"
-import { PropertyProvider } from "@/context/PropertyContext"; // Importar
+import { Toaster } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
+import "@/app/globals.css"; // CORREÇÃO AQUI
+import type { Metadata, Viewport } from "next";
+import { ThemeProvider } from "next-themes";
+import { Inter as FontSans } from "next/font/google";
+import { GuestProvider } from "@/context/GuestProvider";
+import { PropertyProvider } from "@/context/PropertyContext";
 
 const fontSans = FontSans({
   subsets: ["latin"],
   variable: "--font-sans",
-})
+});
 
 export const metadata: Metadata = {
-  title: "Synapse Hospitality",
-  description: "Plataforma de experiência do hóspede",
+  title: "Synapse",
+  description: "A experiência digital para seus hóspedes",
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "white" },
+    { media: "(prefers-color-scheme: dark)", color: "black" },
+  ],
 };
 
 export default function RootLayout({
@@ -20,17 +30,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-br" suppressHydrationWarning>
+    <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={cn(
           "min-h-screen bg-background font-sans antialiased",
           fontSans.variable
         )}
       >
-        {/* Envolver o children com o Provider */}
-        <PropertyProvider>
-          {children}
-        </PropertyProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <PropertyProvider>
+            <GuestProvider>
+              {children}
+              <Toaster />
+            </GuestProvider>
+          </PropertyProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

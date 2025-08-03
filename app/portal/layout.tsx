@@ -1,13 +1,9 @@
-import { GuestProvider } from "@/context/GuestProvider";
+import GuestPortalClientLayout from "./portal-client-layout";
 
-export default function PortalLayout({
+export default function GuestPortalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <GuestProvider>
-        {children}
-    </GuestProvider>
-  );
+  return <GuestPortalClientLayout>{children}</GuestPortalClientLayout>;
 }

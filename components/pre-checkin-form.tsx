@@ -43,7 +43,7 @@ const preCheckInSchema = z.object({
     vehiclePlate: z.string().optional(),
     companions: z.array(z.object({
         fullName: z.string().min(3, "Nome do acompanhante é obrigatório."),
-        age: z.coerce.number().positive("Idade inválida."),
+        age: z.coerce.number().int().nonnegative("Idade inválida."),
         cpf: z.string().optional()
     })).optional(),
     pets: z.array(z.object({
@@ -267,7 +267,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                             <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                         </div>
                                     ))}
-                                    <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: 1, cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: 0, cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
                                  </div>
                                  <div>
                                      <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2"><PawPrint />Pets</h3>
@@ -286,7 +286,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                              </div>
                                         </div>
                                     ))}
-                                    <Button type="button" variant="outline" size="sm" onClick={() => appendPet({ id: crypto.randomUUID(), name: '', species: 'cachorro', breed: '', weight: 0, age: '', notes: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pet</Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => appendPet({ id: crypto.randomUUID(), name: '', species: 'cachorro', breed: '', weight: 1, age: '', notes: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pet</Button>
                                     {petPolicyViolations.count && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Limite de pets excedido</p><p>Nossa política permite apenas 1 pet por cabana. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
                                     {petPolicyViolations.weight && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Peso acima do limite</p><p>Nosso limite é de 15kg por pet. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
                                  </div>

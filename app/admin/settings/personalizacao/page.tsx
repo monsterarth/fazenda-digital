@@ -51,10 +51,7 @@ const propertySchema = z.object({
     }),
 });
 
-// Remove `logoFile` para o tipo do Firestore, pois não é salvo
 type PropertyFormData = z.infer<typeof propertySchema>;
-type FirestorePropertyData = Omit<PropertyFormData, 'logoFile'>;
-
 
 export default function PersonalizationPage() {
     
@@ -122,23 +119,35 @@ export default function PersonalizationPage() {
     const { isSubmitting, isDirty, isLoading } = form.formState;
     const breakfastType = form.watch('breakfast.type');
 
+    // ==========================================================
+    // CORREÇÃO APLICADA AQUI
+    // ==========================================================
     const onSubmit: SubmitHandler<PropertyFormData> = async (data) => {
         const toastId = toast.loading('Salvando alterações...');
         try {
             const db = await getFirebaseDb();
-            let finalData: FirestorePropertyData = { ...data };
+            
+            // 1. Separa o campo 'logoFile' do resto dos dados do formulário.
+            // 'dataToSave' agora é um objeto limpo, sem o arquivo, pronto para o Firestore.
+            const { logoFile, ...dataToSave } = data;
 
-            if (data.logoFile) {
-                const downloadURL = await uploadFile(data.logoFile, `properties/default/logo_${Date.now()}`);
-                finalData.logoUrl = downloadURL;
+            // 2. Se um novo arquivo de logo foi selecionado no formulário...
+            if (logoFile) {
+                // ...faz o upload dele...
+                const downloadURL = await uploadFile(logoFile, `properties/default/logo_${Date.now()}`);
+                // ...e atualiza a propriedade 'logoUrl' no objeto que será salvo.
+                dataToSave.logoUrl = downloadURL;
             }
 
-            // Remove o campo de arquivo antes de salvar
-            const { logoFile, ...dataToSave } = finalData;
-
+            // 3. Salva o objeto 'dataToSave' no Firestore. Ele contém a nova URL (se houver)
+            // e não contém mais a propriedade 'logoFile', resolvendo o erro de tipo.
             await setDoc(doc(db, 'properties', 'default'), dataToSave, { merge: true });
+
             toast.success('Configurações salvas com sucesso!', { id: toastId });
-            form.reset(data); // Reseta o formulário para o novo estado salvo
+            
+            // 4. Reseta o formulário com os dados atualizados (incluindo a nova logoUrl)
+            // para manter a UI sincronizada e desabilitar o botão de salvar.
+            form.reset(dataToSave);
         } catch (error) {
             console.error(error);
             toast.error('Falha ao salvar as configurações.', { id: toastId, description: (error as Error).message });
@@ -227,6 +236,16 @@ export default function PersonalizationPage() {
                                 <FormField control={form.control} name="messages.portalWelcomeSubtitle" render={({ field }) => ( <FormItem><FormLabel>Subtítulo Boas-vindas</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
                                 <FormField control={form.control} name="messages.breakfastBasketClosed" render={({ field }) => ( <FormItem><FormLabel>Msg. Pedidos de Cesta Encerrados</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
                                 <FormField control={form.control} name="messages.breakfastBasketDefaultMessage" render={({ field }) => ( <FormItem><FormLabel>Msg. Cesta Padrão (Pedidos Encerrados)</FormLabel><FormControl><Input {...field} /></FormControl><FormDescription>Use {"{X}"} para o n° de hóspedes.</FormDescription></FormItem> )} />
+                            
+                                <h3 className="font-semibold text-lg border-b pb-2 pt-4">Pré-Check-in</h3>
+                                <FormField control={form.control} name="messages.preCheckInWelcomeTitle" render={({ field }) => ( <FormItem><FormLabel>Título de Boas-vindas</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
+                                <FormField control={form.control} name="messages.preCheckInWelcomeSubtitle" render={({ field }) => ( <FormItem><FormLabel>Subtítulo de Boas-vindas</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
+                                <FormField control={form.control} name="messages.preCheckInSuccessTitle" render={({ field }) => ( <FormItem><FormLabel>Título de Sucesso</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
+                                <FormField control={form.control} name="messages.preCheckInSuccessSubtitle" render={({ field }) => ( <FormItem><FormLabel>Subtítulo de Sucesso</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
+
+                                <h3 className="font-semibold text-lg border-b pb-2 pt-4">Pesquisa de Satisfação</h3>
+                                <FormField control={form.control} name="messages.surveySuccessTitle" render={({ field }) => ( <FormItem><FormLabel>Título de Sucesso</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
+                                <FormField control={form.control} name="messages.surveySuccessSubtitle" render={({ field }) => ( <FormItem><FormLabel>Subtítulo de Sucesso</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
                             </CardContent>
                         </Card>
                     </div>

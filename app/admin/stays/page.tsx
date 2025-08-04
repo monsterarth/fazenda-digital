@@ -24,19 +24,16 @@ import { Loader2, CalendarIcon, Users, Edit, FileCheck, KeyRound, PawPrint, User
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 
-// ## INÍCIO DA CORREÇÃO ##
-// Corrigido o schema para usar a sintaxe correta. O z.date() não aceita 'required_error' diretamente.
 const validationSchema = z.object({
     cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
     dates: z.object({
-        from: z.date(), // Apenas z.date() já torna o campo obrigatório.
-        to: z.date(),   // A validação de existência é feita no .refine() abaixo.
+        from: z.date(),
+        to: z.date(),
     }).refine(data => !!data.from && !!data.to, {
         message: "As datas de check-in e check-out são obrigatórias.",
-        path: ["from"], // O erro será aplicado ao primeiro campo de data.
+        path: ["from"],
     }),
 });
-// ## FIM DA CORREÇÃO ##
 
 type ValidationFormValues = z.infer<typeof validationSchema>;
 
@@ -129,18 +126,26 @@ export default function ManageStaysPage() {
             const batch = firestore.writeBatch(db);
             
             const stayRef = firestore.doc(firestore.collection(db, 'stays'));
+
+            // ==========================================================
+            // CORREÇÃO APLICADA AQUI
+            // ==========================================================
             const newStay: Omit<Stay, 'id'> = {
                 guestName: selectedCheckIn.leadGuestName,
                 cabinId: selectedCabin.id,
                 cabinName: selectedCabin.name,
-                checkInDate: firestore.Timestamp.fromDate(data.dates.from),
-                checkOutDate: firestore.Timestamp.fromDate(data.dates.to),
+                // Converte as datas para string no formato ISO, que é o tipo esperado pela interface `Stay`
+                checkInDate: data.dates.from.toISOString(),
+                checkOutDate: data.dates.to.toISOString(),
                 numberOfGuests: 1 + (selectedCheckIn.companions?.length || 0),
                 token: generateToken(),
                 status: 'active',
                 preCheckInId: selectedCheckIn.id,
-                createdAt: firestore.Timestamp.now(),
+                // Converte a data de criação para string também
+                createdAt: new Date().toISOString(),
             };
+            // ==========================================================
+
             batch.set(stayRef, newStay);
 
             const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);

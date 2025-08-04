@@ -1,13 +1,16 @@
 "use client";
 
-import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
-import { Stay } from '@/types';
+import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
+import { Stay, Booking } from '@/types';
+// CORREÇÃO: Importações corretas do Firebase
+import { getFirebaseDb, db } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface GuestContextType {
   stay: Stay | null;
   isAuthenticated: boolean;
-  isLoading: boolean;
-  setStay: (stay: Stay | null) => void;
+  isLoading: boolean; // CORREÇÃO: Adicionado isLoading
+  setStay: (stay: Stay | null) => void; // CORREÇÃO: Adicionado setStay
   logout: () => void;
 }
 
@@ -17,6 +20,21 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const [stay, setStay] = useState<Stay | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // CORREÇÃO: Função para buscar bookings movida para o provider
+  const fetchAndSetBookings = useCallback(async (stayData: Stay): Promise<Stay> => {
+    if (!stayData || !stayData.id) return stayData;
+    
+    try {
+      const bookingsQuery = query(collection(db, "bookings"), where("stayId", "==", stayData.id));
+      const bookingsSnapshot = await getDocs(bookingsQuery);
+      const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      return { ...stayData, bookings: bookingsData };
+    } catch (error) {
+      console.error("Failed to fetch bookings for stay:", error);
+      return { ...stayData, bookings: [] }; // Retorna com bookings vazios em caso de erro
+    }
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
     const initializeSession = async () => {
@@ -24,7 +42,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         const savedStayJSON = sessionStorage.getItem('synapse-stay');
         if (savedStayJSON) {
           const savedStayData = JSON.parse(savedStayJSON);
-          const stayWithBookings = await fetchAndSetBookings(savedStayData);
+          const stayWithBookings = await fetchAndSetBookings(savedStayData); // CORREÇÃO: Busca os bookings
           if (isMounted) {
             setStay(stayWithBookings);
           }
@@ -44,37 +62,10 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [fetchAndSetBookings]);
 
-  const login = async (token: string): Promise<boolean> => {
-    setIsLoading(true);
-    try {
-      // --- CORREÇÃO ADICIONADA AQUI ---
-      // Usar a variável de ambiente para um URL absoluto previne erros 404 no ambiente de produção (Vercel).
-      // Certifique-se de que NEXT_PUBLIC_URL está definida no seu .env.local e nas variáveis de ambiente da Vercel.
-      const response = await fetch(`${process.env.NEXT_PUBLIC_URL}/api/portal/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
-      if (!response.ok) {
-        throw new Error("Token inválido ou não encontrado na API.");
-      }
-      
-      const stayData = await response.json();
-      const stayWithBookings = await fetchAndSetBookings(stayData);
-      setStay(stayWithBookings);
-      return true;
-    } catch (error) {
-      console.error("Erro ao carregar sessão:", error);
-      sessionStorage.removeItem('synapse-stay');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
   const logout = () => {
     setStay(null);
     sessionStorage.removeItem('synapse-stay');
-    window.location.href = '/portal';
+    window.location.href = '/portal'; // Redireciona para a página de login
   };
 
   return (

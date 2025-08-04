@@ -20,7 +20,6 @@ async function getFirebaseDb() {
   return db;
 }
 
-// **NOVA FUNÇÃO ADICIONADA**
 // Função para fazer upload de um arquivo para o Firebase Storage
 async function uploadFile(file: File, path: string): Promise<string> {
   const storageRef = ref(storage, path);
@@ -34,5 +33,5 @@ async function uploadFile(file: File, path: string): Promise<string> {
   return downloadURL;
 }
 
-
+// EXPORTAÇÕES CORRIGIDAS
 export { getFirebaseDb, uploadFile, db };

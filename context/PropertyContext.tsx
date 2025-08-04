@@ -1,9 +1,9 @@
 "use client";
 
-import { Property } from "@/types";
-import { getFirebaseDb } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { Property } from "@/types";
+import { getFirebaseDb } from "@/lib/firebase"; // CORREÇÃO: Importação corrigida
 
 interface PropertyContextType {
     property: Property | null;
@@ -22,7 +22,8 @@ export const PropertyProvider = ({ children }: { children: React.ReactNode }) =>
         const fetchProperty = async () => {
             try {
                 const db = await getFirebaseDb();
-                const propertyDocRef = doc(db, 'properties', 'main'); 
+                // CORREÇÃO: Buscando o documento "default" em vez de "main"
+                const propertyDocRef = doc(db, 'properties', 'default'); 
                 const propertyDoc = await getDoc(propertyDocRef);
                 if (propertyDoc.exists() && isMounted) {
                     setProperty({ id: propertyDoc.id, ...propertyDoc.data() } as Property);
@@ -41,7 +42,7 @@ export const PropertyProvider = ({ children }: { children: React.ReactNode }) =>
         return () => {
             isMounted = false;
         };
-    }, []); // <-- Dependência vazia garante que rode apenas uma vez
+    }, []);
 
     return (
         <PropertyContext.Provider value={{ property, loading }}>

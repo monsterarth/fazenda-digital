@@ -1,4 +1,4 @@
-import { getFirebaseDb } from '@/lib/firebase'; // Usando firebase-admin
+import { getFirebaseDb } from '@/lib/firebase'; // CORREÇÃO: Importação corrigida
 import { Stay } from '@/types';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Token inválido ou incompleto.' }, { status: 400 });
         }
 
-        const upperCaseToken = token.toUpperCase();
+        const upperCaseToken = token.toUpperCase().replace(/[^A-Z0-9]/g, '');
         const formattedToken = `${upperCaseToken.slice(0, 3)}-${upperCaseToken.slice(3)}`;
         
         const staysCollection = collection(db, 'stays');

@@ -18,14 +18,51 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const savedStayJSON = sessionStorage.getItem('synapse-stay');
-      if (savedStayJSON) {
-        const potentialStay = JSON.parse(savedStayJSON);
-        if (potentialStay && potentialStay.id) {
-          setStay(potentialStay);
+    let isMounted = true;
+    const initializeSession = async () => {
+      try {
+        const savedStayJSON = sessionStorage.getItem('synapse-stay');
+        if (savedStayJSON) {
+          const savedStayData = JSON.parse(savedStayJSON);
+          const stayWithBookings = await fetchAndSetBookings(savedStayData);
+          if (isMounted) {
+            setStay(stayWithBookings);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to parse stay from sessionStorage", error);
+        sessionStorage.removeItem('synapse-stay');
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
         }
       }
+    };
+    initializeSession();
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchAndSetBookings]);
+
+  const login = async (token: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      // --- CORREÇÃO ADICIONADA AQUI ---
+      // Usar a variável de ambiente para um URL absoluto previne erros 404 no ambiente de produção (Vercel).
+      // Certifique-se de que NEXT_PUBLIC_URL está definida no seu .env.local e nas variáveis de ambiente da Vercel.
+      const response = await fetch(`${process.env.NEXT_PUBLIC_URL}/api/portal/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      if (!response.ok) {
+        throw new Error("Token inválido ou não encontrado na API.");
+      }
+      
+      const stayData = await response.json();
+      const stayWithBookings = await fetchAndSetBookings(stayData);
+      setStay(stayWithBookings);
+      return true;
     } catch (error) {
       console.error("Erro ao carregar sessão:", error);
       sessionStorage.removeItem('synapse-stay');

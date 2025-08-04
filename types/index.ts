@@ -17,7 +17,6 @@ export interface Stay {
   preCheckInId: string;
   createdAt: string;
   bookings?: Booking[];
-
 }
 
 // ========================================================================
@@ -109,7 +108,7 @@ export interface Booking {
 }
 
 // ========================================================================
-// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ
+// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ (ATUALIZADO)
 // ========================================================================
 
 export interface BreakfastMenuItem {
@@ -120,26 +119,41 @@ export interface BreakfastMenuItem {
   order: number;
 }
 
+// NOVO: Adicionado 'type' para diferenciar categorias
 export interface BreakfastMenuCategory {
   id: string;
   name: string;
   order: number;
+  type: 'individual' | 'collective'; // 'individual' = por hóspede, 'collective' = para a cesta
   items: BreakfastMenuItem[];
 }
 
-export interface BreakfastOrderItem {
+// NOVO: Itens escolhidos individualmente por cada hóspede
+export interface IndividualOrderItem {
+  personId: number; // Ex: Hóspede 1, Hóspede 2
+  categoryId: string;
+  categoryName: string;
+  itemId: string;
+  itemName: string;
+}
+
+// NOVO: Itens coletivos para a cesta
+export interface CollectiveOrderItem {
+    itemId: string;
     itemName: string;
     categoryName: string;
     quantity: number;
 }
 
+// NOVO: Estrutura completa do pedido final
 export interface BreakfastOrder {
     id: string;
-    stayId: DocumentReference;
-    deliveryDate: Timestamp;
+    stayId: string;
+    deliveryDate: string; // Formato YYYY-MM-DD
     numberOfGuests: number;
-    items: BreakfastOrderItem[];
-    generalNotes: string;
+    individualItems: IndividualOrderItem[]; // Array para escolhas por hóspede
+    collectiveItems: CollectiveOrderItem[];   // Array para acompanhamentos
+    generalNotes?: string;
     status: 'pending' | 'printed' | 'delivered' | 'canceled';
     createdAt: Timestamp;
 }
@@ -247,7 +261,7 @@ export interface ItemPedido {
 
 export interface Order {
   id: string;
-  stayId: DocumentReference; // <-- AQUI ESTÁ A CORREÇÃO
+  stayId: DocumentReference;
   horarioEntrega?: string;
   status: "Novo" | "Em Preparação" | "Entregue" | "Cancelado";
   timestampPedido?: Timestamp;
@@ -325,7 +339,7 @@ export interface SurveyQuestion {
   categoryName?: string;
   options?: string[];
   allowMultiple?: boolean;
-  position: number; // Adicionado para ordenação
+  position: number;
 }
 
 
@@ -375,6 +389,8 @@ export interface PropertyMessages {
     surveySuccessTitle: string;
     surveySuccessSubtitle: string;
     breakfastBasketClosed: string;
+    breakfastBasketDefaultMessage: string;
+
 }
 
 export interface Property {
@@ -383,8 +399,12 @@ export interface Property {
     logoUrl: string;
     colors: PropertyColors;
     messages: PropertyMessages;
-    breakfast?: { // <-- CAMPO ADICIONADO AQUI
+    breakfast?: {
+      isAvailable: boolean;
       type: 'delivery' | 'on-site';
+      menu: BreakfastMenuCategory[]; 
+      orderingStartTime: string;
+      orderingEndTime: string;
     };
 }
 // ========================================================================

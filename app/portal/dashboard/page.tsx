@@ -2,32 +2,38 @@
 
 import { useGuest } from '@/context/GuestProvider';
 import { useProperty } from '@/context/PropertyContext';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { 
-    ArrowRight, Calendar, Coffee, MessageSquareHeart, Star, Utensils,
-    CalendarPlus, BookOpenCheck 
+    ArrowRight, 
+    Calendar, 
+    Coffee, 
+    MessageSquareHeart, 
+    Star, 
+    Utensils,
+    CalendarPlus,
+    BookOpenCheck 
 } from 'lucide-react';
-import Link from 'next/link';
 import { ActionCard } from '@/components/portal/ActionCard';
-import { BookingsList } from '@/components/portal/BookingsList'; // <-- Importe o componente correto
+import { BookingsList } from '@/components/portal/BookingsList';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 export default function GuestDashboardPage() {
-    const { stay, isLoading: isGuestLoading } = useGuest();
-    const { property, loading: isPropertyLoading } = useProperty();
-    const router = useRouter();
+    // Hooks para buscar os dados dos provedores.
+    // O AuthGuard no layout já garantiu que estamos autenticados.
+    const { stay } = useGuest();
+    const { property } = useProperty();
 
-    useEffect(() => {
-        if (!isGuestLoading && !stay) {
-            router.push('/portal');
-        }
-    }, [stay, isGuestLoading, router]);
-
-    if (isGuestLoading || isPropertyLoading || !stay || !property) {
+    // Se por algum motivo os dados ainda não chegaram, não renderiza nada.
+    if (!stay || !property) {
         return null;
     }
     
+    // Função para formatar as datas que agora são strings
+    const formatDate = (dateString: string) => {
+        return format(new Date(dateString), "dd 'de' MMMM", { locale: ptBR });
+    };
+
     const breakfastType = property.breakfast?.type || 'delivery'; 
     const bookings = stay.bookings || [];
 
@@ -35,10 +41,11 @@ export default function GuestDashboardPage() {
         <div className="space-y-8">
             <header>
                 <h1 className="text-3xl font-bold text-foreground">Olá, {stay.guestName.split(' ')[0]}!</h1>
-                <p className="text-lg text-muted-foreground">O que você gostaria de fazer hoje?</p>
+                <p className="text-lg text-muted-foreground">
+                    Sua estadia na {stay.cabinName} vai de {formatDate(stay.checkInDate)} até {formatDate(stay.checkOutDate)}.
+                </p>
             </header>
 
-            {/* Usando o novo componente BookingsList */}
             <BookingsList
               bookings={bookings}
               title="Seus Próximos Agendamentos"

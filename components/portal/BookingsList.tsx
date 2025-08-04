@@ -35,8 +35,6 @@ export function BookingsList({ bookings, title, description, showPast = false }:
     })
     .sort((a, b) => new Date(a.date.replace(/-/g, '\/')).getTime() - new Date(b.date.replace(/-/g, '\/')).getTime());
 
-  // ## CORREÇÃO ##: Só retorna nulo se não houver NENHUM agendamento de qualquer tipo.
-  // Isso garante que no dashboard ele sempre apareça se o hóspede tiver histórico.
   if (bookings.length === 0) {
     return null;
   }

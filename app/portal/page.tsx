@@ -6,66 +6,77 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { useGuest } from '@/context/GuestProvider';
 import { useProperty } from '@/context/PropertyContext';
-
+import { Stay, Booking } from '@/types';
+import { useGuest } from '@/context/GuestProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from '@/components/ui/input-otp';
 import { Toaster, toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { getFirebaseDb } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
-const loginSchema = z.object({
-  token: z.string().min(6, "O token deve ter 6 caracteres."),
-});
-
+const loginSchema = z.object({ token: z.string().min(6, "O token deve ter 6 caracteres.") });
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function GuestLoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated, isLoading: isGuestLoading } = useGuest();
   const { property, loading: isPropertyLoading } = useProperty();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { setStay } = useGuest();
 
   useEffect(() => {
-    if (isAuthenticated) {
+    const savedStayJSON = sessionStorage.getItem('synapse-stay');
+    if (savedStayJSON) {
       router.replace('/portal/dashboard');
     }
-  }, [isAuthenticated, router]);
+  }, [router]);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      token: '',
-    },
+    defaultValues: { token: '' },
   });
 
   const onSubmit = async (data: LoginFormValues) => {
     setIsSubmitting(true);
-    // A conversão para toUpperCase() foi removida daqui.
-    const success = await login(data.token); 
-    if (success) {
-      toast.success('Login realizado com sucesso! Redirecionando...');
-    } else {
-      toast.error('Token inválido ou expirado. Verifique o código e tente novamente.');
+    try {
+      // 1. Validar o token com a API
+      const response = await fetch('/api/auth/guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: data.token }),
+      });
+      const stayData = await response.json();
+      if (!response.ok) throw new Error(stayData.error || 'Falha no login.');
+
+      // 2. Se o token for válido, buscar os agendamentos
+      const db = await getFirebaseDb();
+      const bookingsQuery = query(collection(db, "bookings"), where("stayId", "==", stayData.id));
+      const bookingsSnapshot = await getDocs(bookingsQuery);
+      const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      
+      // 3. Montar o objeto completo da sessão
+      const stayWithBookings: Stay = { ...stayData, bookings: bookingsData };
+      
+      // 4. Salvar no estado global e na memória do navegador
+      setStay(stayWithBookings);
+      sessionStorage.setItem('synapse-stay', JSON.stringify(stayWithBookings));
+
+      toast.success('Login bem-sucedido! Redirecionando...');
+      router.push('/portal/dashboard');
+
+    } catch (error: any) {
+      toast.error(error.message);
       form.reset();
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
-  const pageIsLoading = isGuestLoading || isPropertyLoading;
-
-  if (pageIsLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-  
-  if(isAuthenticated) {
-    return null;
+  if (isPropertyLoading) {
+    return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
   return (
@@ -74,19 +85,9 @@ export default function GuestLoginPage() {
       <div className="flex min-h-screen items-center justify-center bg-secondary p-4">
         <Card className="w-full max-w-md shadow-lg">
           <CardHeader className="text-center">
-            {property?.logoUrl && (
-              <Image
-                src={property.logoUrl}
-                alt={`Logo de ${property.name}`}
-                width={80}
-                height={80}
-                className="mx-auto mb-4 rounded-md object-cover"
-              />
-            )}
+            {property?.logoUrl && <Image src={property.logoUrl} alt={`Logo de ${property.name}`} width={80} height={80} className="mx-auto mb-4 rounded-md object-cover" />}
             <CardTitle className="text-2xl">Acesse sua Estadia</CardTitle>
-            <CardDescription>
-              Use o token de acesso que enviamos para seu WhatsApp ou e-mail.
-            </CardDescription>
+            <CardDescription>Use o token de acesso que enviamos.</CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
@@ -101,15 +102,11 @@ export default function GuestLoginPage() {
                         <div className="flex justify-center">
                           <InputOTP maxLength={6} {...field} onComplete={form.handleSubmit(onSubmit)}>
                             <InputOTPGroup>
-                              <InputOTPSlot index={0} />
-                              <InputOTPSlot index={1} />
-                              <InputOTPSlot index={2} />
+                              <InputOTPSlot index={0} /><InputOTPSlot index={1} /><InputOTPSlot index={2} />
                             </InputOTPGroup>
                             <InputOTPSeparator />
                             <InputOTPGroup>
-                              <InputOTPSlot index={3} />
-                              <InputOTPSlot index={4} />
-                              <InputOTPSlot index={5} />
+                              <InputOTPSlot index={3} /><InputOTPSlot index={4} /><InputOTPSlot index={5} />
                             </InputOTPGroup>
                           </InputOTP>
                         </div>
@@ -119,9 +116,7 @@ export default function GuestLoginPage() {
                   )}
                 />
                 <Button type="submit" className="w-full" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Entrar
                 </Button>
               </form>

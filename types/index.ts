@@ -9,13 +9,13 @@ export interface Stay {
   guestName: string;
   cabinId: string;
   cabinName: string;
-  checkInDate: Timestamp;
-  checkOutDate: Timestamp;
+  checkInDate: string;
+  checkOutDate: string;
   numberOfGuests: number;
   token: string;
   status: 'pending_validation' | 'active' | 'checked_out' | 'canceled';
   preCheckInId: string;
-  createdAt: Timestamp;
+  createdAt: string;
   bookings?: Booking[];
 
 }

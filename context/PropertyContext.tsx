@@ -17,7 +17,6 @@ export const PropertyProvider = ({ children }: { children: React.ReactNode }) =>
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // ## INÍCIO DA CORREÇÃO DE ROBUSTEZ ##
         let isMounted = true;
 
         const fetchProperty = async () => {
@@ -42,8 +41,7 @@ export const PropertyProvider = ({ children }: { children: React.ReactNode }) =>
         return () => {
             isMounted = false;
         };
-        // ## FIM DA CORREÇÃO DE ROBUSTEZ ##
-    }, []);
+    }, []); // <-- Dependência vazia garante que rode apenas uma vez
 
     return (
         <PropertyContext.Provider value={{ property, loading }}>

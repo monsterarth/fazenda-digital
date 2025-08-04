@@ -8,18 +8,20 @@ export async function POST(req: NextRequest) {
         const db = await getFirebaseDb();
         const body = await req.json();
 
-        // Validação básica dos dados recebidos
-        const { stayId, deliveryDate, numberOfGuests, items, generalNotes } = body;
-        if (!stayId || !deliveryDate || !numberOfGuests || !items || items.length === 0) {
+        // Validação dos dados recebidos no novo formato
+        const { stayId, deliveryDate, numberOfGuests, individualItems, collectiveItems, generalNotes } = body;
+        
+        if (!stayId || !deliveryDate || !numberOfGuests) {
             return NextResponse.json({ error: 'Dados do pedido incompletos.' }, { status: 400 });
         }
         
-        // Monta o objeto para salvar no Firestore
+        // Monta o objeto para salvar no Firestore de acordo com o novo tipo BreakfastOrder
         const orderData: Omit<BreakfastOrder, 'id'> = {
             stayId,
             deliveryDate,
             numberOfGuests,
-            items,
+            individualItems: individualItems || [],
+            collectiveItems: collectiveItems || [],
             generalNotes: generalNotes || '',
             status: 'pending',
             createdAt: Timestamp.now(),

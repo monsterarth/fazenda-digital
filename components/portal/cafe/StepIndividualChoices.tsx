@@ -1,18 +1,55 @@
 "use client";
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useGuest } from '@/context/GuestProvider';
 import { useOrder } from '@/context/OrderContext';
-import { BreakfastMenuCategory, BreakfastMenuItem } from '@/types';
+import { BreakfastMenuCategory, BreakfastMenuItem, Flavor } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, CheckCircle, ArrowRight } from 'lucide-react';
+import { User, CheckCircle, ArrowRight, XCircle, Sparkles, ChefHat } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 
 interface StepIndividualChoicesProps {
   categories: BreakfastMenuCategory[];
 }
+
+// Sub-componente para seleção de sabores
+const FlavorSelector: React.FC<{
+    personId: number,
+    category: BreakfastMenuCategory,
+    item: BreakfastMenuItem,
+}> = ({ personId, category, item }) => {
+    const { selectFlavor, getIndividualItem } = useOrder();
+    const currentSelection = getIndividualItem(personId, category.id);
+    
+    if (!item.flavors || item.flavors.length === 0) return null;
+
+    return (
+        <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+            <h5 className="font-semibold text-sm mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500"/>Escolha o Sabor / Preparo:</h5>
+            <div className="grid grid-cols-2 gap-2">
+                {item.flavors.map(flavor => {
+                    if (!flavor.available) return null;
+                    const isSelected = currentSelection?.flavorId === flavor.id;
+                    return (
+                        <Button
+                            key={flavor.id}
+                            variant={isSelected ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => selectFlavor(personId, category.id, item.id, flavor)}
+                        >
+                            {flavor.name}
+                            {isSelected && <CheckCircle className="w-4 h-4 ml-2" />}
+                        </Button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
 
 // Componente para a seleção de um hóspede específico
 const GuestChoice: React.FC<{
@@ -35,30 +72,43 @@ const GuestChoice: React.FC<{
                     </div>
                 </div>
             </AccordionTrigger>
-            <AccordionContent className="p-4 pt-2 space-y-4">
-                {categories.map(category => (
-                    <div key={category.id} className="border-t pt-4">
-                        <h4 className="font-semibold mb-3">{category.name}</h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            {category.items.map(item => {
-                                const isSelected = getIndividualItem(personId, category.id)?.itemId === item.id;
-                                return (
-                                    <Button
-                                        key={item.id}
-                                        variant={isSelected ? "default" : "outline"}
-                                        onClick={() => selectIndividualItem(personId, item, category)}
-                                        className="h-auto flex-col p-3 text-center"
-                                        disabled={!item.available}
-                                    >
-                                        <span className="font-bold text-sm whitespace-normal">{item.name}</span>
-                                        {item.description && <span className="text-xs font-normal mt-1 opacity-80">{item.description}</span>}
-                                        {isSelected && <CheckCircle className="w-4 h-4 mt-2 text-white" />}
-                                    </Button>
-                                );
-                            })}
+            <AccordionContent className="p-4 pt-2 space-y-6">
+                {categories.map(category => {
+                    const currentSelection = getIndividualItem(personId, category.id);
+                    const selectedItemFromMenu = currentSelection?.itemId ? category.items.find(i => i.id === currentSelection.itemId) : null;
+                    
+                    return (
+                        <div key={category.id} className="border-t pt-4">
+                            <h4 className="font-semibold mb-3 flex items-center gap-2"><ChefHat className="w-4 h-4"/>{category.name}</h4>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {category.items.map(item => {
+                                    if (!item.available) return null;
+                                    const isSelected = currentSelection?.itemId === item.id;
+                                    return (
+                                        <div key={item.id} className={cn("border-2 rounded-lg p-2 text-center cursor-pointer", isSelected ? "border-primary" : "border-transparent")} onClick={() => selectIndividualItem(personId, item, category)}>
+                                            {item.imageUrl && <Image src={item.imageUrl} alt={item.name} width={100} height={100} className="w-full h-20 object-cover rounded-md mb-2"/>}
+                                            <p className="font-bold text-sm">{item.name}</p>
+                                            {item.description && <p className="text-xs text-muted-foreground mt-1">{item.description}</p>}
+                                            {isSelected && <CheckCircle className="w-4 h-4 mt-2 text-primary mx-auto" />}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            
+                            {/* Renderiza o seletor de sabores se um item com sabores for selecionado */}
+                            {selectedItemFromMenu && <FlavorSelector personId={personId} category={category} item={selectedItemFromMenu} />}
+
+                             <Button
+                                variant="ghost"
+                                size="sm"
+                                className={cn("w-full mt-4 text-muted-foreground", currentSelection?.itemId === 'NONE' && "bg-destructive/10 text-destructive")}
+                                onClick={() => selectIndividualItem(personId, 'NONE', category)}
+                            >
+                                <XCircle className="w-4 h-4 mr-2" /> Não quero esta opção
+                            </Button>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </AccordionContent>
         </AccordionItem>
     );
@@ -70,9 +120,7 @@ export const StepIndividualChoices: React.FC<StepIndividualChoicesProps> = ({ ca
     const { setStep, isPersonComplete } = useOrder();
     const { numberOfGuests } = stay || { numberOfGuests: 1 };
     
-    // Cria um array [1, 2, ..., numberOfGuests]
     const guests = Array.from({ length: numberOfGuests }, (_, i) => i + 1);
-
     const allGuestsComplete = guests.every(personId => isPersonComplete(personId, categories));
 
     return (
@@ -80,7 +128,7 @@ export const StepIndividualChoices: React.FC<StepIndividualChoicesProps> = ({ ca
             <CardHeader>
                 <CardTitle>Escolhas Individuais</CardTitle>
                 <CardDescription>
-                    Selecione uma opção de cada categoria para cada hóspede.
+                    Selecione uma opção de cada categoria para cada hóspede, ou marque a opção "Não quero".
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -92,7 +140,7 @@ export const StepIndividualChoices: React.FC<StepIndividualChoicesProps> = ({ ca
                 <div className="mt-6 flex justify-end">
                     <Button
                         size="lg"
-                        onClick={() => setStep(3)} // Avança para Acompanhamentos
+                        onClick={() => setStep(3)}
                         disabled={!allGuestsComplete}
                     >
                         Próximo: Acompanhamentos

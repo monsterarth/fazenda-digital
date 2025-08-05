@@ -108,8 +108,15 @@ export interface Booking {
 }
 
 // ========================================================================
-// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ (ATUALIZADO)
+// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ (ATUALIZADO PARA NOVAS REGRAS)
 // ========================================================================
+
+// NOVA INTERFACE PARA SABORES
+export interface Flavor {
+    id: string;
+    name: string;
+    available: boolean;
+}
 
 export interface BreakfastMenuItem {
   id: string;
@@ -117,27 +124,31 @@ export interface BreakfastMenuItem {
   description?: string;
   available: boolean;
   order: number;
+  imageUrl?: string; // NOVO: Campo para a foto do item
+  flavors: Flavor[]; // NOVO: Array de sabores dentro de cada item
 }
 
-// NOVO: Adicionado 'type' para diferenciar categorias
 export interface BreakfastMenuCategory {
   id: string;
   name: string;
   order: number;
-  type: 'individual' | 'collective'; // 'individual' = por hóspede, 'collective' = para a cesta
+  type: 'individual' | 'collective';
   items: BreakfastMenuItem[];
+  // NOVOS CAMPOS PARA CONTROLE DE LIMITE DE QUANTIDADE
+  limitType: 'none' | 'per_item' | 'per_category';
+  limitGuestMultiplier: number;
 }
 
-// NOVO: Itens escolhidos individualmente por cada hóspede
 export interface IndividualOrderItem {
-  personId: number; // Ex: Hóspede 1, Hóspede 2
+  personId: number;
   categoryId: string;
   categoryName: string;
   itemId: string;
   itemName: string;
+  flavorId?: string;   // NOVO: Para armazenar o sabor escolhido
+  flavorName?: string; // NOVO: Para armazenar o nome do sabor
 }
 
-// NOVO: Itens coletivos para a cesta
 export interface CollectiveOrderItem {
     itemId: string;
     itemName: string;
@@ -145,14 +156,13 @@ export interface CollectiveOrderItem {
     quantity: number;
 }
 
-// NOVO: Estrutura completa do pedido final
 export interface BreakfastOrder {
     id: string;
     stayId: string;
-    deliveryDate: string; // Formato YYYY-MM-DD
+    deliveryDate: string;
     numberOfGuests: number;
-    individualItems: IndividualOrderItem[]; // Array para escolhas por hóspede
-    collectiveItems: CollectiveOrderItem[];   // Array para acompanhamentos
+    individualItems: IndividualOrderItem[];
+    collectiveItems: CollectiveOrderItem[];
     generalNotes?: string;
     status: 'pending' | 'printed' | 'delivered' | 'canceled';
     createdAt: Timestamp;
@@ -212,17 +222,13 @@ export interface HotDish {
   nomeItem: string;
   emoji?: string;
   disponivel: boolean;
-  sabores: Flavor[];
+  sabores: Flavor[]; // Reutilizando a nova interface Flavor
   imageUrl?: string;
   posicao?: number;
 }
 
-export interface Flavor {
-  id: string;
-  nomeSabor: string;
-  disponivel: boolean;
-  posicao: number;
-}
+// Interface antiga de 'Flavor' foi removida para evitar duplicidade
+// e substituída pela nova na seção 4.
 
 export interface AccompanimentCategory {
   id: string;

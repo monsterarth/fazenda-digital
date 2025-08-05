@@ -5,18 +5,19 @@ import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc } from '
 import { db } from '@/lib/firebase';
 import type { BreakfastOrder, OrderWithStay, Property, Stay } from '@/types';
 import { toast, Toaster } from 'sonner';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Printer, Loader2, MoreHorizontal, Clock, CheckCircle, X, Archive, ArchiveRestore, Utensils } from 'lucide-react';
-import { usePrint } from '@/hooks/use-print'; // Certifique-se que este hook existe
-import { OrdersSummaryLayout } from './components/orders-summary-layout'; // Novo componente
-import { OrderPrintLayout } from './components/order-print-layout'; // Novo componente
-import { OrderReceiptLayout } from './components/order-receipt-layout'; // Novo componente
+import { Printer, Loader2, MoreHorizontal, Clock, CheckCircle, X, Archive, ArchiveRestore, Utensils, Eye } from 'lucide-react';
+import { usePrint } from '@/hooks/use-print';
+import { OrdersSummaryLayout } from './components/orders-summary-layout';
+import { OrderPrintLayout } from './components/order-print-layout';
+import { OrderReceiptLayout } from './components/order-receipt-layout';
+import { OrderDetailsDialog } from './components/order-details-dialog'; // NOVO: Importa o modal
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -29,6 +30,9 @@ export default function CafePedidosPage() {
     const { printComponent, isPrinting } = usePrint();
     const [selectedOrders, setSelectedOrders] = useState<OrderWithStay[]>([]);
     const [hideDelivered, setHideDelivered] = useState(true);
+    
+    // NOVO: Estado para o modal de detalhes
+    const [detailsModal, setDetailsModal] = useState<{ isOpen: boolean; order: OrderWithStay | null }>({ isOpen: false, order: null });
 
     useEffect(() => {
         const initializeListener = async () => {
@@ -44,13 +48,17 @@ export default function CafePedidosPage() {
             const unsubscribe = onSnapshot(q, async (snapshot) => {
                 const ordersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BreakfastOrder));
                 
-                // Anexa as informações da estadia (Stay) a cada pedido
                 const ordersWithStayInfo: OrderWithStay[] = await Promise.all(ordersData.map(async (order) => {
                     let stayInfo: Stay | undefined;
-                    if (order.stayId) {
-                        const staySnap = await getDoc(doc(db, 'stays', order.stayId));
-                        if (staySnap.exists()) {
-                            stayInfo = staySnap.data() as Stay;
+                    
+                    if (typeof order.stayId === 'string' && order.stayId) {
+                        try {
+                            const staySnap = await getDoc(doc(db, 'stays', order.stayId));
+                            if (staySnap.exists()) {
+                                stayInfo = staySnap.data() as Stay;
+                            }
+                        } catch (error) {
+                            console.error(`Falha ao buscar estadia para o pedido ${order.id}:`, error);
                         }
                     }
                     return { ...order, stayInfo };
@@ -103,6 +111,12 @@ export default function CafePedidosPage() {
     };
 
     const handlePrint = (componentToPrint: React.ReactElement) => { printComponent(componentToPrint); };
+    
+    const safeFormatDate = (dateString: string | undefined | null, formatString: string) => {
+        if (!dateString) return 'Data inválida';
+        const date = new Date(`${dateString}T00:00:00`);
+        return isValid(date) ? format(date, formatString, { locale: ptBR }) : 'Data inválida';
+    };
 
     if (loading) {
         return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando pedidos...</div>;
@@ -145,7 +159,6 @@ export default function CafePedidosPage() {
                                     <Checkbox
                                         onCheckedChange={(checked) => handleSelectAll(!!checked)}
                                         checked={filteredOrders.length > 0 && selectedOrders.length === filteredOrders.length}
-                                        aria-label="Selecionar todos os pedidos visíveis"
                                     />
                                 </TableHead>
                                 <TableHead>Status</TableHead>
@@ -162,13 +175,22 @@ export default function CafePedidosPage() {
                                         <TableCell><Checkbox onCheckedChange={(checked) => handleSelectOrder(order, !!checked)} checked={selectedOrders.some(o => o.id === order.id)} /></TableCell>
                                         <TableCell>{getStatusBadge(order.status)}</TableCell>
                                         <TableCell>{order.stayInfo?.guestName || 'N/A'} ({order.stayInfo?.cabinName || 'N/A'})</TableCell>
-                                        <TableCell>{format(new Date(order.deliveryDate), "dd 'de' MMMM", { locale: ptBR })}</TableCell>
-                                        <TableCell>{order.createdAt?.toDate ? format(order.createdAt.toDate(), "dd/MM/yy HH:mm", { locale: ptBR }) : 'N/A'}</TableCell>
+                                        <TableCell>{safeFormatDate(order.deliveryDate, "dd 'de' MMMM")}</TableCell>
+                                        <TableCell>
+                                            {order.createdAt?.toDate ? 
+                                                format(order.createdAt.toDate(), "dd/MM/yy HH:mm", { locale: ptBR }) : 
+                                                'N/A'
+                                            }
+                                        </TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuLabel>Ações do Pedido</DropdownMenuLabel>
+                                                    {/* NOVO: Botão para abrir o modal */}
+                                                    <DropdownMenuItem onClick={() => setDetailsModal({ isOpen: true, order: order })}>
+                                                        <Eye className="mr-2 h-4 w-4" />Ver Detalhes
+                                                    </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem onClick={() => handlePrint(<OrderPrintLayout order={order} property={property} />)}><Printer className="mr-2 h-4 w-4" />Imprimir (A4)</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handlePrint(<OrderReceiptLayout order={order} property={property} />)}><Printer className="mr-2 h-4 w-4" />Imprimir (Térmica)</DropdownMenuItem>
@@ -187,6 +209,13 @@ export default function CafePedidosPage() {
                     </Table>
                 </CardContent>
             </Card>
+
+            {/* NOVO: Renderiza o componente do modal */}
+            <OrderDetailsDialog 
+                isOpen={detailsModal.isOpen}
+                onClose={() => setDetailsModal({ isOpen: false, order: null })}
+                order={detailsModal.order}
+            />
         </div>
     )
 }

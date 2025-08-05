@@ -3,11 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import * as firestore from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase';
-import { Service, Booking, Cabin, TimeSlot } from '@/types';
+import { Service, Booking, TimeSlot } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,9 +26,9 @@ const preferenceSchema = z.object({
     preferenceTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Selecione um horário válido."),
     // Corrigido para o formato Zod correto e tornado opcional
     additionalOptions: z.record(z.string(), z.boolean()).optional(),
-    // Adicionado .default(false) para garantir que o valor seja sempre booleano
-    hasPet: z.boolean().default(false), 
-    petPolicyAgreed: z.boolean().default(false),
+    // Removido .default() para tornar os campos opcionais na entrada mas obrigatórios após parse
+    hasPet: z.boolean().optional(), 
+    petPolicyAgreed: z.boolean().optional(),
 }).refine(data => !data.hasPet || data.petPolicyAgreed, {
     message: "Você deve concordar com a política sobre pets para continuar.",
     path: ["petPolicyAgreed"],
@@ -159,15 +158,16 @@ export default function GuestBookingsPage() {
 
             toast.success("Agendamento confirmado com sucesso!");
             setSlotModal({ open: false });
-        } catch (error: any) {
-            toast.error(error.message || "Não foi possível realizar o agendamento.");
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Não foi possível realizar o agendamento.";
+            toast.error(errorMessage);
         } finally {
             setIsSubmitting(false);
         }
     };
     
     const handleOpenPreferenceModal = (service: Service) => {
-        const defaultOptions = service.additionalOptions?.reduce((acc, option) => {
+        const defaultOptions = service.additionalOptions?.reduce((acc: Record<string, boolean>, option: string) => {
             acc[option] = false;
             return acc;
         }, {} as Record<string, boolean>) || {};
@@ -215,8 +215,9 @@ export default function GuestBookingsPage() {
 
             toast.success("Solicitação enviada com sucesso!", { id: toastId });
             setPreferenceModal({ open: false });
-        } catch (error: any) {
-            toast.error(error.message || "Não foi possível enviar a solicitação.", { id: toastId });
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Não foi possível enviar a solicitação.";
+            toast.error(errorMessage, { id: toastId });
         }
     };
 
@@ -270,7 +271,7 @@ export default function GuestBookingsPage() {
                 </div>
             </div>
 
-            <Dialog open={slotModal.open} onOpenChange={(open) => setSlotModal({ open: false })}>
+            <Dialog open={slotModal.open} onOpenChange={() => setSlotModal({ open: false })}>
                  <DialogContent>
                        <DialogHeader>
                            <DialogTitle>Confirmar Agendamento</DialogTitle>

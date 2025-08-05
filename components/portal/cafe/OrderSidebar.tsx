@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useOrder } from '@/context/OrderContext';
 import { useGuest } from '@/context/GuestProvider';
 import { BreakfastMenuCategory } from '@/types';
@@ -15,9 +15,25 @@ interface OrderSidebarProps {
 }
 
 export const OrderSidebar: React.FC<OrderSidebarProps> = ({ individualCategories, collectiveCategories }) => {
-    const { setStep, currentStep, individualItems, collectiveItems, isPersonComplete } = useOrder();
-    const { stay } = useGuest();
+    const { setStep, currentStep, collectiveItems, isPersonComplete } = useOrder();
+    // CORREÇÃO: Buscando 'stay' e 'preCheckIn' para obter os nomes
+    const { stay, preCheckIn } = useGuest();
     const numberOfGuests = stay?.numberOfGuests || 0;
+
+    // CORREÇÃO: Lógica para montar a lista de nomes, idêntica à do StepIndividualChoices
+    const guestNames = useMemo(() => {
+        const names: string[] = [];
+        if (stay?.guestName) {
+            names.push(stay.guestName);
+        }
+        if (preCheckIn?.companions) {
+            names.push(...preCheckIn.companions.map(c => c.fullName));
+        }
+        while (names.length < numberOfGuests) {
+            names.push(`Hóspede ${names.length + 1}`);
+        }
+        return names.slice(0, numberOfGuests);
+    }, [preCheckIn, stay?.guestName, numberOfGuests]);
 
     const renderIndividualSummary = () => {
         if (individualCategories.length === 0) return null;
@@ -25,12 +41,14 @@ export const OrderSidebar: React.FC<OrderSidebarProps> = ({ individualCategories
         return (
             <div>
                 <h4 className="font-semibold text-sm mb-2">Escolhas por Hóspede</h4>
-                {Array.from({ length: numberOfGuests }, (_, i) => i + 1).map(personId => {
+                {/* CORREÇÃO: Mapeando a lista de nomes em vez de gerar números */}
+                {guestNames.map((name, index) => {
+                    const personId = index + 1;
                     const complete = isPersonComplete(personId, individualCategories);
                     return (
                         <div key={personId} className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                             <span className="flex items-center gap-1.5">
-                                <User className="w-3 h-3"/> Hóspede {personId}
+                                <User className="w-3 h-3"/> {name}
                             </span>
                             {complete ? 
                                 <span className="flex items-center gap-1 text-green-600 font-medium"><Check className="w-3 h-3"/> Completo</span> : 

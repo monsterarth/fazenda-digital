@@ -1,16 +1,16 @@
 "use client";
 
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
-import { Stay, Booking } from '@/types';
-// CORREÇÃO: Importações corretas do Firebase
+import { Stay, Booking, PreCheckIn } from '@/types';
 import { getFirebaseDb, db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 
 interface GuestContextType {
   stay: Stay | null;
+  preCheckIn: PreCheckIn | null; // Adicionado para guardar os dados do pré-check-in
   isAuthenticated: boolean;
-  isLoading: boolean; // CORREÇÃO: Adicionado isLoading
-  setStay: (stay: Stay | null) => void; // CORREÇÃO: Adicionado setStay
+  isLoading: boolean;
+  setStay: (stay: Stay | null) => void;
   logout: () => void;
 }
 
@@ -18,12 +18,11 @@ const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
 export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const [stay, setStay] = useState<Stay | null>(null);
+  const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // CORREÇÃO: Função para buscar bookings movida para o provider
   const fetchAndSetBookings = useCallback(async (stayData: Stay): Promise<Stay> => {
-    if (!stayData || !stayData.id) return stayData;
-    
+    if (!stayData?.id) return stayData;
     try {
       const bookingsQuery = query(collection(db, "bookings"), where("stayId", "==", stayData.id));
       const bookingsSnapshot = await getDocs(bookingsQuery);
@@ -31,24 +30,44 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
       return { ...stayData, bookings: bookingsData };
     } catch (error) {
       console.error("Failed to fetch bookings for stay:", error);
-      return { ...stayData, bookings: [] }; // Retorna com bookings vazios em caso de erro
+      return { ...stayData, bookings: [] };
+    }
+  }, []);
+
+  const fetchPreCheckIn = useCallback(async (stayData: Stay): Promise<PreCheckIn | null> => {
+    if (!stayData?.preCheckInId) return null;
+    try {
+      const preCheckInRef = doc(db, "preCheckIns", stayData.preCheckInId);
+      const preCheckInDoc = await getDoc(preCheckInRef);
+      return preCheckInDoc.exists() ? { id: preCheckInDoc.id, ...preCheckInDoc.data() } as PreCheckIn : null;
+    } catch (error) {
+      console.error("Failed to fetch pre-check-in data:", error);
+      return null;
     }
   }, []);
 
   useEffect(() => {
     let isMounted = true;
     const initializeSession = async () => {
+      setIsLoading(true);
       try {
         const savedStayJSON = sessionStorage.getItem('synapse-stay');
         if (savedStayJSON) {
           const savedStayData = JSON.parse(savedStayJSON);
-          const stayWithBookings = await fetchAndSetBookings(savedStayData); // CORREÇÃO: Busca os bookings
+          
+          // Busca todos os dados necessários em paralelo para otimizar
+          const [stayWithBookings, preCheckInData] = await Promise.all([
+            fetchAndSetBookings(savedStayData),
+            fetchPreCheckIn(savedStayData)
+          ]);
+          
           if (isMounted) {
             setStay(stayWithBookings);
+            setPreCheckIn(preCheckInData);
           }
         }
       } catch (error) {
-        console.error("Failed to parse stay from sessionStorage", error);
+        console.error("Failed to initialize session from sessionStorage", error);
         sessionStorage.removeItem('synapse-stay');
       } finally {
         if (isMounted) {
@@ -60,16 +79,17 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       isMounted = false;
     };
-  }, [fetchAndSetBookings]);
+  }, [fetchAndSetBookings, fetchPreCheckIn]);
 
   const logout = () => {
     setStay(null);
+    setPreCheckIn(null); // Limpa o preCheckIn no logout
     sessionStorage.removeItem('synapse-stay');
-    window.location.href = '/portal'; // Redireciona para a página de login
+    window.location.href = '/portal';
   };
 
   return (
-    <GuestContext.Provider value={{ stay, isAuthenticated: !!stay, isLoading, setStay, logout }}>
+    <GuestContext.Provider value={{ stay, preCheckIn, isAuthenticated: !!stay, isLoading, setStay, logout }}>
       {children}
     </GuestContext.Provider>
   );

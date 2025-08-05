@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useGuest } from '@/context/GuestProvider';
 import { useOrder } from '@/context/OrderContext';
 import { BreakfastMenuCategory, BreakfastMenuItem, Flavor } from '@/types';
@@ -15,7 +15,7 @@ interface StepIndividualChoicesProps {
   categories: BreakfastMenuCategory[];
 }
 
-// Sub-componente para seleção de sabores
+// Sub-componente para seleção de sabores (sem alterações)
 const FlavorSelector: React.FC<{
     personId: number,
     category: BreakfastMenuCategory,
@@ -54,8 +54,9 @@ const FlavorSelector: React.FC<{
 // Componente para a seleção de um hóspede específico
 const GuestChoice: React.FC<{
   personId: number;
+  guestName: string;
   categories: BreakfastMenuCategory[];
-}> = ({ personId, categories }) => {
+}> = ({ personId, guestName, categories }) => {
     const { getIndividualItem, selectIndividualItem, isPersonComplete } = useOrder();
     const isComplete = isPersonComplete(personId, categories);
 
@@ -67,7 +68,7 @@ const GuestChoice: React.FC<{
                         <User className="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 className="text-lg font-bold text-left">Hóspede {personId}</h3>
+                        <h3 className="text-lg font-bold text-left">{guestName}</h3>
                         {isComplete && <p className="text-xs text-green-700 font-medium text-left">Seleção completa</p>}
                     </div>
                 </div>
@@ -85,8 +86,22 @@ const GuestChoice: React.FC<{
                                     if (!item.available) return null;
                                     const isSelected = currentSelection?.itemId === item.id;
                                     return (
-                                        <div key={item.id} className={cn("border-2 rounded-lg p-2 text-center cursor-pointer", isSelected ? "border-primary" : "border-transparent")} onClick={() => selectIndividualItem(personId, item, category)}>
-                                            {item.imageUrl && <Image src={item.imageUrl} alt={item.name} width={100} height={100} className="w-full h-20 object-cover rounded-md mb-2"/>}
+                                        <div 
+                                            key={item.id} 
+                                            className={cn("group border-2 rounded-lg p-3 text-center cursor-pointer transition-all duration-200", isSelected ? "border-primary bg-primary/5 shadow-md" : "border-border hover:border-primary/50")} 
+                                            onClick={() => selectIndividualItem(personId, item, category)}
+                                        >
+                                            {item.imageUrl && (
+                                                <div className="w-full h-20 md:h-32 overflow-hidden rounded-md mb-2 relative">
+                                                    <Image 
+                                                        src={item.imageUrl} 
+                                                        alt={item.name} 
+                                                        fill
+                                                        sizes="(max-width: 768px) 50vw, 33vw"
+                                                        className="object-cover transition-transform duration-300 ease-in-out group-hover:scale-110"
+                                                    />
+                                                </div>
+                                            )}
                                             <p className="font-bold text-sm">{item.name}</p>
                                             {item.description && <p className="text-xs text-muted-foreground mt-1">{item.description}</p>}
                                             {isSelected && <CheckCircle className="w-4 h-4 mt-2 text-primary mx-auto" />}
@@ -95,7 +110,6 @@ const GuestChoice: React.FC<{
                                 })}
                             </div>
                             
-                            {/* Renderiza o seletor de sabores se um item com sabores for selecionado */}
                             {selectedItemFromMenu && <FlavorSelector personId={personId} category={category} item={selectedItemFromMenu} />}
 
                              <Button
@@ -116,12 +130,39 @@ const GuestChoice: React.FC<{
 
 
 export const StepIndividualChoices: React.FC<StepIndividualChoicesProps> = ({ categories }) => {
-    const { stay } = useGuest();
-    const { setStep, isPersonComplete } = useOrder();
-    const { numberOfGuests } = stay || { numberOfGuests: 1 };
+    const { stay, preCheckIn } = useGuest();
+    const { setStep, isPersonComplete, individualItems } = useOrder();
     
-    const guests = Array.from({ length: numberOfGuests }, (_, i) => i + 1);
-    const allGuestsComplete = guests.every(personId => isPersonComplete(personId, categories));
+    const numberOfGuests = stay?.numberOfGuests || 1;
+
+    // CORREÇÃO: Lógica para montar a lista de nomes refeita para ser mais robusta
+    const guestNames = useMemo(() => {
+        const names: string[] = [];
+        
+        // 1. Usa o nome do 'stay' como a primeira e mais confiável fonte para o hóspede principal.
+        if (stay?.guestName) {
+            names.push(stay.guestName);
+        }
+        
+        // 2. Adiciona os nomes dos acompanhantes vindos do 'preCheckIn'.
+        if (preCheckIn?.companions) {
+            names.push(...preCheckIn.companions.map(c => c.fullName));
+        }
+
+        // 3. Garante que a lista tenha o tamanho correto, usando fallbacks genéricos se necessário.
+        // Isso protege contra casos onde o preCheckIn ainda não carregou ou está incompleto.
+        while (names.length < numberOfGuests) {
+            names.push(`Hóspede ${names.length + 1}`);
+        }
+
+        // 4. Garante que a lista não exceda o número de hóspedes definido na estadia.
+        return names.slice(0, numberOfGuests);
+    }, [preCheckIn, stay?.guestName, numberOfGuests]);
+
+    const allGuestsComplete = useMemo(() => {
+        return Array.from({ length: numberOfGuests }, (_, i) => i + 1)
+                    .every(personId => isPersonComplete(personId, categories));
+    }, [numberOfGuests, isPersonComplete, categories, individualItems]);
 
     return (
         <Card className="shadow-lg border-2 w-full">
@@ -133,9 +174,12 @@ export const StepIndividualChoices: React.FC<StepIndividualChoicesProps> = ({ ca
             </CardHeader>
             <CardContent>
                 <Accordion type="multiple" defaultValue={["person-1"]} className="w-full">
-                    {guests.map((personId) => (
-                        <GuestChoice key={personId} personId={personId} categories={categories} />
-                    ))}
+                    {guestNames.map((guestName, index) => {
+                        const personId = index + 1;
+                        return (
+                           <GuestChoice key={personId} personId={personId} guestName={guestName} categories={categories} />
+                        );
+                    })}
                 </Accordion>
                 <div className="mt-6 flex justify-end">
                     <Button

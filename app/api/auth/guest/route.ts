@@ -1,13 +1,10 @@
-import { getFirebaseDb } from '@/lib/firebase'; // CORREÇÃO: Importação corrigida
+import { getFirebaseDb } from '@/lib/firebase';
 import { Stay } from '@/types';
-import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { NextRequest, NextResponse } from 'next/server';
 
-interface StayFromFirestore extends Omit<Stay, 'checkInDate' | 'checkOutDate' | 'createdAt'> {
-    checkInDate: Timestamp;
-    checkOutDate: Timestamp;
-    createdAt: Timestamp;
-}
+// REMOVIDO: A interface StayFromFirestore não é mais necessária,
+// pois os dados no Firestore já correspondem ao tipo Stay (com datas como strings).
 
 export async function POST(req: NextRequest) {
     try {
@@ -30,16 +27,19 @@ export async function POST(req: NextRequest) {
         }
 
         const stayDoc = querySnapshot.docs[0];
-        const stayDataFromFirestore = { id: stayDoc.id, ...stayDoc.data() } as StayFromFirestore;
-
-        const serializableStayData: Stay = {
-            ...stayDataFromFirestore,
-            checkInDate: stayDataFromFirestore.checkInDate.toDate().toISOString(),
-            checkOutDate: stayDataFromFirestore.checkOutDate.toDate().toISOString(),
-            createdAt: stayDataFromFirestore.createdAt.toDate().toISOString(),
-        };
         
-        return NextResponse.json(serializableStayData, { status: 200 });
+        // ==========================================================
+        // CORREÇÃO APLICADA AQUI
+        // ==========================================================
+        // 1. Os dados do Firestore são diretamente atribuídos ao tipo 'Stay',
+        //    pois as datas já estão salvas como strings.
+        const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
+
+        // 2. O bloco de conversão de Timestamp para string foi removido
+        //    porque ele era a causa do erro.
+        
+        // 3. Retornamos diretamente os dados da estadia.
+        return NextResponse.json(stayData, { status: 200 });
 
     } catch (error) {
         console.error('API LOGIN ERROR:', error);

@@ -17,7 +17,7 @@ import { usePrint } from '@/hooks/use-print';
 import { OrdersSummaryLayout } from './components/orders-summary-layout';
 import { OrderPrintLayout } from './components/order-print-layout';
 import { OrderReceiptLayout } from './components/order-receipt-layout';
-import { OrderDetailsDialog } from './components/order-details-dialog'; // NOVO: Importa o modal
+import { OrderDetailsDialog } from './components/order-details-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -29,9 +29,8 @@ export default function CafePedidosPage() {
     const [loading, setLoading] = useState(true);
     const { printComponent, isPrinting } = usePrint();
     const [selectedOrders, setSelectedOrders] = useState<OrderWithStay[]>([]);
-    const [hideDelivered, setHideDelivered] = useState(true);
+    const [hideArchived, setHideArchived] = useState(true); // Renomeado para maior clareza
     
-    // NOVO: Estado para o modal de detalhes
     const [detailsModal, setDetailsModal] = useState<{ isOpen: boolean; order: OrderWithStay | null }>({ isOpen: false, order: null });
 
     useEffect(() => {
@@ -77,12 +76,16 @@ export default function CafePedidosPage() {
         initializeListener();
     }, []);
 
+    // ==========================================================
+    // CORREÇÃO APLICADA AQUI
+    // ==========================================================
     const filteredOrders = useMemo(() => {
-        if (hideDelivered) {
-            return orders.filter(order => order.status !== 'delivered');
+        if (hideArchived) {
+            // Agora filtra tanto 'delivered' quanto 'canceled'
+            return orders.filter(order => order.status !== 'delivered' && order.status !== 'canceled');
         }
         return orders;
-    }, [orders, hideDelivered]);
+    }, [orders, hideArchived]);
 
     const handleSelectOrder = (order: OrderWithStay, isSelected: boolean) => {
         if (isSelected) { setSelectedOrders(prev => [...prev, order]); }
@@ -134,10 +137,10 @@ export default function CafePedidosPage() {
                         </div>
                         <div className="flex items-center gap-4">
                             <div className="flex items-center space-x-2">
-                                <Switch id="hide-delivered" checked={hideDelivered} onCheckedChange={setHideDelivered} />
-                                <Label htmlFor="hide-delivered" className="flex items-center gap-2 cursor-pointer">
-                                    {hideDelivered ? <Archive className="h-4 w-4" /> : <ArchiveRestore className="h-4 w-4" />}
-                                    <span>{hideDelivered ? 'Esconder Entregues' : 'Mostrar Todos'}</span>
+                                <Switch id="hide-archived" checked={hideArchived} onCheckedChange={setHideArchived} />
+                                <Label htmlFor="hide-archived" className="flex items-center gap-2 cursor-pointer">
+                                    {hideArchived ? <Archive className="h-4 w-4" /> : <ArchiveRestore className="h-4 w-4" />}
+                                    <span>{hideArchived ? 'Ocultar Arquivados' : 'Mostrar Todos'}</span>
                                 </Label>
                             </div>
                             <Button onClick={() => handlePrint(<OrdersSummaryLayout orders={selectedOrders} property={property} />)} disabled={isPrinting || selectedOrders.length === 0}>
@@ -187,7 +190,6 @@ export default function CafePedidosPage() {
                                                 <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuLabel>Ações do Pedido</DropdownMenuLabel>
-                                                    {/* NOVO: Botão para abrir o modal */}
                                                     <DropdownMenuItem onClick={() => setDetailsModal({ isOpen: true, order: order })}>
                                                         <Eye className="mr-2 h-4 w-4" />Ver Detalhes
                                                     </DropdownMenuItem>
@@ -204,13 +206,19 @@ export default function CafePedidosPage() {
                                         </TableCell>
                                     </TableRow>
                                 ))
-                            ) : ( <TableRow><TableCell colSpan={6} className="text-center h-24">{hideDelivered ? 'Nenhum pedido ativo encontrado.' : 'Nenhum pedido encontrado.'}</TableCell></TableRow> )}
+                            ) : ( 
+                                <TableRow>
+                                    {/* Mensagem atualizada para refletir a nova regra de filtro */}
+                                    <TableCell colSpan={6} className="text-center h-24">
+                                        {hideArchived ? 'Nenhum pedido ativo ou pendente encontrado.' : 'Nenhum pedido encontrado.'}
+                                    </TableCell>
+                                </TableRow> 
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
             </Card>
 
-            {/* NOVO: Renderiza o componente do modal */}
             <OrderDetailsDialog 
                 isOpen={detailsModal.isOpen}
                 onClose={() => setDetailsModal({ isOpen: false, order: null })}

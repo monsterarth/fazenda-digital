@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import * as firestore from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
-import { Survey, SurveyQuestion, SurveyResponse, SurveyResponseAnswer } from "@/types";
+import { Survey, SurveyQuestion, SurveyResponse, SurveyResponseAnswer } from "@/types/survey";
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

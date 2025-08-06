@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, Timestamp, FieldPath, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { initAdminApp } from '@/lib/firebase-admin';
-import { Survey, SurveyResponse, Stay, SurveyQuestion, PreCheckIn } from '@/types';
+import { Survey, SurveyResponse, SurveyQuestion } from '@/types/survey';
+import { Stay, PreCheckIn } from '@/types';
 import { startOfDay, endOfDay, parseISO, format } from 'date-fns';
 
 export async function GET(
@@ -119,14 +120,14 @@ export async function GET(
              return NextResponse.json(emptyResults);
         }
 
-        const allAnswers = filteredResponses.flatMap(r => r.answers?.map(a => ({ ...a, stayInfo: r.stayInfo, submittedAt: r.submittedAt })) || []);
+        const allAnswers = filteredResponses.flatMap(r => r.answers?.map((a: any) => ({ ...a, stayInfo: r.stayInfo, submittedAt: r.submittedAt })) || []);
         
-        const ratingQuestions = survey.questions.filter(q => q.type === 'rating_5_stars');
-        const allRatings = allAnswers.filter(a => a && ratingQuestions.some(q => q.id === a.questionId));
+        const ratingQuestions = survey.questions.filter((q: { type: string; }) => q.type === 'rating_5_stars');
+        const allRatings = allAnswers.filter(a => a && ratingQuestions.some((q: { id: any; }) => q.id === a.questionId));
         const overallSum = allRatings.reduce((sum, ans) => sum + Number(ans.answer || 0), 0);
         const overallAverage = allRatings.length > 0 ? overallSum / allRatings.length : 0;
 
-        const npsQuestion = survey.questions.find(q => q.type === 'nps_0_10');
+        const npsQuestion = survey.questions.find((q: { type: string; }) => q.type === 'nps_0_10');
         const npsAnswers = npsQuestion ? allAnswers.filter(a => a && a.questionId === npsQuestion.id) : [];
         const promoters = npsAnswers.filter(a => Number(a.answer) >= 9).length;
         const passives = npsAnswers.filter(a => Number(a.answer) >= 7 && Number(a.answer) <= 8).length;
@@ -136,7 +137,7 @@ export async function GET(
 
         const categoryAverages: Record<string, { sum: number; count: number }> = {};
         allRatings.forEach(ans => {
-            const question = ratingQuestions.find(q => q.id === ans.questionId);
+            const question = ratingQuestions.find((q: { id: any; }) => q.id === ans.questionId);
             if (question?.categoryName) {
                 if (!categoryAverages[question.categoryName]) {
                     categoryAverages[question.categoryName] = { sum: 0, count: 0 };
@@ -156,9 +157,9 @@ export async function GET(
             weakest: sortedCategories.length > 0 ? sortedCategories[sortedCategories.length - 1] : undefined,
         };
 
-        const textQuestions = survey.questions.filter(q => q.type === 'text' || q.type === 'comment_box');
+        const textQuestions = survey.questions.filter((q: { type: string; }) => q.type === 'text' || q.type === 'comment_box');
         const textFeedback: Record<string, { text: string; guestName: string; cabinName: string }[]> = {};
-        textQuestions.forEach(question => {
+        textQuestions.forEach((question: { id: any; text: string | number; }) => {
             const questionAnswers = allAnswers
                 .filter(a => a && a.questionId === question.id && a.answer && a.stayInfo)
                 .map(a => ({

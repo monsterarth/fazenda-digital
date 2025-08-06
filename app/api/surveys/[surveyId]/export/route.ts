@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, Timestamp, FieldPath, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { initAdminApp } from '@/lib/firebase-admin';
-import { SurveyResponse, Stay, PreCheckIn } from '@/types';
+// import { SurveyResponse, Stay, PreCheckIn } from '@/types';
+import { Stay, PreCheckIn } from '@/types';
+// Define SurveyResponse type here if not exported from '@/types'
+type SurveyResponse = {
+    id: string;
+    stayId?: string;
+    submittedAt?: import('firebase-admin/firestore').Timestamp;
+    answers?: Array<{
+        questionText?: string;
+        questionId?: string;
+        answer: string | string[];
+    }>;
+    // Add other fields as needed
+};
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
 
 export async function GET(
@@ -115,9 +128,11 @@ export async function GET(
             };
             (response.answers || []).forEach(answer => {
                 const questionText = answer.questionText || answer.questionId;
-                flatData[questionText] = Array.isArray(answer.answer) 
-                    ? answer.answer.join(', ') 
-                    : answer.answer;
+                if (questionText !== undefined) {
+                    flatData[questionText] = Array.isArray(answer.answer) 
+                        ? answer.answer.join(', ') 
+                        : answer.answer;
+                }
             });
             return flatData;
         });

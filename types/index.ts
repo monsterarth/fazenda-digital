@@ -111,7 +111,6 @@ export interface Booking {
 // 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ (ATUALIZADO PARA NOVAS REGRAS)
 // ========================================================================
 
-// NOVA INTERFACE PARA SABORES
 export interface Flavor {
     id: string;
     name: string;
@@ -124,8 +123,8 @@ export interface BreakfastMenuItem {
   description?: string;
   available: boolean;
   order: number;
-  imageUrl?: string; // NOVO: Campo para a foto do item
-  flavors: Flavor[]; // NOVO: Array de sabores dentro de cada item
+  imageUrl?: string;
+  flavors: Flavor[];
 }
 
 export interface BreakfastMenuCategory {
@@ -134,7 +133,6 @@ export interface BreakfastMenuCategory {
   order: number;
   type: 'individual' | 'collective';
   items: BreakfastMenuItem[];
-  // NOVOS CAMPOS PARA CONTROLE DE LIMITE DE QUANTIDADE
   limitType: 'none' | 'per_item' | 'per_category';
   limitGuestMultiplier: number;
 }
@@ -145,8 +143,8 @@ export interface IndividualOrderItem {
   categoryName: string;
   itemId: string;
   itemName: string;
-  flavorId?: string;   // NOVO: Para armazenar o sabor escolhido
-  flavorName?: string; // NOVO: Para armazenar o nome do sabor
+  flavorId?: string;
+  flavorName?: string;
 }
 
 export interface CollectiveOrderItem {
@@ -222,13 +220,10 @@ export interface HotDish {
   nomeItem: string;
   emoji?: string;
   disponivel: boolean;
-  sabores: Flavor[]; // Reutilizando a nova interface Flavor
+  sabores: Flavor[];
   imageUrl?: string;
   posicao?: number;
 }
-
-// Interface antiga de 'Flavor' foi removida para evitar duplicidade
-// e substituída pela nova na seção 4.
 
 export interface AccompanimentCategory {
   id: string;
@@ -318,58 +313,6 @@ export interface OrderState {
   specialRequests: string;
 }
 
-// ========================================================================
-// 7. PESQUISA DE SATISFAÇÃO
-// ========================================================================
-
-export type QuestionType =
-  | 'rating_5_stars'
-  | 'multiple_choice'
-  | 'nps_0_10'
-  | 'text'
-  | 'separator'
-  | 'comment_box';
-
-export interface SurveyCategory {
-    id: string;
-    name: string;
-    order: number;
-}
-
-export interface SurveyQuestion {
-  id: string;
-  type: QuestionType;
-  text: string;
-  subtitle?: string;
-  categoryId?: string;
-  categoryName?: string;
-  options?: string[];
-  allowMultiple?: boolean;
-  position: number;
-}
-
-
-export interface Survey {
-  id: string;
-  title: string;
-  description: string;
-  isDefault: boolean;
-  questions: SurveyQuestion[];
-}
-
-export interface SurveyResponseAnswer {
-    questionId: string;
-    questionText?: string;
-    answer: any;
-}
-
-export interface SurveyResponse {
-    id: string;
-    surveyId: string;
-    stayId: string;
-    submittedAt: Timestamp;
-    answers: SurveyResponseAnswer[];
-}
 
 // ========================================================================
 // 8. NOVA ESTRUTURA DE PERSONALIZAÇÃO (WHITE-LABEL)
@@ -396,7 +339,6 @@ export interface PropertyMessages {
     surveySuccessSubtitle: string;
     breakfastBasketClosed: string;
     breakfastBasketDefaultMessage: string;
-
 }
 
 export interface Property {

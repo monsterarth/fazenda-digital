@@ -12,14 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast, Toaster } from 'sonner';
-import { Calendar as CalendarIcon, Loader2, Lock, Unlock, User, Trash2, XSquare, CheckSquare, AlertTriangle, PlusCircle, Sparkles, BedDouble } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Lock, Unlock, User, Trash2, XSquare, CheckSquare, AlertTriangle, PlusCircle, Sparkles, BedDouble, Check, X, Bell } from 'lucide-react';
 import { format, startOfDay, isBefore, parse, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
 // --- Tipos e Interfaces ---
-type SlotStatusType = 'disponivel' | 'reservado' | 'bloqueado' | 'fechado' | 'passou';
+type SlotStatusType = 'disponivel' | 'reservado' | 'pendente' | 'bloqueado' | 'fechado' | 'passou';
 type SlotInfo = {
   id: string; 
   status: SlotStatusType;
@@ -31,13 +31,14 @@ type SlotInfo = {
 };
 type Guest = { id: string; guestId: string; guestName: string; cabinName: string; };
 
-// --- Componentes ---
+// --- Componente de Horário (Slot Visual) ---
 function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
     slotInfo: SlotInfo; onClick: () => void; inSelectionMode: boolean; isSelected: boolean;
 }) {
     const visuals = useMemo(() => {
         switch (slotInfo.status) {
             case 'reservado': return { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-800 dark:text-blue-300', icon: <User className="h-4 w-4" />, label: slotInfo.booking?.guestName };
+            case 'pendente': return { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-800 dark:text-yellow-300', icon: <User className="h-4 w-4 animate-pulse" />, label: slotInfo.booking?.guestName };
             case 'bloqueado': return { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-800 dark:text-red-400', icon: <Lock className="h-4 w-4" />, label: 'Bloqueado' };
             case 'fechado': return { bg: 'bg-gray-200 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400', icon: <Lock className="h-4 w-4" />, label: 'Fechado' };
             case 'passou': return { bg: 'bg-gray-100 dark:bg-gray-900', text: 'text-gray-500 dark:text-gray-600', icon: slotInfo.booking ? <User className="h-4 w-4 opacity-50" /> : <Lock className="h-4 w-4 opacity-50"/>, label: slotInfo.booking?.guestName || 'Passou' };
@@ -59,47 +60,41 @@ function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
 
 // --- Página Principal ---
 export default function AdminBookingsDashboard() {
+    // ... (states, sem alterações)
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [structures, setStructures] = useState<Structure[]>([]);
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [activeGuests, setActiveGuests] = useState<Guest[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    
     const [modalState, setModalState] = useState<{ open: boolean, slotInfo: SlotInfo | null }>({ open: false, slotInfo: null });
     const [selectedStayId, setSelectedStayId] = useState<string>('');
-
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedSlots, setSelectedSlots] = useState<Map<string, SlotInfo>>(new Map());
-
     const isDateInPast = useMemo(() => isBefore(selectedDate, startOfDay(new Date())), [selectedDate]);
 
+    // ... (useEffect de inicialização, sem alterações)
     useEffect(() => {
         const initializeApp = async () => {
             const firestoreDb = await getFirebaseDb();
             if (!firestoreDb) { toast.error("Falha ao conectar ao banco."); setLoading(false); return; }
             setDb(firestoreDb);
-
             const unsubStructures = firestore.onSnapshot(firestore.collection(firestoreDb, 'structures'), snap => {
                 setStructures(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Structure)));
             });
-
             const staysQuery = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where("status", "==", "active"));
             const unsubStays = firestore.onSnapshot(staysQuery, snap => {
                 const guestData = snap.docs.map(doc => ({
-                    id: doc.id,
-                    guestId: doc.data().guestId,
-                    guestName: doc.data().guestName || 'Hóspede sem nome',
-                    cabinName: doc.data().cabinName || 'Cabana?',
+                    id: doc.id, guestId: doc.data().guestId, guestName: doc.data().guestName || 'Hóspede sem nome', cabinName: doc.data().cabinName || 'Cabana?',
                 }));
                 setActiveGuests(guestData);
             });
-
             return () => { unsubStructures(); unsubStays(); };
         };
         initializeApp();
     }, []);
 
+    // ... (useEffect de busca de bookings, sem alterações)
     useEffect(() => {
         if (!db) return;
         setLoading(true);
@@ -111,6 +106,14 @@ export default function AdminBookingsDashboard() {
         });
         return () => unsubBookings();
     }, [db, selectedDate]);
+
+    // ## INÍCIO DA CORREÇÃO: Memo para filtrar apenas as solicitações pendentes ##
+    const pendingBookings = useMemo(() => {
+        return bookings
+            .filter(b => b.status === 'pendente')
+            .sort((a, b) => (a.createdAt as firestore.Timestamp).toMillis() - (b.createdAt as firestore.Timestamp).toMillis());
+    }, [bookings]);
+    // ## FIM DA CORREÇÃO ##
     
     const bookingsMap = useMemo(() => {
         const map = new Map<string, Booking>();
@@ -131,9 +134,12 @@ export default function AdminBookingsDashboard() {
         if (isBefore(slotDateTime, now) && isEqual(startOfDay(now), startOfDay(selectedDate))) {
             status = 'passou';
         } else if (booking) {
+            // ## INÍCIO DA CORREÇÃO: Lógica para reconhecer o status 'pendente' ##
             if (booking.status === 'confirmado') status = 'reservado';
+            else if (booking.status === 'pendente') status = 'pendente';
             else if (booking.status === 'disponivel') status = 'disponivel';
             else status = 'bloqueado';
+            // ## FIM DA CORREÇÃO ##
         } else {
             status = structure.defaultStatus === 'open' ? 'disponivel' : 'fechado';
         }
@@ -142,8 +148,8 @@ export default function AdminBookingsDashboard() {
     }, [bookingsMap, selectedDate]);
 
     const handleSlotClick = (slotInfo: SlotInfo) => {
+        // ... (lógica de clique, sem alterações)
         if (isDateInPast) return toast.info("Não é possível alterar disponibilidade de datas passadas.");
-        
         if (selectionMode) {
             const newSelection = new Map(selectedSlots);
             if (newSelection.has(slotInfo.id)) newSelection.delete(slotInfo.id);
@@ -155,33 +161,38 @@ export default function AdminBookingsDashboard() {
         }
     };
     
-    const handleModalAction = async (action: 'create' | 'block' | 'open' | 'cancel') => {
+    const handleModalAction = async (action: 'create' | 'block' | 'open' | 'cancel' | 'approve' | 'decline') => {
         if (!db || !modalState.slotInfo) return;
         const { structure, unit, startTime, endTime, booking } = modalState.slotInfo;
         const toastId = toast.loading("Processando...");
 
         try {
             const existingDocRef = booking ? firestore.doc(db, 'bookings', booking.id) : null;
-            
-            if (action === 'cancel') {
+
+            if (action === 'approve' && existingDocRef) {
+                await firestore.updateDoc(existingDocRef, { status: 'confirmado' });
+                toast.success("Reserva aprovada!", { id: toastId });
+            }
+            else if (action === 'decline' && existingDocRef) {
+                await firestore.deleteDoc(existingDocRef);
+                toast.success("Solicitação recusada.", { id: toastId });
+            }
+            // ... (outras ações do modal, sem alterações)
+            else if (action === 'cancel') {
                 if(existingDocRef) await firestore.deleteDoc(existingDocRef);
-                toast.success("Ação desfeita! Horário retornou ao padrão.", { id: toastId });
+                toast.success("Ação desfeita!", { id: toastId });
             } 
             else if (action === 'open') {
                 const openBooking: Omit<Booking, 'id'|'createdAt'> = {
-                    structureId: structure.id, structureName: structure.name, unitId: unit, guestId: 'admin',
-                    guestName: 'Disponível', cabinId: 'N/A', date: format(selectedDate, 'yyyy-MM-dd'),
-                    startTime, endTime, status: 'disponivel', stayId: 'admin'
+                    structureId: structure.id, structureName: structure.name, unitId: unit, guestId: 'admin', guestName: 'Disponível', cabinId: 'N/A', date: format(selectedDate, 'yyyy-MM-dd'), startTime, endTime, status: 'disponivel', stayId: 'admin'
                 };
                 if(existingDocRef) await firestore.deleteDoc(existingDocRef);
                 await firestore.addDoc(firestore.collection(db, 'bookings'), { ...openBooking, createdAt: firestore.serverTimestamp() });
-                toast.success("Horário aberto para hóspedes!", { id: toastId });
+                toast.success("Horário aberto!", { id: toastId });
             }
             else if (action === 'block') {
                 const blockBooking: Omit<Booking, 'id'|'createdAt'> = {
-                    structureId: structure.id, structureName: structure.name, unitId: unit, guestId: 'admin',
-                    guestName: 'Admin', cabinId: 'N/A', date: format(selectedDate, 'yyyy-MM-dd'),
-                    startTime, endTime, status: 'cancelado', stayId: 'admin'
+                    structureId: structure.id, structureName: structure.name, unitId: unit, guestId: 'admin', guestName: 'Admin', cabinId: 'N/A', date: format(selectedDate, 'yyyy-MM-dd'), startTime, endTime, status: 'cancelado', stayId: 'admin'
                 };
                 if(existingDocRef) await firestore.deleteDoc(existingDocRef);
                 await firestore.addDoc(firestore.collection(db, 'bookings'), { ...blockBooking, createdAt: firestore.serverTimestamp() });
@@ -189,15 +200,9 @@ export default function AdminBookingsDashboard() {
             }
             else if (action === 'create') {
                 const guest = activeGuests.find(g => g.id === selectedStayId);
-                if (!guest) return toast.error("Hóspede selecionado é inválido.");
-                
+                if (!guest) return toast.error("Hóspede inválido.");
                 const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
-                    structureId: structure.id, structureName: structure.name, unitId: unit,
-                    stayId: guest.id, 
-                    guestId: guest.guestId || '', 
-                    guestName: guest.guestName, 
-                    cabinId: guest.cabinName,
-                    date: format(selectedDate, 'yyyy-MM-dd'), startTime, endTime, status: 'confirmado',
+                    structureId: structure.id, structureName: structure.name, unitId: unit, stayId: guest.id, guestId: guest.guestId || '', guestName: guest.guestName, cabinId: guest.cabinName, date: format(selectedDate, 'yyyy-MM-dd'), startTime, endTime, status: 'confirmado',
                 };
                 if(existingDocRef) await firestore.deleteDoc(existingDocRef);
                 await firestore.addDoc(firestore.collection(db, 'bookings'), { ...newBooking, createdAt: firestore.serverTimestamp() });
@@ -205,27 +210,40 @@ export default function AdminBookingsDashboard() {
             }
             setModalState({ open: false, slotInfo: null });
         } catch (error: any) {
-            toast.error(`Falha na operação: ${error.message}`, { id: toastId });
+            toast.error(`Falha: ${error.message}`, { id: toastId });
         }
     };
+
+    const handlePendingAction = async (bookingId: string, action: 'approve' | 'decline') => {
+        if(!db) return;
+        const toastId = toast.loading("Processando...");
+        try {
+            const docRef = firestore.doc(db, 'bookings', bookingId);
+            if(action === 'approve') {
+                await firestore.updateDoc(docRef, { status: 'confirmado' });
+                toast.success("Reserva aprovada!", { id: toastId });
+            } else {
+                await firestore.deleteDoc(docRef);
+                toast.success("Solicitação recusada.", { id: toastId });
+            }
+        } catch (error: any) {
+             toast.error(`Falha: ${error.message}`, { id: toastId });
+        }
+    }
     
+    // ... (handleBulkAction, sem alterações)
     const handleBulkAction = async (action: 'block' | 'release') => {
         if (!db || selectedSlots.size === 0) return;
         const toastId = toast.loading(`${action === 'block' ? 'Bloqueando' : 'Liberando'} ${selectedSlots.size} horários...`);
-
         try {
             const batch = firestore.writeBatch(db);
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
-            
             selectedSlots.forEach(slot => {
                 if(slot.booking) batch.delete(firestore.doc(db, 'bookings', slot.booking.id));
-                
                 const docRef = firestore.doc(firestore.collection(db, 'bookings'));
                 const baseBooking = {
-                    structureId: slot.structure.id, structureName: slot.structure.name, unitId: slot.unit,
-                    guestId: 'admin', date: dateStr, startTime: slot.startTime, endTime: slot.endTime, stayId: 'admin'
+                    structureId: slot.structure.id, structureName: slot.structure.name, unitId: slot.unit, guestId: 'admin', date: dateStr, startTime: slot.startTime, endTime: slot.endTime, stayId: 'admin'
                 };
-
                 if (action === 'block') {
                     batch.set(docRef, {...baseBooking, guestName: 'Admin', cabinId: 'N/A', status: 'cancelado', createdAt: firestore.serverTimestamp()});
                 } else if (action === 'release') {
@@ -246,6 +264,7 @@ export default function AdminBookingsDashboard() {
             <Toaster richColors position="top-center" />
             
             <Card>
+                {/* ... (CardHeader, sem alterações) ... */}
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
                         <CardTitle>Painel de Agendamentos</CardTitle>
@@ -273,10 +292,36 @@ export default function AdminBookingsDashboard() {
 
             {isDateInPast && <Card className="bg-amber-50 border-amber-200 dark:bg-amber-900/30"><CardContent className="p-3 text-amber-700 dark:text-amber-300 text-sm font-semibold flex items-center gap-2"><AlertTriangle className="h-4 w-4" />Modo de visualização. Não é possível alterar datas passadas.</CardContent></Card>}
 
+            {/* ## INÍCIO DA CORREÇÃO: Nova seção para solicitações pendentes ## */}
+            {!isDateInPast && pendingBookings.length > 0 && (
+                 <Card className="border-yellow-400 bg-yellow-50">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-yellow-800"><Bell className="animate-ping" /> {pendingBookings.length} Nova(s) Solicitação(ões)</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-2">
+                            {pendingBookings.map(booking => (
+                                <div key={booking.id} className="flex items-center justify-between p-2 bg-white rounded-md">
+                                    <div className="text-sm">
+                                        <span className="font-bold">{booking.guestName}</span> ({booking.cabinId}) solicitou <span className="font-bold">{booking.structureName}</span> às <span className="font-bold">{booking.startTime}</span>.
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button size="icon" className="h-8 w-8 bg-green-500 hover:bg-green-600" onClick={() => handlePendingAction(booking.id, 'approve')}><Check size={16} /></Button>
+                                        <Button size="icon" className="h-8 w-8" variant="destructive" onClick={() => handlePendingAction(booking.id, 'decline')}><X size={16} /></Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+            {/* ## FIM DA CORREÇÃO ## */}
+
             {loading ? (
                  <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {/* ... (Renderização da grade, sem alterações) ... */}
                     {structures.map(structure => (
                          <Card key={structure.id}>
                              <CardHeader>
@@ -290,7 +335,6 @@ export default function AdminBookingsDashboard() {
                                      <div key={unit}>
                                         {structure.managementType === 'by_unit' && <h4 className="text-sm font-semibold text-muted-foreground mb-1.5">{unit}</h4>}
                                         <div className="space-y-1">
-                                            {/* ## INÍCIO DA CORREÇÃO: Itera sobre structure.timeSlots ## */}
                                             {(structure.timeSlots || []).map(timeSlot => {
                                                 const slotInfo = getSlotInfo(structure, unit, timeSlot);
                                                 return (
@@ -303,7 +347,6 @@ export default function AdminBookingsDashboard() {
                                                     />
                                                 );
                                             })}
-                                            {/* ## FIM DA CORREÇÃO ## */}
                                         </div>
                                     </div>
                                 ))}
@@ -314,6 +357,7 @@ export default function AdminBookingsDashboard() {
             )}
 
             {selectionMode && !isDateInPast && (
+                // ... (Barra de ações em massa, sem alterações) ...
                 <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-background border-t p-4 shadow-lg rounded-t-lg flex items-center justify-center gap-4 z-50">
                     <span className="font-semibold text-sm">{selectedSlots.size} horário(s) selecionado(s).</span>
                     <Button size="sm" variant="destructive" onClick={() => handleBulkAction('block')} disabled={selectedSlots.size === 0}><Lock className="h-4 w-4 mr-2" />Bloquear</Button>
@@ -324,6 +368,7 @@ export default function AdminBookingsDashboard() {
             {modalState.slotInfo && (
                 <Dialog open={modalState.open} onOpenChange={(open) => !open && setModalState({ open: false, slotInfo: null })}>
                     <DialogContent>
+                        {/* ... (Conteúdo do Modal, agora com ações de aprovar/recusar) ... */}
                         <DialogHeader>
                             <DialogTitle>Gerenciar Horário</DialogTitle>
                             <DialogDescription>
@@ -334,15 +379,17 @@ export default function AdminBookingsDashboard() {
                             <div className="space-y-2">
                                 <p className="font-semibold text-sm">Ações Rápidas</p>
                                 <div className="flex flex-wrap gap-2">
+                                    {modalState.slotInfo.status === 'pendente' && <>
+                                        <Button className="bg-green-500 hover:bg-green-600" onClick={() => handleModalAction('approve')}><Check className="h-4 w-4 mr-2" />Aprovar Reserva</Button>
+                                        <Button variant="destructive" onClick={() => handleModalAction('decline')}><X className="h-4 w-4 mr-2" />Recusar</Button>
+                                    </>}
                                     {modalState.slotInfo.status === 'reservado' && <Button variant="outline" onClick={() => handleModalAction('cancel')}><Trash2 className="h-4 w-4 mr-2" />Cancelar Reserva</Button>}
                                     {modalState.slotInfo.status === 'bloqueado' && <Button variant="outline" onClick={() => handleModalAction('cancel')}><Unlock className="h-4 w-4 mr-2" />Desbloquear</Button>}
                                     {modalState.slotInfo.status === 'fechado' && <Button onClick={() => handleModalAction('open')}><Sparkles className="h-4 w-4 mr-2" />Abrir para Hóspedes</Button>}
                                     {modalState.slotInfo.status === 'disponivel' && <Button variant="secondary" onClick={() => handleModalAction('block')}><Lock className="h-4 w-4 mr-2" />Bloquear Horário</Button>}
                                 </div>
                             </div>
-
                             <div className="border-t my-4"></div>
-                            
                             <div className="space-y-3">
                                 <h3 className="font-semibold text-sm flex items-center gap-2"><BedDouble className="h-4 w-4" /> Criar / Alterar Reserva</h3>
                                 <p className="text-xs text-muted-foreground">Selecione um hóspede ativo para criar uma nova reserva neste horário.</p>

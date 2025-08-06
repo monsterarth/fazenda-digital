@@ -74,7 +74,10 @@ export default function SurveyPage() {
     const params = useParams();
     const searchParams = useSearchParams();
     const surveyId = params.surveyId as string;
-    const stayId = searchParams.get('stay');
+
+    // ## INÍCIO DA CORREÇÃO: Lendo o parâmetro 'stayId' em vez de 'stay' ##
+    const stayId = searchParams.get('stayId');
+    // ## FIM DA CORREÇÃO ##
 
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [survey, setSurvey] = useState<Survey | null>(null);
@@ -197,6 +200,14 @@ export default function SurveyPage() {
                             Sua opinião é muito valiosa para nós e nos ajudará a melhorar continuamente nossos serviços.
                         </CardDescription>
                     </CardHeader>
+                    {survey.reward?.hasReward && (
+                         <CardContent>
+                             <div className="mt-4 p-4 bg-green-50 text-green-800 rounded-md">
+                                 <p className="font-bold text-lg">{survey.reward.type}</p>
+                                 <p>{survey.reward.description}</p>
+                             </div>
+                         </CardContent>
+                    )}
                 </Card>
             </div>
         )
@@ -227,30 +238,31 @@ export default function SurveyPage() {
                                             
                                             {question.type === 'rating_5_stars' && <Rating5Stars value={answers[question.id] || 0} onChange={(val) => handleAnswerChange(question.id, val)} />}
                                             {question.type === 'nps_0_10' && <Nps0To10 value={answers[question.id]} onChange={(val) => handleAnswerChange(question.id, val)} />}
-                                            {question.type === 'text' && <Input onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleAnswerChange(question.id, e.target.value)} />}
-                                            {question.type === 'comment_box' && <Textarea onChange={(e) => handleAnswerChange(question.id, e.target.value)} />}
+                                            {question.type === 'text' && <Input value={answers[question.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleAnswerChange(question.id, e.target.value)} />}
+                                            {question.type === 'comment_box' && <Textarea value={answers[question.id] || ''} onChange={(e) => handleAnswerChange(question.id, e.target.value)} />}
                                             {question.type === 'multiple_choice' && (
                                                 <div className="space-y-2">
                                                     {question.options?.map(option => (
                                                         <div key={option} className="flex items-center space-x-2">
                                                             {question.allowMultiple ? (
-                                                                <Checkbox 
-                                                                    id={`${question.id}-${option}`} 
-                                                                    onCheckedChange={(checked) => {
-                                                                        const current = answers[question.id] || [];
-                                                                        const newAnswers = checked ? [...current, option] : current.filter((item: string) => item !== option);
-                                                                        handleAnswerChange(question.id, newAnswers);
-                                                                    }}
-                                                                />
+                                                                <>
+                                                                    <Checkbox 
+                                                                        id={`${question.id}-${option}`}
+                                                                        checked={answers[question.id]?.includes(option) || false}
+                                                                        onCheckedChange={(checked) => {
+                                                                            const current = answers[question.id] || [];
+                                                                            const newAnswers = checked ? [...current, option] : current.filter((item: string) => item !== option);
+                                                                            handleAnswerChange(question.id, newAnswers);
+                                                                        }}
+                                                                    />
+                                                                    <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+                                                                </>
                                                             ) : (
-                                                                <RadioGroup onValueChange={(val) => handleAnswerChange(question.id, val)} value={answers[question.id]}>
-                                                                    <div className="flex items-center space-x-2">
-                                                                        <RadioGroupItem value={option} id={`${question.id}-${option}`} />
-                                                                        <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
-                                                                    </div>
-                                                                </RadioGroup>
+                                                                <div className="flex items-center space-x-2">
+                                                                    <RadioGroupItem value={option} id={`${question.id}-${option}`} checked={answers[question.id] === option} onClick={() => handleAnswerChange(question.id, option)} />
+                                                                    <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+                                                                </div>
                                                             )}
-                                                             {!question.allowMultiple || <Label htmlFor={`${question.id}-${option}`}>{option}</Label>}
                                                         </div>
                                                     ))}
                                                 </div>

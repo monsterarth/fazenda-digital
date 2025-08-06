@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getFirebaseDb, getFirebaseAuth } from '@/lib/firebase'; 
-import { Auth, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirebaseDb } from '@/lib/firebase'; 
 import * as firestore from 'firebase/firestore';
+import { useGuest } from '@/context/GuestProvider';
 import { Structure, Booking, TimeSlot } from '@/types/scheduling';
 import { format, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,17 +25,11 @@ import {
 import { toast, Toaster } from 'sonner';
 import Image from 'next/image';
 
-// Interface para o usuário logado com dados da sua estadia
-interface AppUser extends User {
-    stayId: string;
-    cabinName: string;
-}
-
 export default function GuestSchedulingPage() {
-    const [db, setDb] = useState<firestore.Firestore | null>(null);
-    const [user, setUser] = useState<AppUser | null>(null);
-    const [authLoading, setAuthLoading] = useState(true);
+    const { stay, isLoading: isGuestLoading } = useGuest();
+    const router = useRouter();
 
+    const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [structures, setStructures] = useState<Structure[]>([]);
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [loadingData, setLoadingData] = useState(true);
@@ -44,103 +39,75 @@ export default function GuestSchedulingPage() {
     const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
     const todayFormatted = useMemo(() => format(new Date(), "eeee, dd 'de' MMMM", { locale: ptBR }), []);
 
-    // ## INÍCIO DA CORREÇÃO: Lógica de autenticação simplificada e busca de dados do hóspede ##
     useEffect(() => {
-        const initializeFirebase = async () => {
+        if (!isGuestLoading && !stay) {
+            router.push('/portal');
+        }
+    }, [stay, isGuestLoading, router]);
+
+    useEffect(() => {
+        const initializeData = async () => {
             const firestoreDb = await getFirebaseDb();
-            const firebaseAuth = await getFirebaseAuth();
             setDb(firestoreDb);
 
-            if (!firebaseAuth || !firestoreDb) {
+            if (!firestoreDb) {
                 toast.error("Erro de conexão.");
-                setAuthLoading(false);
                 setLoadingData(false);
                 return;
             }
-
-            const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (currentUser) => {
-                if (currentUser) {
-                    // Conforme solicitado, assume que o usuário logado tem uma estadia válida.
-                    // Busca a primeira estadia encontrada para este usuário.
-                    const staysQuery = firestore.query(
-                        firestore.collection(firestoreDb, "stays"),
-                        firestore.where("guestId", "==", currentUser.uid),
-                        firestore.limit(1) // Pega a primeira que encontrar
-                    );
-                    const staySnap = await firestore.getDocs(staysQuery);
-                    
-                    if (!staySnap.empty) {
-                        const stayDoc = staySnap.docs[0];
-                        setUser({ 
-                            ...currentUser, 
-                            stayId: stayDoc.id, 
-                            cabinName: stayDoc.data().cabinName 
-                        });
-                    } else {
-                        // Se mesmo assim não encontrar, o usuário não poderá agendar.
-                        setUser(null); 
-                    }
-                } else {
-                    setUser(null); // Usuário deslogado
-                }
-                setAuthLoading(false);
-            });
 
             const structuresQuery = firestore.query(firestore.collection(firestoreDb, 'structures'));
             const unsubStructures = firestore.onSnapshot(structuresQuery, snap => {
                 setStructures(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Structure)));
                 setLoadingData(false);
             });
-            
-            return () => { unsubscribeAuth(); unsubStructures(); };
-        };
-        initializeFirebase();
-    }, []);
 
-    useEffect(() => {
-        if (!db) return;
-        const bookingsQuery = firestore.query(firestore.collection(db, 'bookings'), firestore.where('date', '==', today));
-        const unsubBookings = firestore.onSnapshot(bookingsQuery, snap => {
-            setBookings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
-        });
-        return () => unsubBookings();
-    }, [db, today]);
-    // ## FIM DA CORREÇÃO ##
+            const bookingsQuery = firestore.query(firestore.collection(firestoreDb, 'bookings'), firestore.where('date', '==', today));
+            const unsubBookings = firestore.onSnapshot(bookingsQuery, snap => {
+                setBookings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
+            });
+            
+            return () => { unsubStructures(); unsubBookings(); };
+        };
+        initializeData();
+    }, [today]);
 
     const userBookings = useMemo(() => {
-        if (!user) return [];
-        return bookings.filter(b => b.guestId === user.uid && b.status === 'confirmado');
-    }, [bookings, user]);
+        if (!stay) return [];
+        return bookings.filter(b => b.stayId === stay.id && b.status === 'confirmado');
+    }, [bookings, stay]);
 
     const handleBooking = async () => {
         const { structure, timeSlot, unit } = alertState;
-        if (!db || !user || !structure || !timeSlot) return;
+        if (!db || !stay || !structure || !timeSlot) {
+            return toast.error("Não foi possível identificar sua estadia para fazer a reserva.");
+        }
         
         const existingBooking = userBookings.find(b => b.structureId === structure.id);
         const toastId = toast.loading(existingBooking ? "Alterando agendamento..." : "Solicitando agendamento...");
 
         try {
-            if(existingBooking) {
-                await firestore.deleteDoc(firestore.doc(db, 'bookings', existingBooking.id));
-            }
+            if(existingBooking) await firestore.deleteDoc(firestore.doc(db, 'bookings', existingBooking.id));
             
+            // ## INÍCIO DA CORREÇÃO ##
+            // O campo 'guestId' agora usa o 'stay.id' como um identificador de usuário confiável para o contexto do portal.
             const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
                 structureId: structure.id,
                 structureName: structure.name,
                 unitId: unit || '',
-                stayId: user.stayId,
-                guestId: user.uid,
-                guestName: user.displayName || 'Hóspede',
-                cabinId: user.cabinName,
+                stayId: stay.id,
+                guestId: stay.id, // Usando o stay.id para preencher o campo guestId
+                guestName: stay.guestName,
+                cabinId: stay.cabinName,
                 date: today,
                 startTime: timeSlot.startTime,
                 endTime: timeSlot.endTime,
                 status: 'pendente',
             };
+            // ## FIM DA CORREÇÃO ##
 
             await firestore.addDoc(firestore.collection(db, 'bookings'), { ...newBooking, createdAt: firestore.serverTimestamp() });
-            toast.success("Agendamento solicitado! Aguarde a confirmação da recepção.", { id: toastId });
-
+            toast.success("Solicitação enviada! Aguarde a confirmação da recepção.", { id: toastId });
         } catch(error: any) {
             toast.error("Ocorreu um erro", { id: toastId, description: error.message });
         } finally {
@@ -159,24 +126,18 @@ export default function GuestSchedulingPage() {
             (structure.managementType === 'by_structure' || b.unitId === unit)
         );
         
-        // Regras de disponibilidade para o hóspede
         if (booking) {
-            if (booking.status === 'confirmado' && booking.guestId === user?.uid) return { status: 'meu_horario' };
-            if (booking.status === 'confirmado' || booking.status === 'cancelado') return { status: 'indisponivel' }; // 'cancelado' é usado para bloqueios
-            if (booking.status === 'disponivel') return { status: 'disponivel' }; // Aberto pelo admin
+            if (booking.status === 'confirmado' && stay && booking.stayId === stay.id) return { status: 'meu_horario' };
+            if (booking.status === 'confirmado' || booking.status === 'cancelado') return { status: 'indisponivel' };
+            if (booking.status === 'disponivel') return { status: 'disponivel' };
         }
         
         if (structure.defaultStatus === 'open') return { status: 'disponivel' };
-
-        return { status: 'indisponivel' }; // Fechado por padrão e sem liberação do admin
+        return { status: 'indisponivel' };
     };
 
-    if (authLoading || loadingData) {
+    if (isGuestLoading || loadingData || !stay) {
         return <div className="flex flex-col justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /><p className="mt-4 text-muted-foreground">Carregando...</p></div>;
-    }
-    
-    if (!user) {
-        return <div className="flex flex-col justify-center items-center h-screen text-center p-4"><AlertTriangle className="h-12 w-12 text-destructive" /><p className="mt-4 text-muted-foreground">Você precisa estar logado com uma estadia válida para ver os agendamentos.</p></div>;
     }
 
     return (
@@ -194,10 +155,7 @@ export default function GuestSchedulingPage() {
                         <ul className="space-y-2">
                            {userBookings.map(b => (
                                <li key={b.id} className="flex justify-between items-center text-sm p-2 rounded-md bg-white dark:bg-background">
-                                   <div>
-                                       <span className="font-semibold">{b.structureName}</span> {b.unitId && `(${b.unitId})`}
-                                       <span className="text-muted-foreground ml-2">{b.startTime} - {b.endTime}</span>
-                                   </div>
+                                   <div><span className="font-semibold">{b.structureName}</span> {b.unitId && `(${b.unitId})`}<span className="text-muted-foreground ml-2">{b.startTime} - {b.endTime}</span></div>
                                    <Badge>{b.status}</Badge>
                                </li>
                            ))}
@@ -219,16 +177,11 @@ export default function GuestSchedulingPage() {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                {/* ## INÍCIO DA CORREÇÃO: Lógica de renderização de horários ## */}
                                 {structure.managementType === 'by_structure' ? (
                                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
                                         {(structure.timeSlots || []).map(timeSlot => {
                                             const slotInfo = getStatusForSlot(structure, timeSlot);
-                                            return (
-                                                <Button key={timeSlot.id} variant={slotInfo.status === 'meu_horario' ? 'default' : 'outline'} disabled={slotInfo.status !== 'disponivel'} onClick={() => setAlertState({ open: true, structure, timeSlot })}>
-                                                    {timeSlot.startTime}
-                                                </Button>
-                                            );
+                                            return <Button key={timeSlot.id} variant={slotInfo.status === 'meu_horario' ? 'default' : 'outline'} disabled={slotInfo.status !== 'disponivel'} onClick={() => setAlertState({ open: true, structure, timeSlot })}>{timeSlot.startTime}</Button>;
                                         })}
                                     </div>
                                 ) : (
@@ -239,18 +192,13 @@ export default function GuestSchedulingPage() {
                                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
                                                     {(structure.timeSlots || []).map(timeSlot => {
                                                         const slotInfo = getStatusForSlot(structure, timeSlot, unit);
-                                                        return (
-                                                             <Button key={`${unit}-${timeSlot.id}`} variant={slotInfo.status === 'meu_horario' ? 'default' : 'outline'} disabled={slotInfo.status !== 'disponivel'} onClick={() => setAlertState({ open: true, structure, timeSlot, unit })}>
-                                                                {timeSlot.startTime}
-                                                            </Button>
-                                                        );
+                                                        return <Button key={`${unit}-${timeSlot.id}`} variant={slotInfo.status === 'meu_horario' ? 'default' : 'outline'} disabled={slotInfo.status !== 'disponivel'} onClick={() => setAlertState({ open: true, structure, timeSlot, unit })}>{timeSlot.startTime}</Button>;
                                                     })}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 )}
-                                {/* ## FIM DA CORREÇÃO ## */}
                             </CardContent>
                         </Card>
                     );
@@ -263,7 +211,7 @@ export default function GuestSchedulingPage() {
                         <AlertDialogTitle>Confirmar Agendamento</AlertDialogTitle>
                         <AlertDialogDescription>
                             {userBookings.some(b => b.structureId === alertState.structure?.id) 
-                                ? `Você já tem um agendamento para ${alertState.structure?.name}. Deseja substituí-lo por este novo horário das ${alertState.timeSlot?.startTime}?`
+                                ? `Você já tem uma reserva para ${alertState.structure?.name}. Deseja substituí-la por este novo horário das ${alertState.timeSlot?.startTime}?`
                                 : `Deseja solicitar o agendamento de ${alertState.structure?.name} ${alertState.unit ? `(${alertState.unit})` : ''} para as ${alertState.timeSlot?.startTime}?`
                             }
                         </AlertDialogDescription>

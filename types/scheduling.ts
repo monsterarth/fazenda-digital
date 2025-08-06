@@ -28,6 +28,9 @@ export interface Structure {
   managementType: 'by_structure' | 'by_unit';
   units: string[];
   defaultStatus: 'open' | 'closed';
+  approvalMode: 'automatic' | 'manual'; 
+
+  
 
   // O campo 'timeSettings' foi substituído por 'timeSlots' para se alinhar
   // com a nova interface de configuração manual e gerada.

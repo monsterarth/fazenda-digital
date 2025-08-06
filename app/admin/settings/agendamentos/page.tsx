@@ -8,10 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { toast, Toaster } from 'sonner';
-import { PlusCircle, Edit, Trash2, Loader2, Sparkles, Wand2, Building, Grip, CalendarCog } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Loader2, Sparkles, Wand2, Building, Grip, CalendarCog, CheckCircle, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useForm, useFieldArray, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,7 +19,6 @@ import { z } from 'zod';
 import Image from 'next/image';
 import { addMinutes, format as formatTime, parse } from 'date-fns';
 
-// --- Esquemas de Validação ---
 const timeSlotSchema = z.object({
   id: z.string(),
   startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "HH:mm"),
@@ -32,13 +31,13 @@ const structureFormSchema = z.object({
   photo: z.any().refine(file => file, "A foto da estrutura é obrigatória."),
   managementType: z.enum(['by_structure', 'by_unit']),
   defaultStatus: z.enum(['open', 'closed']),
+  approvalMode: z.enum(['automatic', 'manual']), // ## CORREÇÃO: Adicionado ao schema ##
   units: z.array(z.object({ name: z.string().min(1, "O nome da unidade é obrigatório.") })).min(1, "Adicione pelo menos uma unidade."),
   timeSlots: z.array(timeSlotSchema).min(1, "É necessário configurar pelo menos um horário."),
 });
 
 type StructureFormValues = z.infer<typeof structureFormSchema>;
 
-// --- Componente do Painel de Edição (Inline) ---
 function StructureFormPanel({ structure, onFinished, onCancel }: { structure?: Structure; onFinished: () => void; onCancel: () => void; }) {
     const form = useForm<StructureFormValues>({
         resolver: zodResolver(structureFormSchema),
@@ -47,6 +46,7 @@ function StructureFormPanel({ structure, onFinished, onCancel }: { structure?: S
             photo: structure?.photoURL || null,
             managementType: structure?.managementType || 'by_unit',
             defaultStatus: structure?.defaultStatus || 'open',
+            approvalMode: structure?.approvalMode || 'manual', // ## CORREÇÃO: Adicionado aos valores padrão ##
             units: structure?.units?.map(u => ({ name: u })) || [{ name: '' }],
             timeSlots: structure?.timeSlots || [],
         }
@@ -63,9 +63,7 @@ function StructureFormPanel({ structure, onFinished, onCancel }: { structure?: S
         const endTime = parse(generator.end, 'HH:mm', new Date());
         const duration = parseInt(generator.duration, 10);
         const interval = parseInt(generator.interval, 10);
-
         if (isNaN(duration) || duration <= 0) return toast.error("A duração deve ser um número positivo.");
-
         while (currentTime < endTime) {
             const slotEnd = addMinutes(currentTime, duration);
             if(slotEnd > endTime) break;
@@ -90,17 +88,15 @@ function StructureFormPanel({ structure, onFinished, onCancel }: { structure?: S
                 photoURL = await uploadFile(data.photo, `structures/${docId}/${data.photo.name}`);
             }
 
-            // ## INÍCIO DA CORREÇÃO ##
-            // Construindo o objeto de dados manualmente para garantir que o campo 'photo' (File) não seja incluído.
             const structureData = {
                 name: data.name,
-                photoURL: photoURL, // Usamos a variável que contém a URL da imagem
+                photoURL: photoURL,
                 managementType: data.managementType,
                 defaultStatus: data.defaultStatus,
+                approvalMode: data.approvalMode, // ## CORREÇÃO: Salva o modo de aprovação ##
                 units: data.units.map(u => u.name),
                 timeSlots: data.timeSlots,
             };
-            // ## FIM DA CORREÇÃO ##
 
             await firestore.setDoc(firestore.doc(db, "structures", docId), structureData);
             toast.success("Estrutura salva com sucesso!", { id: toastId });
@@ -124,6 +120,22 @@ function StructureFormPanel({ structure, onFinished, onCancel }: { structure?: S
                                     <FormField name="managementType" control={form.control} render={({ field }) => (<FormItem><FormLabel>Gerenciamento</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="by_unit">Por Unidade</SelectItem><SelectItem value="by_structure">Por Estrutura</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                                     <FormField name="defaultStatus" control={form.control} render={({ field }) => (<FormItem><FormLabel>Status Padrão</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="open">Aberto</SelectItem><SelectItem value="closed">Fechado</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                                 </div>
+                                {/* ## INÍCIO DA CORREÇÃO: Novo campo para Modo de Aprovação ## */}
+                                <FormField name="approvalMode" control={form.control} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Modo de Aprovação</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="manual">Manual (Requer aprovação da recepção)</SelectItem>
+                                                <SelectItem value="automatic">Automática (Reserva é confirmada na hora)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <FormDescription>Escolha se o hóspede precisa esperar pela confirmação da recepção.</FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                                {/* ## FIM DA CORREÇÃO ## */}
                             </CardContent>
                         </Card>
                          <Card>
@@ -182,7 +194,6 @@ function StructureFormPanel({ structure, onFinished, onCancel }: { structure?: S
     );
 }
 
-// --- PÁGINA PRINCIPAL (SEM MODAL) ---
 export default function ManageSchedulesPage() {
     const [structures, setStructures] = useState<Structure[]>([]);
     const [loading, setLoading] = useState(true);
@@ -255,6 +266,12 @@ export default function ManageSchedulesPage() {
                                                         {structure.managementType === 'by_unit' ? 'Por Unidade' : 'Por Estrutura'}
                                                     </Badge>
                                                     <Badge variant={structure.defaultStatus === 'open' ? 'default' : 'destructive'}>{structure.defaultStatus === 'open' ? 'Aberto' : 'Fechado'}</Badge>
+                                                    {/* ## INÍCIO DA CORREÇÃO: Badge para modo de aprovação ## */}
+                                                    <Badge variant={structure.approvalMode === 'automatic' ? 'outline' : 'default'} className="flex items-center gap-1">
+                                                        {structure.approvalMode === 'automatic' ? <CheckCircle className="h-3 w-3 text-green-500" /> : <Clock className="h-3 w-3" />}
+                                                        {structure.approvalMode === 'automatic' ? 'Auto' : 'Manual'}
+                                                    </Badge>
+                                                    {/* ## FIM DA CORREÇÃO ## */}
                                                 </div>
                                             </div>
                                         </div>

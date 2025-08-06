@@ -1,28 +1,57 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+// lib/firebase.ts
 
-// Configurações do Firebase (sem a parte de Storage)
+import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { getFirestore, Firestore } from "firebase/firestore";
+// ## INÍCIO DA CORREÇÃO ##
+// Adicionada a importação do getAuth
+import { getAuth, Auth } from "firebase/auth";
+// ## FIM DA CORREÇÃO ##
+
+// Suas configurações do Firebase
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Inicializa o Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+// ## INÍCIO DA CORREÇÃO ##
+// Variáveis para garantir que estamos usando a mesma instância (padrão singleton)
+let app: FirebaseApp;
+let db: Firestore;
+let auth: Auth;
+// ## FIM DA CORREÇÃO ##
 
-async function getFirebaseDb() {
-  return db;
+// Inicializa o Firebase de forma segura para o ambiente Next.js
+if (!getApps().length) {
+    app = initializeApp(firebaseConfig);
+} else {
+    app = getApp();
 }
 
-// NOVA FUNÇÃO uploadFile PARA O VERCEL BLOB
+// Inicializa os serviços
+db = getFirestore(app);
+auth = getAuth(app);
+
+
+// Função para obter o Firestore
+async function getFirebaseDb(): Promise<Firestore> {
+    return db;
+}
+
+// ## INÍCIO DA CORREÇÃO ##
+// Nova função para obter o Auth, que estava faltando
+async function getFirebaseAuth(): Promise<Auth> {
+    return auth;
+}
+// ## FIM DA CORREÇÃO ##
+
+
+// Sua função original para upload com Vercel Blob - sem alterações
 async function uploadFile(file: File, pathname: string): Promise<string> {
     try {
-        // 1. Envia o arquivo para a nossa rota de API interna.
         const response = await fetch(
             `/api/upload?filename=${pathname}`,
             {
@@ -36,16 +65,16 @@ async function uploadFile(file: File, pathname: string): Promise<string> {
             throw new Error(`Falha no upload do arquivo: ${errorText}`);
         }
 
-        // 2. A API retorna os detalhes do blob, incluindo a URL final de acesso.
         const newBlob = await response.json();
-
-        // 3. Retorna a URL pública do arquivo.
         return newBlob.url;
 
     } catch (error) {
         console.error("Erro no upload para o Vercel Blob:", error);
-        throw error; // Propaga o erro para ser pego pela UI (ex: toast de erro)
+        throw error;
     }
 }
 
-export { getFirebaseDb, uploadFile, db };
+// ## INÍCIO DA CORREÇÃO ##
+// Exportando a nova função getFirebaseAuth junto com as existentes
+export { getFirebaseDb, getFirebaseAuth, uploadFile, db, auth };
+// ## FIM DA CORREÇÃO ##

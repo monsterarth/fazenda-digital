@@ -4,8 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from "firebase/firestore";
 import { useGuest } from '@/context/GuestProvider';
-import { Survey } from '@/types/survey'; // Importa do novo arquivo dedicado
-import { Stay } from '@/types'; // Importa o tipo Stay
+import { Survey } from '@/types/survey';
+import { Stay } from '@/types'; // Importando o tipo Stay para a checagem de data
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,43 +14,51 @@ import { differenceInHours } from 'date-fns';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
-function SurveyCard({ survey, isLocked }: { survey: Survey, isLocked: boolean }) {
-    // Envolvemos o card em um Link se não estiver bloqueado
-    const CardLinkWrapper = ({ children }: { children: React.ReactNode }) => 
-        isLocked ? <div>{children}</div> : <Link href={`/portal/pesquisas/${survey.id}`} className="block h-full">{children}</Link>;
+// ## INÍCIO DA CORREÇÃO: Passando o stayId para o componente ##
+function SurveyCard({ survey, isLocked, stayId }: { survey: Survey, isLocked: boolean, stayId: string }) {
+    
+    // ## INÍCIO DA CORREÇÃO: Criando a URL correta ##
+    const surveyUrl = `/s/${survey.id}?stayId=${stayId}`;
+    // ## FIM DA CORREÇÃO ##
 
-    return (
-        <CardLinkWrapper>
-            <Card className={cn("flex flex-col h-full transition-all", isLocked ? "bg-muted/50 cursor-not-allowed" : "hover:border-primary hover:shadow-lg")}>
-                <CardHeader>
-                    <CardTitle>{survey.title}</CardTitle>
-                    <CardDescription>{survey.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex-grow flex flex-col justify-end">
-                    {survey.reward?.hasReward && (
-                        <div className="mb-4 p-2 bg-green-50 text-green-700 rounded-md text-sm flex items-center gap-2">
-                            <Gift className="h-4 w-4" />
-                            <div>
-                                <p className="font-bold">{survey.reward.type}</p>
-                                <p>{survey.reward.description}</p>
-                            </div>
+    const cardContent = (
+        <Card className={cn("flex flex-col h-full transition-all", isLocked ? "bg-muted/50 cursor-not-allowed" : "hover:border-primary hover:shadow-lg")}>
+            <CardHeader>
+                <CardTitle>{survey.title}</CardTitle>
+                <CardDescription>{survey.description}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-grow flex flex-col justify-end">
+                {survey.reward?.hasReward && (
+                    <div className="mb-4 p-2 bg-green-50 text-green-700 rounded-md text-sm flex items-center gap-2">
+                        <Gift className="h-4 w-4" />
+                        <div>
+                            <p className="font-bold">{survey.reward.type}</p>
+                            <p>{survey.reward.description}</p>
                         </div>
-                    )}
-                    {isLocked ? (
-                        <Button disabled className="w-full">
-                            <Lock className="mr-2 h-4 w-4" />
-                            Liberada no Check-out
-                        </Button>
-                    ) : (
-                        <Button className="w-full">
+                    </div>
+                )}
+                {isLocked ? (
+                    <Button disabled className="w-full">
+                        <Lock className="mr-2 h-4 w-4" />
+                        Liberada no Check-out
+                    </Button>
+                ) : (
+                    <Button asChild className="w-full">
+                        {/* ## INÍCIO DA CORREÇÃO: Usando a nova URL ## */}
+                        <Link href={surveyUrl}>
                             Responder Pesquisa <ArrowRight className="ml-2 h-4 w-4" />
-                        </Button>
-                    )}
-                </CardContent>
-            </Card>
-        </CardLinkWrapper>
+                        </Link>
+                        {/* ## FIM DA CORREÇÃO ## */}
+                    </Button>
+                )}
+            </CardContent>
+        </Card>
     );
+
+    // O Link agora envolve o card apenas se não estiver bloqueado
+    return isLocked ? <div>{cardContent}</div> : <div className="h-full">{cardContent}</div>;
 }
+
 
 export default function GuestSurveysPage() {
     const { stay, isLoading: isGuestLoading } = useGuest();
@@ -99,7 +107,9 @@ export default function GuestSurveysPage() {
             </header>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {surveys.map(survey => (
-                    <SurveyCard key={survey.id} survey={survey} isLocked={isDefaultSurveyLocked(survey)} />
+                    // ## INÍCIO DA CORREÇÃO: Passando o stay.id para o card ##
+                    <SurveyCard key={survey.id} survey={survey} isLocked={isDefaultSurveyLocked(survey)} stayId={stay.id} />
+                    // ## FIM DA CORREÇÃO ##
                 ))}
                 {surveys.length === 0 && (
                      <Card className="md:col-span-3 text-center p-12">

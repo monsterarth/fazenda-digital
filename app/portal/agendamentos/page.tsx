@@ -82,7 +82,7 @@ export default function GuestSchedulingPage() {
                 structureName: structure.name,
                 unitId: unit || '',
                 stayId: stay.id,
-                guestId: stay.guestId || stay.id,
+                guestId: stay.id,
                 guestName: stay.guestName,
                 cabinId: stay.cabinName,
                 date: today,

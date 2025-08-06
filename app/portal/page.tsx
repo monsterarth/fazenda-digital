@@ -18,7 +18,14 @@ import { Loader2 } from 'lucide-react';
 import { getFirebaseDb } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
-const loginSchema = z.object({ token: z.string().min(6, "O token deve ter 6 caracteres.") });
+// ## INÍCIO DA CORREÇÃO: Schema agora converte o token para maiúsculas ##
+const loginSchema = z.object({ 
+  token: z.string()
+    .min(6, "O token deve ter 6 caracteres.")
+    .transform((val) => val.toUpperCase()), // Garante que o token seja sempre maiúsculo
+});
+// ## FIM DA CORREÇÃO ##
+
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function GuestLoginPage() {
@@ -42,7 +49,6 @@ export default function GuestLoginPage() {
   const onSubmit = async (data: LoginFormValues) => {
     setIsSubmitting(true);
     try {
-      // 1. Validar o token com a API
       const response = await fetch('/api/auth/guest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -51,16 +57,13 @@ export default function GuestLoginPage() {
       const stayData = await response.json();
       if (!response.ok) throw new Error(stayData.error || 'Falha no login.');
 
-      // 2. Se o token for válido, buscar os agendamentos
       const db = await getFirebaseDb();
       const bookingsQuery = query(collection(db, "bookings"), where("stayId", "==", stayData.id));
       const bookingsSnapshot = await getDocs(bookingsQuery);
       const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
       
-      // 3. Montar o objeto completo da sessão
       const stayWithBookings: Stay = { ...stayData, bookings: bookingsData };
       
-      // 4. Salvar no estado global e na memória do navegador
       setStay(stayWithBookings);
       sessionStorage.setItem('synapse-stay', JSON.stringify(stayWithBookings));
 
@@ -100,7 +103,14 @@ export default function GuestLoginPage() {
                       <FormLabel className="sr-only">Token de Acesso</FormLabel>
                       <FormControl>
                         <div className="flex justify-center">
-                          <InputOTP maxLength={6} {...field} onComplete={form.handleSubmit(onSubmit)}>
+                          {/* ## INÍCIO DA CORREÇÃO: Adicionada a propriedade 'pattern' ## */}
+                          <InputOTP 
+                            maxLength={6} 
+                            {...field} 
+                            pattern="[a-zA-Z0-9]{6}" // Permite letras e números, ativando o teclado correto
+                            onComplete={form.handleSubmit(onSubmit)}
+                          >
+                          {/* ## FIM DA CORREÇÃO ## */}
                             <InputOTPGroup>
                               <InputOTPSlot index={0} /><InputOTPSlot index={1} /><InputOTPSlot index={2} />
                             </InputOTPGroup>

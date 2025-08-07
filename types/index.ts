@@ -17,6 +17,8 @@ export interface Stay {
   preCheckInId: string;
   createdAt: string;
   bookings?: Booking[];
+  termsAcceptedAt?: Timestamp; // Armazena QUANDO os termos foram aceitos
+
 }
 
 // ========================================================================
@@ -353,6 +355,10 @@ export interface Property {
       menu: BreakfastMenuCategory[]; 
       orderingStartTime: string;
       orderingEndTime: string;
+    };
+policies?: {
+      content: string; // O texto completo dos termos e políticas. Suporta Markdown.
+      lastUpdatedAt: Timestamp; // Armazena QUANDO as políticas foram salvas pela última vez
     };
 }
 // ========================================================================

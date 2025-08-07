@@ -1,13 +1,14 @@
 "use client";
 
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
-import { Stay, Booking, PreCheckIn } from '@/types';
+import { Stay, Booking, PreCheckIn, Property } from '@/types';
 import { getFirebaseDb, db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, Timestamp } from 'firebase/firestore';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface GuestContextType {
   stay: Stay | null;
-  preCheckIn: PreCheckIn | null; // Adicionado para guardar os dados do pré-check-in
+  preCheckIn: PreCheckIn | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   setStay: (stay: Stay | null) => void;
@@ -20,6 +21,9 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const [stay, setStay] = useState<Stay | null>(null);
   const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  const router = useRouter();
+  const pathname = usePathname();
 
   const fetchAndSetBookings = useCallback(async (stayData: Stay): Promise<Stay> => {
     if (!stayData?.id) return stayData;
@@ -53,17 +57,40 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
       try {
         const savedStayJSON = sessionStorage.getItem('synapse-stay');
         if (savedStayJSON) {
-          const savedStayData = JSON.parse(savedStayJSON);
+          const savedStayData: Stay = JSON.parse(savedStayJSON);
           
-          // Busca todos os dados necessários em paralelo para otimizar
-          const [stayWithBookings, preCheckInData] = await Promise.all([
+          if (savedStayData.termsAcceptedAt) {
+            const { seconds, nanoseconds } = savedStayData.termsAcceptedAt as any;
+            savedStayData.termsAcceptedAt = new Timestamp(seconds, nanoseconds);
+          }
+          
+          const [stayWithBookings, preCheckInData, propertyDoc] = await Promise.all([
             fetchAndSetBookings(savedStayData),
-            fetchPreCheckIn(savedStayData)
+            fetchPreCheckIn(savedStayData),
+            getDoc(doc(db, "properties", "main_property"))
           ]);
           
           if (isMounted) {
             setStay(stayWithBookings);
             setPreCheckIn(preCheckInData);
+
+            // ## INÍCIO DA CORREÇÃO: Lógica de redirecionamento agora verifica a rota ##
+            const isGuestPortal = pathname.startsWith('/portal');
+
+            // A verificação só acontece se o usuário estiver navegando no portal do hóspede
+            if (isGuestPortal && propertyDoc.exists()) {
+              const property = propertyDoc.data() as Property;
+              const policiesLastUpdated = property.policies?.lastUpdatedAt;
+              const termsAcceptedAt = stayWithBookings.termsAcceptedAt;
+
+              const needsToAccept = !termsAcceptedAt || 
+                (policiesLastUpdated && termsAcceptedAt.toMillis() < policiesLastUpdated.toMillis());
+
+              if (needsToAccept && pathname !== '/portal/termos' && pathname !== '/portal') {
+                router.replace('/portal/termos');
+              }
+            }
+            // ## FIM DA CORREÇÃO ##
           }
         }
       } catch (error) {
@@ -79,13 +106,13 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       isMounted = false;
     };
-  }, [fetchAndSetBookings, fetchPreCheckIn]);
+  }, [fetchAndSetBookings, fetchPreCheckIn, pathname, router]);
 
   const logout = () => {
     setStay(null);
-    setPreCheckIn(null); // Limpa o preCheckIn no logout
+    setPreCheckIn(null);
     sessionStorage.removeItem('synapse-stay');
-    window.location.href = '/portal';
+    router.push('/portal');
   };
 
   return (

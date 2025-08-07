@@ -18,13 +18,11 @@ import { Loader2 } from 'lucide-react';
 import { getFirebaseDb } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
-// ## INÍCIO DA CORREÇÃO: Schema agora converte o token para maiúsculas ##
 const loginSchema = z.object({ 
   token: z.string()
     .min(6, "O token deve ter 6 caracteres.")
-    .transform((val) => val.toUpperCase()), // Garante que o token seja sempre maiúsculo
+    .transform((val) => val.toUpperCase()),
 });
-// ## FIM DA CORREÇÃO ##
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
@@ -103,11 +101,11 @@ export default function GuestLoginPage() {
                       <FormLabel className="sr-only">Token de Acesso</FormLabel>
                       <FormControl>
                         <div className="flex justify-center">
-                          {/* ## INÍCIO DA CORREÇÃO: Adicionada a propriedade 'pattern' ## */}
+                          {/* ## INÍCIO DA CORREÇÃO: Corrigida a propriedade 'pattern' ## */}
                           <InputOTP 
                             maxLength={6} 
                             {...field} 
-                            pattern="[a-zA-Z0-9]{6}" // Permite letras e números, ativando o teclado correto
+                            pattern="[a-zA-Z0-9]*" // Permite qualquer combinação de letras e números
                             onComplete={form.handleSubmit(onSubmit)}
                           >
                           {/* ## FIM DA CORREÇÃO ## */}

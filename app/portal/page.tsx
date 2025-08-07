@@ -22,7 +22,6 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 const loginSchema = z.object({ 
   token: z.string().regex(/^\d{6}$/, "O token deve conter exatamente 6 números."),
 });
-// ## FIM DA CORREÇÃO ##
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 

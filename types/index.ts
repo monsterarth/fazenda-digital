@@ -17,8 +17,10 @@ export interface Stay {
   preCheckInId: string;
   createdAt: string;
   bookings?: Booking[];
-  termsAcceptedAt?: Timestamp; // Armazena QUANDO os termos foram aceitos
-
+  policiesAccepted?: {
+    general?: Timestamp;
+    pet?: Timestamp;
+  }
 }
 
 // ========================================================================
@@ -93,6 +95,8 @@ export interface Service {
 }
 
 export interface Booking {
+    structureId: string;
+    startTime: any;
     id: string;
     stayId: string;
     serviceId: string;
@@ -211,6 +215,8 @@ export interface Cabin {
   name: string;
   capacity: number;
   posicao?: number;
+  wifiSsid?: string;
+  wifiPassword?: string;
 }
 
 // ========================================================================
@@ -344,6 +350,7 @@ export interface PropertyMessages {
 }
 
 export interface Property {
+    contact: any;
     id: string;
     name: string;
     logoUrl: string;
@@ -357,10 +364,17 @@ export interface Property {
       orderingEndTime: string;
     };
 policies?: {
-      content: string; // O texto completo dos termos e políticas. Suporta Markdown.
-      lastUpdatedAt: Timestamp; // Armazena QUANDO as políticas foram salvas pela última vez
+      general: {
+        content: string;
+        lastUpdatedAt: Timestamp;
+      };
+      pet: {
+        content: string;
+        lastUpdatedAt: Timestamp;
+      }
     };
 }
+
 // ========================================================================
 // 9. TIPOS COMBINADOS (HELPER TYPES)
 // ========================================================================

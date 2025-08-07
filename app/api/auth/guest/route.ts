@@ -3,23 +3,24 @@ import { Stay } from '@/types';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { NextRequest, NextResponse } from 'next/server';
 
-// REMOVIDO: A interface StayFromFirestore não é mais necessária,
-// pois os dados no Firestore já correspondem ao tipo Stay (com datas como strings).
-
 export async function POST(req: NextRequest) {
     try {
         const db = await getFirebaseDb();
         const { token } = await req.json();
 
-        if (!token || typeof token !== 'string' || token.length < 6) {
-            return NextResponse.json({ error: 'Token inválido ou incompleto.' }, { status: 400 });
+        // ## INÍCIO DA CORREÇÃO: Validação para o novo token numérico ##
+        if (!token || typeof token !== 'string' || !/^\d{6}$/.test(token)) {
+            return NextResponse.json({ error: 'Token inválido. Use o código de 6 números.' }, { status: 400 });
         }
+        // ## FIM DA CORREÇÃO ##
 
-        const upperCaseToken = token.toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const formattedToken = `${upperCaseToken.slice(0, 3)}-${upperCaseToken.slice(3)}`;
-        
         const staysCollection = collection(db, 'stays');
-        const q = query(staysCollection, where("token", "==", formattedToken));
+
+        // ## INÍCIO DA CORREÇÃO: Query agora busca pelo token numérico exato ##
+        // A formatação para "ABC-123" foi removida.
+        const q = query(staysCollection, where("token", "==", token));
+        // ## FIM DA CORREÇÃO ##
+        
         const querySnapshot = await getDocs(q);
 
         if (querySnapshot.empty) {
@@ -28,17 +29,8 @@ export async function POST(req: NextRequest) {
 
         const stayDoc = querySnapshot.docs[0];
         
-        // ==========================================================
-        // CORREÇÃO APLICADA AQUI
-        // ==========================================================
-        // 1. Os dados do Firestore são diretamente atribuídos ao tipo 'Stay',
-        //    pois as datas já estão salvas como strings.
         const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
 
-        // 2. O bloco de conversão de Timestamp para string foi removido
-        //    porque ele era a causa do erro.
-        
-        // 3. Retornamos diretamente os dados da estadia.
         return NextResponse.json(stayData, { status: 200 });
 
     } catch (error) {

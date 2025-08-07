@@ -21,9 +21,6 @@ import { toast, Toaster } from 'sonner';
 import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Home, Car, Phone, CheckCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
-// ## INÍCIO DA CORREÇÃO ##
-// O schema agora aceita 'age' e 'weight' como strings para evitar o erro de tipo.
-// A conversão para número será feita manualmente antes de salvar no banco.
 const preCheckInSchema = z.object({
     leadGuestName: z.string().min(3, "O nome completo é obrigatório."),
     isForeigner: z.boolean(),
@@ -45,7 +42,7 @@ const preCheckInSchema = z.object({
     vehiclePlate: z.string().optional(),
     companions: z.array(z.object({
         fullName: z.string().min(3, "Nome do acompanhante é obrigatório."),
-        age: z.string().min(1, "Idade é obrigatória."), // Aceita como string
+        age: z.string().min(1, "Idade é obrigatória."),
         cpf: z.string().optional()
     })).optional(),
     pets: z.array(z.object({
@@ -53,7 +50,7 @@ const preCheckInSchema = z.object({
         name: z.string().min(2, "Nome do pet é obrigatório."),
         species: z.enum(['cachorro', 'gato', 'outro']),
         breed: z.string().min(2, "Raça é obrigatória."),
-        weight: z.string().min(1, "Peso é obrigatório."), // Aceita como string
+        weight: z.string().min(1, "Peso é obrigatório."),
         age: z.string().min(1, "Idade é obrigatória."),
         notes: z.string().optional()
     })).optional(),
@@ -65,7 +62,6 @@ const preCheckInSchema = z.object({
     if (data.isForeigner && (!data.country || data.country === 'Brasil')) return false;
     return true;
 }, { message: "A seleção do país é obrigatória para estrangeiros.", path: ["country"] });
-// ## FIM DA CORREÇÃO ##
 
 type PreCheckInFormValues = z.infer<typeof preCheckInSchema>;
 
@@ -74,6 +70,12 @@ const countries = ["Argentina", "Uruguai", "Chile", "Estados Unidos", "Portugal"
 interface PreCheckinFormProps {
     property: Property;
 }
+
+// ## INÍCIO DA CORREÇÃO: Função de ID universalmente compatível ##
+// Esta função gera um ID simples e único para o contexto do formulário,
+// funcionando em todos os navegadores, incluindo celulares.
+const generateSimpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+// ## FIM DA CORREÇÃO ##
 
 export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
     const [currentStep, setCurrentStep] = useState(0);
@@ -158,7 +160,6 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
             const preCheckInData: Omit<PreCheckIn, 'id' | 'stayId'> = {
                 ...restOfData,
                 address: { ...data.address, country: isForeigner ? data.country || '' : 'Brasil' },
-                // Conversão manual para número antes de salvar
                 pets: data.pets?.map(p => ({ ...p, weight: parseFloat(p.weight) || 0 })) || [],
                 companions: data.companions?.filter(c => c.fullName.trim() !== '').map(c => ({...c, age: parseInt(c.age, 10) || 0 })) || [],
                 status: 'pendente',
@@ -273,28 +274,30 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                     <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: '', cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
                                  </div>
                                  <div>
-                                     <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2"><PawPrint />Pets</h3>
-                                    {pets.map((field, index) => (
-                                        <div key={field.id} className="p-4 border rounded-md mb-4 space-y-4 relative">
-                                            <h4 className="font-medium">Pet {index + 1}</h4>
-                                            <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => removePet(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <FormField name={`pets.${index}.name`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Nome do Pet</FormLabel><FormControl><Input placeholder="Nome" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                <FormField name={`pets.${index}.species`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Espécie</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="cachorro">Cachorro</SelectItem><SelectItem value="gato">Gato</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                                            </div>
-                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <FormField name={`pets.${index}.breed`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Raça</FormLabel><FormControl><Input placeholder="Ex: Vira-lata" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                <FormField name={`pets.${index}.age`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Idade</FormLabel><FormControl><Input placeholder="Ex: 2 anos" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                <FormField name={`pets.${index}.weight`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Peso (kg)</FormLabel><FormControl><Input type="number" placeholder="Ex: 10" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                      <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2"><PawPrint />Pets</h3>
+                                     {pets.map((field, index) => (
+                                         <div key={field.id} className="p-4 border rounded-md mb-4 space-y-4 relative">
+                                             <h4 className="font-medium">Pet {index + 1}</h4>
+                                             <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => removePet(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                 <FormField name={`pets.${index}.name`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Nome do Pet</FormLabel><FormControl><Input placeholder="Nome" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                 <FormField name={`pets.${index}.species`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Espécie</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="cachorro">Cachorro</SelectItem><SelectItem value="gato">Gato</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                                              </div>
-                                        </div>
-                                    ))}
-                                    <Button type="button" variant="outline" size="sm" onClick={() => appendPet({ id: crypto.randomUUID(), name: '', species: 'cachorro', breed: '', weight: '', age: '', notes: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pet</Button>
-                                    {petPolicyViolations.count && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Limite de pets excedido</p><p>Nossa política permite apenas 1 pet por cabana. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
-                                    {petPolicyViolations.weight && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Peso acima do limite</p><p>Nosso limite é de 15kg por pet. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
-                                 </div>
-                             </div>
-                           )}
+                                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                  <FormField name={`pets.${index}.breed`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Raça</FormLabel><FormControl><Input placeholder="Ex: Vira-lata" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                  <FormField name={`pets.${index}.age`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Idade</FormLabel><FormControl><Input placeholder="Ex: 2 anos" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                  <FormField name={`pets.${index}.weight`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Peso (kg)</FormLabel><FormControl><Input type="number" placeholder="Ex: 10" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                               </div>
+                                         </div>
+                                     ))}
+                                     {/* ## INÍCIO DA CORREÇÃO: Usando a nova função de ID compatível ## */}
+                                     <Button type="button" variant="outline" size="sm" onClick={() => appendPet({ id: generateSimpleId(), name: '', species: 'cachorro', breed: '', weight: '', age: '', notes: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pet</Button>
+                                     {/* ## FIM DA CORREÇÃO ## */}
+                                     {petPolicyViolations.count && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Limite de pets excedido</p><p>Nossa política permite apenas 1 pet por cabana. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
+                                     {petPolicyViolations.weight && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Peso acima do limite</p><p>Nosso limite é de 15kg por pet. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
+                                  </div>
+                               </div>
+                              )}
                         <div className="flex justify-between items-center pt-4">
                             {currentStep > 0 ? (<Button type="button" variant="ghost" onClick={handlePrevStep}><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button>) : <div />}
                             {currentStep < totalSteps - 1 ? (<Button type="button" onClick={handleNextStep}>Avançar <ArrowRight className="ml-2 h-4 w-4" /></Button>) : (<Button type="button" size="lg" disabled={form.formState.isSubmitting} onClick={form.handleSubmit(onSubmit)}>{form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4"/>} Enviar</Button>)}

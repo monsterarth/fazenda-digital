@@ -5,31 +5,36 @@ import { getFirebaseDb } from '@/lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Property } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Save, FileText } from 'lucide-react';
+import { Loader2, Save, FileText, Eye, Pencil, Dog } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+type PolicyType = 'general' | 'pet';
 
 export default function ManagePoliciesPage() {
-    const [policyContent, setPolicyContent] = useState('');
+    const [generalPolicy, setGeneralPolicy] = useState('');
+    const [petPolicy, setPetPolicy] = useState('');
+    const [activePolicy, setActivePolicy] = useState<PolicyType>('general');
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [propertyId, setPropertyId] = useState<string | null>(null); // Armazena o ID da propriedade
+    const [propertyId, setPropertyId] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchProperty = async () => {
-            // Assumindo que você tem um ID de propriedade fixo ou uma lógica para obtê-lo.
-            // Para este exemplo, estou usando um ID fixo "main_property". Ajuste conforme necessário.
             const PROP_ID = "main_property"; 
             setPropertyId(PROP_ID);
-
             const db = await getFirebaseDb();
             const propertyRef = doc(db, "properties", PROP_ID);
             const propertySnap = await getDoc(propertyRef);
 
             if (propertySnap.exists()) {
                 const propertyData = propertySnap.data() as Property;
-                setPolicyContent(propertyData.policies?.content || '');
+                setGeneralPolicy(propertyData.policies?.general?.content || '');
+                setPetPolicy(propertyData.policies?.pet?.content || '');
             }
             setLoading(false);
         };
@@ -37,25 +42,25 @@ export default function ManagePoliciesPage() {
     }, []);
 
     const handleSave = async () => {
-        if (!propertyId) {
-            toast.error("ID da propriedade não encontrado.");
-            return;
-        }
+        if (!propertyId) return toast.error("ID da propriedade não encontrado.");
         setIsSaving(true);
-        const toastId = toast.loading("Salvando políticas...");
+        const toastId = toast.loading(`Salvando Políticas (${activePolicy === 'general' ? 'Gerais' : 'Pet'})...`);
 
         try {
             const db = await getFirebaseDb();
             const propertyRef = doc(db, "properties", propertyId);
+            const contentToSave = activePolicy === 'general' ? generalPolicy : petPolicy;
 
-            // Usa setDoc com merge para criar ou atualizar o campo 'policies'
-            await setDoc(propertyRef, {
+            const updateData = {
                 policies: {
-                    content: policyContent,
-                    lastUpdatedAt: serverTimestamp() // Atualiza o timestamp!
+                    [activePolicy]: {
+                        content: contentToSave,
+                        lastUpdatedAt: serverTimestamp()
+                    }
                 }
-            }, { merge: true });
+            };
 
+            await setDoc(propertyRef, updateData, { merge: true });
             toast.success("Políticas salvas com sucesso!", { id: toastId });
         } catch (error) {
             console.error("Erro ao salvar políticas:", error);
@@ -69,6 +74,8 @@ export default function ManagePoliciesPage() {
         return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     }
 
+    const currentContent = activePolicy === 'general' ? generalPolicy : petPolicy;
+
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6">
             <Toaster richColors position="top-center" />
@@ -76,16 +83,40 @@ export default function ManagePoliciesPage() {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><FileText /> Editor de Políticas e Termos</CardTitle>
                     <CardDescription>
-                        Edite o conteúdo que será exibido aos hóspedes. Você pode usar formatação <a href="https://www.markdownguide.org/basic-syntax/" target="_blank" rel="noopener noreferrer" className="text-primary underline">Markdown</a> para criar títulos, listas e negrito.
+                        Edite o conteúdo que será exibido aos hóspedes. Use as abas para alternar entre a política geral e a de pets.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Textarea
-                        value={policyContent}
-                        onChange={(e) => setPolicyContent(e.target.value)}
-                        placeholder="Escreva aqui os termos e políticas da sua propriedade..."
-                        className="min-h-[50vh] font-mono"
-                    />
+                    <Tabs defaultValue="general" className="w-full" onValueChange={(value) => setActivePolicy(value as PolicyType)}>
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="general"><FileText className="mr-2 h-4 w-4" /> Políticas Gerais</TabsTrigger>
+                            <TabsTrigger value="pet"><Dog className="mr-2 h-4 w-4" /> Políticas para Pets</TabsTrigger>
+                        </TabsList>
+                        
+                        <div className="mt-4">
+                            <Tabs defaultValue="edit" className="w-full">
+                                <TabsList className="grid w-full grid-cols-2">
+                                    <TabsTrigger value="edit"><Pencil className="mr-2 h-4 w-4" /> Editar</TabsTrigger>
+                                    <TabsTrigger value="preview"><Eye className="mr-2 h-4 w-4" /> Visualizar</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="edit" className="mt-4">
+                                    <Textarea
+                                        value={currentContent}
+                                        onChange={(e) => activePolicy === 'general' ? setGeneralPolicy(e.target.value) : setPetPolicy(e.target.value)}
+                                        placeholder={`Escreva aqui a política (${activePolicy === 'general' ? 'geral' : 'de pets'})...`}
+                                        className="min-h-[50vh] font-mono"
+                                    />
+                                </TabsContent>
+                                <TabsContent value="preview" className="mt-4">
+                                    <div className="prose dark:prose-invert max-w-none rounded-md border p-4 min-h-[50vh]">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            {currentContent || "A visualização aparecerá aqui."}
+                                        </ReactMarkdown>
+                                    </div>
+                                </TabsContent>
+                            </Tabs>
+                        </div>
+                    </Tabs>
                 </CardContent>
                 <CardFooter>
                     <Button onClick={handleSave} disabled={isSaving}>

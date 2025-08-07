@@ -59,9 +59,15 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         if (savedStayJSON) {
           const savedStayData: Stay = JSON.parse(savedStayJSON);
           
-          if (savedStayData.termsAcceptedAt) {
-            const { seconds, nanoseconds } = savedStayData.termsAcceptedAt as any;
-            savedStayData.termsAcceptedAt = new Timestamp(seconds, nanoseconds);
+          if (savedStayData.policiesAccepted) {
+            if (savedStayData.policiesAccepted.general) {
+                const { seconds, nanoseconds } = savedStayData.policiesAccepted.general as any;
+                savedStayData.policiesAccepted.general = new Timestamp(seconds, nanoseconds);
+            }
+            if (savedStayData.policiesAccepted.pet) {
+                const { seconds, nanoseconds } = savedStayData.policiesAccepted.pet as any;
+                savedStayData.policiesAccepted.pet = new Timestamp(seconds, nanoseconds);
+            }
           }
           
           const [stayWithBookings, preCheckInData, propertyDoc] = await Promise.all([
@@ -74,38 +80,34 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
             setStay(stayWithBookings);
             setPreCheckIn(preCheckInData);
 
-            // ## INÍCIO DA CORREÇÃO: Lógica de redirecionamento agora verifica a rota ##
             const isGuestPortal = pathname.startsWith('/portal');
 
-            // A verificação só acontece se o usuário estiver navegando no portal do hóspede
             if (isGuestPortal && propertyDoc.exists()) {
               const property = propertyDoc.data() as Property;
-              const policiesLastUpdated = property.policies?.lastUpdatedAt;
-              const termsAcceptedAt = stayWithBookings.termsAcceptedAt;
+              const hasPets = (preCheckInData?.pets?.length || 0) > 0;
+              
+              const generalPolicyLastUpdated = property.policies?.general?.lastUpdatedAt;
+              const petPolicyLastUpdated = property.policies?.pet?.lastUpdatedAt;
+              const accepted = stayWithBookings.policiesAccepted;
 
-              const needsToAccept = !termsAcceptedAt || 
-                (policiesLastUpdated && termsAcceptedAt.toMillis() < policiesLastUpdated.toMillis());
+              const needsGeneral = !accepted?.general || (generalPolicyLastUpdated && accepted.general.toMillis() < generalPolicyLastUpdated.toMillis());
+              const needsPet = hasPets && (!accepted?.pet || (petPolicyLastUpdated && accepted.pet.toMillis() < petPolicyLastUpdated.toMillis()));
 
-              if (needsToAccept && pathname !== '/portal/termos' && pathname !== '/portal') {
+              if ((needsGeneral || needsPet) && pathname !== '/portal/termos' && pathname !== '/portal') {
                 router.replace('/portal/termos');
               }
             }
-            // ## FIM DA CORREÇÃO ##
           }
         }
       } catch (error) {
-        console.error("Failed to initialize session from sessionStorage", error);
+        console.error("Failed to initialize session", error);
         sessionStorage.removeItem('synapse-stay');
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        if (isMounted) setIsLoading(false);
       }
     };
     initializeSession();
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [fetchAndSetBookings, fetchPreCheckIn, pathname, router]);
 
   const logout = () => {

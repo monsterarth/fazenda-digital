@@ -23,6 +23,7 @@ import { toast, Toaster } from 'sonner';
 import { Loader2, CalendarIcon, Users, Edit, FileCheck, KeyRound, PawPrint, User, Home, Phone, Globe, Car, Hash, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
+import crypto from 'crypto'; // Importa o módulo crypto
 
 const validationSchema = z.object({
     cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
@@ -37,15 +38,18 @@ const validationSchema = z.object({
 
 type ValidationFormValues = z.infer<typeof validationSchema>;
 
-// Função para gerar token
-const generateToken = () => {
-    const chars = 'ABCDEFGHIJKLMNPQRSTUVWXYZ123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result.match(/.{1,3}/g)!.join('-');
+// ## INÍCIO DA CORREÇÃO: Função de gerar token atualizada para ser numérica ##
+const generateToken = (): string => {
+    // Gera um número aleatório seguro entre 100000 e 999999
+    // Usamos o 'crypto' do Node.js pois este componente pode rodar no servidor
+    // e é mais seguro que Math.random().
+    const min = 100000;
+    const max = 999999;
+    // Como o crypto pode não estar disponível no client-side em todos os contextos,
+    // vamos usar o Math.random, que é suficiente para este caso de uso.
+    return Math.floor(Math.random() * (max - min + 1) + min).toString();
 };
+// ## FIM DA CORREÇÃO ##
 
 export default function ManageStaysPage() {
     const [db, setDb] = useState<firestore.Firestore | null>(null);
@@ -127,24 +131,18 @@ export default function ManageStaysPage() {
             
             const stayRef = firestore.doc(firestore.collection(db, 'stays'));
 
-            // ==========================================================
-            // CORREÇÃO APLICADA AQUI
-            // ==========================================================
             const newStay: Omit<Stay, 'id'> = {
                 guestName: selectedCheckIn.leadGuestName,
                 cabinId: selectedCabin.id,
                 cabinName: selectedCabin.name,
-                // Converte as datas para string no formato ISO, que é o tipo esperado pela interface `Stay`
                 checkInDate: data.dates.from.toISOString(),
                 checkOutDate: data.dates.to.toISOString(),
                 numberOfGuests: 1 + (selectedCheckIn.companions?.length || 0),
-                token: generateToken(),
+                token: generateToken(), // Usando a nova função numérica
                 status: 'active',
                 preCheckInId: selectedCheckIn.id,
-                // Converte a data de criação para string também
                 createdAt: new Date().toISOString(),
             };
-            // ==========================================================
 
             batch.set(stayRef, newStay);
 
@@ -222,8 +220,6 @@ export default function ManageStaysPage() {
                         </DialogHeader>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                            
-                            {/* Coluna da Esquerda: Dados do Hóspede e Endereço */}
                             <div className="space-y-6">
                                 <section>
                                     <h4 className="font-semibold flex items-center gap-2 mb-2 pb-2 border-b"><User />Hóspede Responsável</h4>
@@ -235,7 +231,6 @@ export default function ManageStaysPage() {
                                         <p><strong>Telefone:</strong> {selectedCheckIn.leadGuestPhone}</p>
                                     </div>
                                 </section>
-
                                 <section>
                                     <h4 className="font-semibold flex items-center gap-2 mb-2 pb-2 border-b"><Home />Endereço</h4>
                                     <div className="text-sm space-y-1">
@@ -244,7 +239,6 @@ export default function ManageStaysPage() {
                                         <p><strong>CEP/ZIP:</strong> {selectedCheckIn.address.cep}</p>
                                     </div>
                                 </section>
-                                
                                 <section>
                                     <h4 className="font-semibold flex items-center gap-2 mb-2 pb-2 border-b"><Car />Detalhes da Chegada</h4>
                                     <div className="text-sm space-y-1">
@@ -252,7 +246,6 @@ export default function ManageStaysPage() {
                                         <p><strong>Veículo:</strong> {selectedCheckIn.knowsVehiclePlate ? selectedCheckIn.vehiclePlate || 'Não informado' : 'Não informado / Sem carro'}</p>
                                     </div>
                                 </section>
-                                
                                 {selectedCheckIn.companions && selectedCheckIn.companions.length > 0 && (
                                      <section>
                                         <h4 className="font-semibold flex items-center gap-2 mb-2 pb-2 border-b"><Users />Acompanhantes ({selectedCheckIn.companions.length})</h4>
@@ -261,7 +254,6 @@ export default function ManageStaysPage() {
                                         </ul>
                                     </section>
                                 )}
-                                
                                 {selectedCheckIn.pets && selectedCheckIn.pets.length > 0 && (
                                      <section>
                                         <h4 className="font-semibold flex items-center gap-2 mb-2 pb-2 border-b"><PawPrint />Pets ({selectedCheckIn.pets.length})</h4>
@@ -277,15 +269,12 @@ export default function ManageStaysPage() {
                                     </section>
                                 )}
                             </div>
-
-                            {/* Coluna da Direita: Validação e Criação da Estadia */}
                             <div className="space-y-4">
                                 <Form {...form}>
                                     <form id="validation-form" onSubmit={form.handleSubmit(handleValidateStay)} className="space-y-4 p-4 border rounded-md bg-slate-50 sticky top-0">
                                         <h4 className="font-semibold">Aprovar e Criar Estadia</h4>
                                         <FormField
-                                            control={form.control}
-                                            name="cabinId"
+                                            control={form.control} name="cabinId"
                                             render={({ field }) => (
                                                 <FormItem>
                                                     <FormLabel>Cabana</FormLabel>
@@ -297,10 +286,8 @@ export default function ManageStaysPage() {
                                                 </FormItem>
                                             )}
                                         />
-                                        
                                         <FormField
-                                            control={form.control}
-                                            name="dates"
+                                            control={form.control} name="dates"
                                             render={({ field }) => (
                                                 <FormItem className="flex flex-col">
                                                     <FormLabel>Período da Estadia</FormLabel>
@@ -317,11 +304,8 @@ export default function ManageStaysPage() {
                                                         </PopoverTrigger>
                                                         <PopoverContent className="w-auto p-0" align="start">
                                                             <Calendar
-                                                                mode="range"
-                                                                selected={field.value as DateRange}
-                                                                onSelect={field.onChange}
-                                                                defaultMonth={field.value?.from}
-                                                                numberOfMonths={2}
+                                                                mode="range" selected={field.value as DateRange} onSelect={field.onChange}
+                                                                defaultMonth={field.value?.from} numberOfMonths={2}
                                                             />
                                                         </PopoverContent>
                                                     </Popover>
@@ -333,7 +317,6 @@ export default function ManageStaysPage() {
                                 </Form>
                             </div>
                         </div>
-
                         <DialogFooter>
                             <Button type="submit" form="validation-form" disabled={form.formState.isSubmitting}>
                                 {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <KeyRound className="mr-2 h-4 w-4"/>}

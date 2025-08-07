@@ -95,6 +95,8 @@ export interface Service {
 }
 
 export interface Booking {
+    structureName: string;
+    endTime: any;
     structureId: string;
     startTime: any;
     id: string;

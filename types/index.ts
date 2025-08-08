@@ -54,6 +54,9 @@ export interface PetDetails {
   notes?: string;
 }
 
+export type PreCheckInStatus = 'pendente' | 'validado' | 'arquivado' | 'validado_admin'; {
+}
+
 export interface PreCheckIn {
   id: string;
   leadGuestName: string;
@@ -70,7 +73,7 @@ export interface PreCheckIn {
   travelReason?: string;
   foodRestrictions?: string;
   createdAt: Timestamp;
-  status: 'pendente' | 'validado' | 'arquivado';
+  status: PreCheckInStatus; 
   stayId?: string;
 }
 

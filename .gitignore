@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Chave de Serviço do Firebase - NÃO ENVIAR PARA O GIT!
+serviceAccountKey.json.json 

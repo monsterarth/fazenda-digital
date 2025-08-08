@@ -76,5 +76,7 @@ async function uploadFile(file: File, pathname: string): Promise<string> {
 
 // ## INÍCIO DA CORREÇÃO ##
 // Exportando a nova função getFirebaseAuth junto com as existentes
-export { getFirebaseDb, getFirebaseAuth, uploadFile, db, auth };
+// ## INÍCIO DA CORREÇÃO ##
+// Exportando a nova função getFirebaseAuth junto com as existentes
+export { getFirebaseDb, getFirebaseAuth, uploadFile, db, auth, app };
 // ## FIM DA CORREÇÃO ##

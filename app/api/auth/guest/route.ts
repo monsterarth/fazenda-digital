@@ -1,40 +1,51 @@
-import { getFirebaseDb } from '@/lib/firebase';
-import { Stay } from '@/types';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { NextRequest, NextResponse } from 'next/server';
+import { adminDb, adminAuth } from '@/lib/firebase-admin';
+import { NextResponse } from 'next/server';
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
     try {
-        const db = await getFirebaseDb();
-        const { token } = await req.json();
+        const body = await request.json();
+        const token = body.token;
 
-        // ## INÍCIO DA CORREÇÃO: Validação para o novo token numérico ##
-        if (!token || typeof token !== 'string' || !/^\d{6}$/.test(token)) {
-            return NextResponse.json({ error: 'Token inválido. Use o código de 6 números.' }, { status: 400 });
+        // ++ LOG DE DEPURAÇÃO: Isso nos mostrará o valor exato recebido.
+        console.log(`[API /auth/guest] Recebido para validação: token = ${token} (tipo: ${typeof token})`);
+
+        // **Validação Definitiva:** Esta verificação impede que um 'undefined' ou qualquer
+        // valor inválido chegue ao Firestore.
+        if (typeof token !== 'string' || token.length !== 6) {
+            console.error("[API /auth/guest] Validação falhou. O token é inválido.");
+            return NextResponse.json({ error: "O código de acesso fornecido é inválido." }, { status: 400 });
         }
-        // ## FIM DA CORREÇÃO ##
 
-        const staysCollection = collection(db, 'stays');
-
-        // ## INÍCIO DA CORREÇÃO: Query agora busca pelo token numérico exato ##
-        // A formatação para "ABC-123" foi removida.
-        const q = query(staysCollection, where("token", "==", token));
-        // ## FIM DA CORREÇÃO ##
-        
-        const querySnapshot = await getDocs(q);
+        const staysRef = adminDb.collection('stays');
+        const q = staysRef.where('token', '==', token).where('status', '==', 'active').limit(1);
+        const querySnapshot = await q.get();
 
         if (querySnapshot.empty) {
-            return NextResponse.json({ error: 'Token inválido ou não encontrado.' }, { status: 404 });
+            console.warn(`[API /auth/guest] Nenhum documento ativo encontrado para o token: ${token}`);
+            return NextResponse.json({ error: "Código de acesso inválido ou estadia inativa." }, { status: 403 });
         }
 
         const stayDoc = querySnapshot.docs[0];
+        const stayData = stayDoc.data();
         
-        const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
+        const now = new Date();
+        const checkOutDate = new Date(stayData.checkOutDate);
+        if (now > checkOutDate) {
+            console.warn(`[API /auth/guest] Tentativa de acesso para estadia expirada. ID: ${stayDoc.id}`);
+            return NextResponse.json({ error: "Esta hospedagem já foi finalizada." }, { status: 403 });
+        }
 
-        return NextResponse.json(stayData, { status: 200 });
+        const guestUid = `guest_${stayDoc.id}`;
+        const customToken = await adminAuth.createCustomToken(guestUid, {
+            stayId: stayDoc.id,
+            isGuest: true,
+        });
 
-    } catch (error) {
-        console.error('API LOGIN ERROR:', error);
-        return NextResponse.json({ error: 'Erro interno no servidor.' }, { status: 500 });
+        console.log(`[API /auth/guest] Login bem-sucedido para a estadia ID: ${stayDoc.id}`);
+        return NextResponse.json({ customToken, stay: { id: stayDoc.id, ...stayData } });
+
+    } catch (error: any) {
+        console.error("API LOGIN ERROR:", error);
+        return NextResponse.json({ error: "Ocorreu um erro interno. Por favor, tente novamente." }, { status: 500 });
     }
 }

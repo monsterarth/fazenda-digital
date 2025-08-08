@@ -52,6 +52,7 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
             </PropertyThemeProvider>
         );
     }
+
     return null;
 }
 

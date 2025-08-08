@@ -36,28 +36,46 @@ export default function GuestSchedulingPage() {
     const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
     const todayFormatted = useMemo(() => format(new Date(), "eeee, dd 'de' MMMM", { locale: ptBR }), []);
 
+    // Redireciona se o usuário não estiver logado (sem alterações)
     useEffect(() => {
         if (!isGuestLoading && !stay) router.push('/portal');
     }, [stay, isGuestLoading, router]);
 
+    // ++ CORREÇÃO: A busca de dados agora espera pela confirmação do 'stay' do hóspede.
     useEffect(() => {
+        // Só continua se o login do hóspede foi verificado e temos os dados da estadia.
+        if (isGuestLoading || !stay) return;
+
         const initializeData = async () => {
             const firestoreDb = await getFirebaseDb();
             setDb(firestoreDb);
             if (!firestoreDb) { toast.error("Erro de conexão."); setLoadingData(false); return; }
+
+            // Listener para 'structures'
             const structuresQuery = firestore.query(firestore.collection(firestoreDb, 'structures'));
             const unsubStructures = firestore.onSnapshot(structuresQuery, snap => {
                 setStructures(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Structure)));
+                setLoadingData(false); // Para o loading principal aqui
+            }, error => {
+                console.error("Erro ao carregar estruturas:", error);
+                toast.error("Não foi possível carregar as opções de agendamento.");
                 setLoadingData(false);
             });
+
+            // Listener para 'bookings'
             const bookingsQuery = firestore.query(firestore.collection(firestoreDb, 'bookings'), firestore.where('date', '==', today));
             const unsubBookings = firestore.onSnapshot(bookingsQuery, snap => {
                 setBookings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
+            }, error => {
+                console.error("Erro ao carregar agendamentos existentes:", error);
+                // Não é um erro crítico se apenas este listener falhar, a página ainda pode funcionar.
             });
+            
             return () => { unsubStructures(); unsubBookings(); };
         };
+        
         initializeData();
-    }, [today]);
+    }, [stay, isGuestLoading, today]); // A dependência agora é o 'stay'
 
     const userBookings = useMemo(() => {
         if (!stay) return [];
@@ -74,7 +92,6 @@ export default function GuestSchedulingPage() {
         try {
             if(existingBooking) await firestore.deleteDoc(firestore.doc(db, 'bookings', existingBooking.id));
             
-            // ## INÍCIO DA CORREÇÃO: Status condicional baseado no approvalMode ##
             const status = structure.approvalMode === 'automatic' ? 'confirmado' : 'pendente';
 
             const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
@@ -82,7 +99,7 @@ export default function GuestSchedulingPage() {
                 structureName: structure.name,
                 unitId: unit || '',
                 stayId: stay.id,
-                guestId: stay.id,
+                guestId: stay.id, // Ou um ID de usuário se houver
                 guestName: stay.guestName,
                 cabinId: stay.cabinName,
                 date: today,
@@ -90,16 +107,13 @@ export default function GuestSchedulingPage() {
                 endTime: timeSlot.endTime,
                 status: status,
             };
-            // ## FIM DA CORREÇÃO ##
 
             await firestore.addDoc(firestore.collection(db, 'bookings'), { ...newBooking, createdAt: firestore.serverTimestamp() });
 
-            // ## INÍCIO DA CORREÇÃO: Mensagem de sucesso dinâmica ##
             const successMessage = status === 'confirmado'
                 ? "Reserva confirmada com sucesso!"
                 : "Solicitação enviada! Aguarde a confirmação da recepção.";
             toast.success(successMessage, { id: toastId });
-            // ## FIM DA CORREÇÃO ##
 
         } catch(error: any) {
             toast.error("Ocorreu um erro", { id: toastId, description: error.message });
@@ -133,14 +147,14 @@ export default function GuestSchedulingPage() {
         );
         if (booking) {
             if (stay && booking.stayId === stay.id) return { status: 'meu_horario' };
-            if (booking.status === 'confirmado' || booking.status === 'cancelado') return { status: 'indisponivel' };
+            if (booking.status === 'confirmado' || booking.status === 'cancelado' || booking.status === 'pendente') return { status: 'indisponivel' };
             if (booking.status === 'disponivel') return { status: 'disponivel' };
         }
         if (structure.defaultStatus === 'open') return { status: 'disponivel' };
         return { status: 'indisponivel' };
     };
 
-    if (isGuestLoading || loadingData || !stay) {
+    if (isGuestLoading || loadingData) {
         return <div className="flex flex-col justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /><p className="mt-4 text-muted-foreground">Carregando...</p></div>;
     }
 

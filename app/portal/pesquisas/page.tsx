@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { getFirebaseDb } from '@/lib/firebase';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getFirebaseDb } from '@/lib/firebase'; 
 import * as firestore from "firebase/firestore";
 import { useGuest } from '@/context/GuestProvider';
 import { Survey } from '@/types/survey';
-import { Stay } from '@/types'; // Importando o tipo Stay para a checagem de data
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,13 +12,10 @@ import { Loader2, ArrowRight, Gift, Lock } from 'lucide-react';
 import { differenceInHours } from 'date-fns';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
-// ## INÍCIO DA CORREÇÃO: Passando o stayId para o componente ##
 function SurveyCard({ survey, isLocked, stayId }: { survey: Survey, isLocked: boolean, stayId: string }) {
-    
-    // ## INÍCIO DA CORREÇÃO: Criando a URL correta ##
     const surveyUrl = `/s/${survey.id}?stayId=${stayId}`;
-    // ## FIM DA CORREÇÃO ##
 
     const cardContent = (
         <Card className={cn("flex flex-col h-full transition-all", isLocked ? "bg-muted/50 cursor-not-allowed" : "hover:border-primary hover:shadow-lg")}>
@@ -44,21 +40,17 @@ function SurveyCard({ survey, isLocked, stayId }: { survey: Survey, isLocked: bo
                     </Button>
                 ) : (
                     <Button asChild className="w-full">
-                        {/* ## INÍCIO DA CORREÇÃO: Usando a nova URL ## */}
                         <Link href={surveyUrl}>
                             Responder Pesquisa <ArrowRight className="ml-2 h-4 w-4" />
                         </Link>
-                        {/* ## FIM DA CORREÇÃO ## */}
                     </Button>
                 )}
             </CardContent>
         </Card>
     );
 
-    // O Link agora envolve o card apenas se não estiver bloqueado
     return isLocked ? <div>{cardContent}</div> : <div className="h-full">{cardContent}</div>;
 }
-
 
 export default function GuestSurveysPage() {
     const { stay, isLoading: isGuestLoading } = useGuest();
@@ -73,27 +65,43 @@ export default function GuestSurveysPage() {
     }, [stay, isGuestLoading, router]);
 
     useEffect(() => {
+        if (isGuestLoading || !stay) return;
+
         const fetchSurveys = async () => {
             const db = await getFirebaseDb();
-            if (!db) return;
-            const q = firestore.query(firestore.collection(db, 'surveys'));
-            const querySnapshot = await firestore.getDocs(q);
-            setSurveys(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Survey)));
-            setLoading(false);
+            if (!db) {
+                toast.error("Erro de conexão.");
+                setLoading(false);
+                return;
+            }
+            
+            try {
+                // Com as novas regras, esta query agora é permitida para hóspedes.
+                const q = firestore.query(firestore.collection(db, 'surveys'));
+                const querySnapshot = await firestore.getDocs(q);
+                setSurveys(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Survey)));
+            } catch (error) {
+                console.error("Erro ao buscar pesquisas:", error);
+                toast.error("Não foi possível carregar as pesquisas disponíveis.");
+            } finally {
+                setLoading(false);
+            }
         };
-        if (!isGuestLoading && stay) {
-            fetchSurveys();
-        }
+        
+        fetchSurveys();
+        
     }, [isGuestLoading, stay]);
 
-    if (isGuestLoading || loading || !stay) {
+    if (isGuestLoading || loading) {
         return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
     }
+    
+    // stay é verificado no useEffect, mas adicionamos uma checagem extra para segurança de tipo
+    if (!stay) return null;
 
     const isDefaultSurveyLocked = (survey: Survey) => {
         if (!survey.isDefault) return false;
         
-        // Assegura que estamos trabalhando com um objeto Date
         const checkOutDate = (stay.checkOutDate as any).toDate ? (stay.checkOutDate as any).toDate() : new Date(stay.checkOutDate);
         const hoursUntilCheckout = differenceInHours(checkOutDate, new Date());
         return hoursUntilCheckout > 12;
@@ -107,12 +115,10 @@ export default function GuestSurveysPage() {
             </header>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {surveys.map(survey => (
-                    // ## INÍCIO DA CORREÇÃO: Passando o stay.id para o card ##
                     <SurveyCard key={survey.id} survey={survey} isLocked={isDefaultSurveyLocked(survey)} stayId={stay.id} />
-                    // ## FIM DA CORREÇÃO ##
                 ))}
                 {surveys.length === 0 && (
-                     <Card className="md:col-span-3 text-center p-12">
+                    <Card className="md:col-span-3 text-center p-12">
                         <CardDescription>Nenhuma pesquisa disponível no momento.</CardDescription>
                     </Card>
                 )}

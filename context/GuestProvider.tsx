@@ -1,133 +1,127 @@
 "use client";
 
-import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
-import { Stay, Booking, PreCheckIn, Property } from '@/types';
-import { getFirebaseDb, db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, getDoc, Timestamp } from 'firebase/firestore';
-import { useRouter, usePathname } from 'next/navigation';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut, User } from 'firebase/auth';
+import { getFirebaseDb } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+// ++ Importa o tipo PreCheckIn
+import { Stay, PreCheckIn } from '@/types'; 
+import { deleteCookie } from 'cookies-next';
+import { toast } from 'sonner';
 
+// ++ INÍCIO DA CORREÇÃO ++
 interface GuestContextType {
-  stay: Stay | null;
-  preCheckIn: PreCheckIn | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  setStay: (stay: Stay | null) => void;
-  logout: () => void;
+    user: User | null;
+    stay: Stay | null;
+    preCheckIn: PreCheckIn | null; // Adiciona 'preCheckIn' ao tipo do contexto
+    isAuthenticated: boolean;
+    isLoading: boolean;
+    login: (customToken: string) => Promise<void>;
+    logout: () => void;
+    setStay: (stay: Stay) => void; // Adiciona 'setStay' ao tipo do contexto
 }
+// ++ FIM DA CORREÇÃO ++
 
 const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
-export const GuestProvider = ({ children }: { children: ReactNode }) => {
-  const [stay, setStay] = useState<Stay | null>(null);
-  const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  const router = useRouter();
-  const pathname = usePathname();
+export const GuestProvider = ({ children }: { children: React.ReactNode }) => {
+    const [user, setUser] = useState<User | null>(null);
+    const [stay, setStay] = useState<Stay | null>(null);
+    const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null); // ++ Adiciona o estado para preCheckIn
+    const [isLoading, setIsLoading] = useState(true);
 
-  const fetchAndSetBookings = useCallback(async (stayData: Stay): Promise<Stay> => {
-    if (!stayData?.id) return stayData;
-    try {
-      const bookingsQuery = query(collection(db, "bookings"), where("stayId", "==", stayData.id));
-      const bookingsSnapshot = await getDocs(bookingsQuery);
-      const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-      return { ...stayData, bookings: bookingsData };
-    } catch (error) {
-      console.error("Failed to fetch bookings for stay:", error);
-      return { ...stayData, bookings: [] };
-    }
-  }, []);
+    const logout = useCallback(async () => {
+        setIsLoading(true);
+        const auth = getAuth();
+        await signOut(auth);
+        deleteCookie('guest-token');
+        setUser(null);
+        setStay(null);
+        setPreCheckIn(null); // ++ Limpa o preCheckIn no logout
+        setIsLoading(false);
+    }, []);
+    
+    // A função 'login' não precisa de alterações, pois o useEffect principal já busca o preCheckIn
+    const login = useCallback(async (customToken: string) => {
+        const auth = getAuth();
+        const userCredential = await signInWithCustomToken(auth, customToken);
+        const loggedInUser = userCredential.user;
 
-  const fetchPreCheckIn = useCallback(async (stayData: Stay): Promise<PreCheckIn | null> => {
-    if (!stayData?.preCheckInId) return null;
-    try {
-      const preCheckInRef = doc(db, "preCheckIns", stayData.preCheckInId);
-      const preCheckInDoc = await getDoc(preCheckInRef);
-      return preCheckInDoc.exists() ? { id: preCheckInDoc.id, ...preCheckInDoc.data() } as PreCheckIn : null;
-    } catch (error) {
-      console.error("Failed to fetch pre-check-in data:", error);
-      return null;
-    }
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    const initializeSession = async () => {
-      setIsLoading(true);
-      try {
-        const savedStayJSON = sessionStorage.getItem('synapse-stay');
-        if (savedStayJSON) {
-          const savedStayData: Stay = JSON.parse(savedStayJSON);
-          
-          if (savedStayData.policiesAccepted) {
-            if (savedStayData.policiesAccepted.general) {
-                const { seconds, nanoseconds } = savedStayData.policiesAccepted.general as any;
-                savedStayData.policiesAccepted.general = new Timestamp(seconds, nanoseconds);
+        if (loggedInUser) {
+            const idTokenResult = await loggedInUser.getIdTokenResult();
+            const stayId = idTokenResult.claims.stayId as string;
+            
+            if (stayId) {
+                const db = await getFirebaseDb();
+                const stayRef = doc(db, 'stays', stayId);
+                const staySnap = await getDoc(stayRef);
+                if (staySnap.exists()) {
+                    setStay({ id: staySnap.id, ...staySnap.data() } as Stay);
+                }
             }
-            if (savedStayData.policiesAccepted.pet) {
-                const { seconds, nanoseconds } = savedStayData.policiesAccepted.pet as any;
-                savedStayData.policiesAccepted.pet = new Timestamp(seconds, nanoseconds);
-            }
-          }
-          
-          const [stayWithBookings, preCheckInData, propertyDoc] = await Promise.all([
-            fetchAndSetBookings(savedStayData),
-            fetchPreCheckIn(savedStayData),
-            getDoc(doc(db, "properties", "main_property"))
-          ]);
-          
-          if (isMounted) {
-            setStay(stayWithBookings);
-            setPreCheckIn(preCheckInData);
-
-            const isGuestPortal = pathname.startsWith('/portal');
-
-            if (isGuestPortal && propertyDoc.exists()) {
-              const property = propertyDoc.data() as Property;
-              const hasPets = (preCheckInData?.pets?.length || 0) > 0;
-              
-              const generalPolicyLastUpdated = property.policies?.general?.lastUpdatedAt;
-              const petPolicyLastUpdated = property.policies?.pet?.lastUpdatedAt;
-              const accepted = stayWithBookings.policiesAccepted;
-
-              const needsGeneral = !accepted?.general || (generalPolicyLastUpdated && accepted.general.toMillis() < generalPolicyLastUpdated.toMillis());
-              const needsPet = hasPets && (!accepted?.pet || (petPolicyLastUpdated && accepted.pet.toMillis() < petPolicyLastUpdated.toMillis()));
-
-              if ((needsGeneral || needsPet) && pathname !== '/portal/termos' && pathname !== '/portal') {
-                router.replace('/portal/termos');
-              }
-            }
-          }
+            setUser(loggedInUser);
         }
-      } catch (error) {
-        console.error("Failed to initialize session", error);
-        sessionStorage.removeItem('synapse-stay');
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-    initializeSession();
-    return () => { isMounted = false; };
-  }, [fetchAndSetBookings, fetchPreCheckIn, pathname, router]);
+    }, []);
 
-  const logout = () => {
-    setStay(null);
-    setPreCheckIn(null);
-    sessionStorage.removeItem('synapse-stay');
-    router.push('/portal');
-  };
+    // Este useEffect agora também é responsável por buscar o preCheckIn
+    useEffect(() => {
+        const auth = getAuth();
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                try {
+                    const idTokenResult = await user.getIdTokenResult(true);
+                    if (idTokenResult.claims.isGuest) {
+                        const stayId = idTokenResult.claims.stayId as string;
+                        if (stayId) {
+                            const db = await getFirebaseDb();
+                            const stayRef = doc(db, 'stays', stayId);
+                            const staySnap = await getDoc(stayRef);
+                            
+                            if (staySnap.exists()) {
+                                const stayData = { id: staySnap.id, ...staySnap.data() } as Stay;
+                                setStay(stayData);
 
-  return (
-    <GuestContext.Provider value={{ stay, preCheckIn, isAuthenticated: !!stay, isLoading, setStay, logout }}>
-      {children}
-    </GuestContext.Provider>
-  );
+                                // ++ INÍCIO DA LÓGICA PARA BUSCAR O PRE-CHECK-IN ++
+                                if (stayData.preCheckInId) {
+                                    const preCheckInRef = doc(db, 'preCheckIns', stayData.preCheckInId);
+                                    const preCheckInSnap = await getDoc(preCheckInRef);
+                                    if (preCheckInSnap.exists()) {
+                                        setPreCheckIn({ id: preCheckInSnap.id, ...preCheckInSnap.data() } as PreCheckIn);
+                                    }
+                                }
+                                // ++ FIM DA LÓGICA ++
+                            }
+                        }
+                        setUser(user);
+                    } else {
+                        await logout();
+                    }
+                } catch(error) {
+                    console.error("Erro ao verificar autenticação do hóspede:", error);
+                    toast.error("Sua sessão é inválida. Por favor, faça login novamente.");
+                    await logout();
+                }
+            } else {
+                setUser(null);
+                setStay(null);
+                setPreCheckIn(null); // ++ Limpa o preCheckIn se não houver usuário
+            }
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, [logout]);
+
+    return (
+        <GuestContext.Provider value={{ user, stay, preCheckIn, isAuthenticated: !!user, isLoading, login, logout, setStay }}>
+            {children}
+        </GuestContext.Provider>
+    );
 };
 
-export const useGuest = (): GuestContextType => {
-  const context = useContext(GuestContext);
-  if (context === undefined) {
-    throw new Error('useGuest deve ser usado dentro de um GuestProvider');
-  }
-  return context;
+export const useGuest = () => {
+    const context = useContext(GuestContext);
+    if (context === undefined) {
+        throw new Error('useGuest must be used within a GuestProvider');
+    }
+    return context;
 };

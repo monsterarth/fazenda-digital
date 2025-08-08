@@ -8,7 +8,7 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { BreakfastOrder } from '@/types';
 import { format, addDays } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { getAuth } from 'firebase/auth'; // ++ Importa o getAuth
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -21,21 +21,25 @@ import { OrderSidebar } from './OrderSidebar';
 import { StateCard } from './StateCard';
 import { Coffee, Utensils, Lock, ShieldCheck, Edit, TimerOff } from 'lucide-react';
 import { isOrderingWindowActive } from '@/lib/utils';
+import { toast } from 'sonner'; // Importa o toast
 
 export const BreakfastFlow: React.FC = () => {
-    const { property, loading: propertyLoading } = useProperty();
+    const { property, loading: propertyLoading, breakfastMenu } = useProperty();
     const { stay, isLoading: guestLoading } = useGuest();
-    const { currentStep, setStep } = useOrder();
+    const { currentStep, setStep, selections, clearOrder } = useOrder();
 
-    const [existingOrder, setExistingOrder] = useState<BreakfastOrder | null | undefined>(undefined); // undefined: carregando, null: não existe, object: existe
+    const [existingOrder, setExistingOrder] = useState<BreakfastOrder | null | undefined>(undefined);
     const [editMode, setEditMode] = useState(false);
 
     const deliveryDateString = format(addDays(new Date(), 1), 'yyyy-MM-dd');
 
     useEffect(() => {
+        if (!stay?.id || !db) {
+            if (!guestLoading) setExistingOrder(null);
+            return;
+        };
+
         const checkForExistingOrder = async () => {
-            if (!stay?.id || !db) return;
-            
             try {
                 const q = query(
                     collection(db, 'breakfastOrders'),
@@ -51,22 +55,72 @@ export const BreakfastFlow: React.FC = () => {
                 }
             } catch (error) {
                 console.error("Error checking for existing order:", error);
-                setExistingOrder(null); // Assume que não há pedido em caso de erro
+                setExistingOrder(null);
             }
         };
         checkForExistingOrder();
-    }, [stay?.id, deliveryDateString]);
+    }, [stay, guestLoading, deliveryDateString]);
 
-    const breakfastConfig = property?.breakfast;
-    const menu = breakfastConfig?.menu || [];
-    const individualCategories = useMemo(() => menu.filter(c => c.type === 'individual'), [menu]);
-    const collectiveCategories = useMemo(() => menu.filter(c => c.type === 'collective'), [menu]);
+    const individualCategories = useMemo(() => breakfastMenu.filter(c => c.type === 'individual'), [breakfastMenu]);
+    const collectiveCategories = useMemo(() => breakfastMenu.filter(c => c.type === 'collective'), [breakfastMenu]);
     
+    const breakfastConfig = property?.breakfast;
     const isWindowActive = useMemo(() => 
         isOrderingWindowActive(breakfastConfig?.orderingStartTime, breakfastConfig?.orderingEndTime),
     [breakfastConfig]);
 
-    // ESTADOS DE CARREGAMENTO E INDISPONIBILIDADE GERAL
+    // ++ INÍCIO DA CORREÇÃO DA LÓGICA DE ENVIO ++
+    const handleSendOrder = async () => {
+        const auth = getAuth();
+        const user = auth.currentUser;
+
+        if (!user || !stay) {
+            toast.error("Você precisa estar logado para enviar um pedido.");
+            return;
+        }
+
+        const toastId = toast.loading("Enviando seu pedido...");
+        try {
+            // Obtém o token de ID do usuário logado. Este token prova a identidade para a sua API.
+            const idToken = await user.getIdToken();
+
+            const orderData = {
+                guestName: stay.guestName,
+                cabinName: stay.cabinName,
+                deliveryDate: deliveryDateString,
+                selections: selections,
+                status: 'pending',
+            };
+
+            const response = await fetch('/api/portal/cafe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Inclui o token no cabeçalho de autorização.
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify({
+                    orderData,
+                    existingOrderId: editMode ? existingOrder?.id : null
+                })
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || 'Não foi possível enviar o pedido.');
+            }
+
+            toast.success("Pedido enviado com sucesso!", { id: toastId });
+            setStep(5);
+            setEditMode(false);
+            clearOrder();
+
+        } catch (error: any) {
+            toast.error("Erro ao enviar o pedido", { id: toastId, description: error.message });
+        }
+    }
+    // ++ FIM DA CORREÇÃO ++
+
     if (propertyLoading || guestLoading || existingOrder === undefined) {
         return <Skeleton className="h-96 w-full" />;
     }
@@ -74,26 +128,25 @@ export const BreakfastFlow: React.FC = () => {
         return <StateCard icon={<Coffee />} title="Café da Manhã" description="Informações não disponíveis." />;
     }
     if (breakfastConfig.type === 'on-site') {
-        return <StateCard icon={<Utensils />} title="Café no Salão" description="Nosso café será servido no salão principal. Não é necessário pedir por aqui." />;
+        return <StateCard icon={<Utensils />} title="Café no Salão" description="Nosso café será servido no salão principal." />;
     }
 
-    // LÓGICA DOS 4 ESTADOS
-    if (!editMode) { // Só entra no fluxo de etapas se estiver em modo de edição
-        if (existingOrder) { // Formulário já preenchido
-            if (isWindowActive) { // Dentro do horário
+    if (!editMode) {
+        if (existingOrder) {
+            if (isWindowActive) {
                 return (
-                    <StateCard icon={<ShieldCheck className="h-10 w-10 text-green-600" />} title="Pedido Recebido!" description={`Já registramos sua cesta para amanhã. Deseja alterar algum item? Você pode editar seu pedido até as ${breakfastConfig.orderingEndTime}.`}>
+                    <StateCard icon={<ShieldCheck className="h-10 w-10 text-green-600" />} title="Pedido Recebido!" description={`Já registramos sua cesta para amanhã. Você pode editar seu pedido até as ${breakfastConfig.orderingEndTime}.`}>
                         <Button size="lg" onClick={() => setEditMode(true)}><Edit className="mr-2 h-4 w-4" /> Alterar Pedido</Button>
                     </StateCard>
                 );
-            } else { // Fora do horário
+            } else {
                 return (
                      <StateCard icon={<Lock className="h-10 w-10 text-primary" />} title="Pedido Confirmado" description={`Seu pedido já foi recebido e está sendo preparado! O período para alterações encerrou às ${breakfastConfig.orderingEndTime}.`} />
                 );
             }
-        } else { // Formulário não preenchido
-            if (!isWindowActive) { // Fora do horário
-                const defaultMessage = (property.messages?.breakfastBasketDefaultMessage || "Fique tranquilo, uma cesta padrão para {X} pessoa(s) será preparada para você.").replace('{X}', stay?.numberOfGuests.toString() || '1');
+        } else {
+            if (!isWindowActive) {
+                const defaultMessage = (property?.messages?.breakfastBasketDefaultMessage || "Fique tranquilo, uma cesta padrão para {X} pessoa(s) será preparada para você.").replace('{X}', stay?.numberOfGuests.toString() || '1');
                 return (
                     <StateCard icon={<TimerOff className="h-10 w-10 text-destructive" />} title="Pedidos Encerrados" description={<>{`O horário para escolher os itens da sua cesta encerrou às ${breakfastConfig.orderingEndTime}.`}<br/>{defaultMessage}</>} />
                 );
@@ -101,14 +154,13 @@ export const BreakfastFlow: React.FC = () => {
         }
     }
     
-    // RENDERIZAÇÃO DO FLUXO DE ETAPAS (Formulário não preenchido, dentro do horário OU modo de edição ativo)
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
             <div className="lg:col-span-2 space-y-6">
                 {currentStep === 1 && <StepWelcome />}
                 {currentStep === 2 && <StepIndividualChoices categories={individualCategories} />}
                 {currentStep === 3 && <StepAccompaniments categories={collectiveCategories} />}
-                {currentStep === 4 && <StepReview individualCategories={individualCategories} collectiveCategories={collectiveCategories} />}
+                {currentStep === 4 && <StepReview onConfirmOrder={handleSendOrder} />}
                 {currentStep === 5 && <StepSuccess />}
             </div>
             <div className="lg:col-span-1">

@@ -1,60 +1,48 @@
-import { NextResponse, NextRequest } from 'next/server';
-import { getFirebaseDb } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, query, where, getDocs, Timestamp, limit, writeBatch, doc } from 'firebase/firestore';
-import { BreakfastOrder } from '@/types';
+import { adminDb, adminAuth } from '@/lib/firebase-admin';
+import { NextResponse } from 'next/server';
+import { firestore } from 'firebase-admin';
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
     try {
-        const db = await getFirebaseDb();
-        if (!db) throw new Error("Database connection failed");
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return NextResponse.json({ error: "Usuário não autenticado." }, { status: 401 });
+        }
 
-        const body = await req.json();
-        const { stayId, deliveryDate, numberOfGuests, individualItems, collectiveItems, generalNotes } = body;
-        
-        if (!stayId || !deliveryDate || !numberOfGuests) {
-            return NextResponse.json({ error: 'Dados do pedido incompletos.' }, { status: 400 });
+        const idToken = authHeader.split('Bearer ')[1];
+        const decodedToken = await adminAuth.verifyIdToken(idToken);
+
+        if (!decodedToken.isGuest || !decodedToken.stayId) {
+            return NextResponse.json({ error: "Permissão negada." }, { status: 403 });
         }
         
-        const ordersCollection = collection(db, 'breakfastOrders');
+        const stayId = decodedToken.stayId;
+        const { orderData, existingOrderId } = await request.json();
 
-        // Esta consulta complexa é o motivo pelo qual o índice é necessário
-        const q = query(
-            ordersCollection, 
-            where("stayId", "==", stayId), 
-            where("deliveryDate", "==", deliveryDate),
-            where("status", "!=", "canceled")
-        );
+        if (!orderData) {
+            return NextResponse.json({ error: "Dados do pedido não fornecidos." }, { status: 400 });
+        }
+        
+        const ordersRef = adminDb.collection('breakfastOrders');
+        
+        // Se for uma edição, deleta o pedido antigo
+        if (existingOrderId) {
+            await ordersRef.doc(existingOrderId).delete();
+        }
 
-        const existingOrderSnapshot = await getDocs(q);
-
-        const newOrderData: Omit<BreakfastOrder, 'id'> = {
-            stayId,
-            deliveryDate,
-            numberOfGuests,
-            individualItems: individualItems || [],
-            collectiveItems: collectiveItems || [],
-            generalNotes: generalNotes || '',
-            status: 'pending',
-            createdAt: Timestamp.now(),
+        // Cria o novo pedido
+        const newOrder = {
+            ...orderData,
+            stayId: stayId, // Garante que o stayId é o do usuário autenticado
+            createdAt: firestore.FieldValue.serverTimestamp(),
         };
 
-        if (!existingOrderSnapshot.empty) {
-            const batch = writeBatch(db);
-            existingOrderSnapshot.forEach(doc => {
-                batch.update(doc.ref, { status: 'canceled' });
-            });
-            const newOrderRef = doc(collection(db, 'breakfastOrders'));
-            batch.set(newOrderRef, newOrderData);
-            await batch.commit();
-            return NextResponse.json({ success: true, newOrderId: newOrderRef.id, action: 'replaced' }, { status: 201 });
-        } else {
-            const docRef = await addDoc(ordersCollection, newOrderData);
-            return NextResponse.json({ success: true, orderId: docRef.id, action: 'created' }, { status: 201 });
-        }
+        const newOrderRef = await ordersRef.add(newOrder);
 
-    } catch (error) {
-        console.error('API Breakfast Order Error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Erro interno no servidor.';
-        return NextResponse.json({ error: 'Erro ao processar o pedido.', details: errorMessage }, { status: 500 });
+        return NextResponse.json({ success: true, orderId: newOrderRef.id });
+
+    } catch (error: any) {
+        console.error("API Breakfast Order Error:", error);
+        return NextResponse.json({ error: error.message || "Erro interno do servidor." }, { status: 500 });
     }
 }

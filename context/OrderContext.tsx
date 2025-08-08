@@ -11,59 +11,59 @@ interface OrderState {
   collectiveItems: CollectiveOrderItem[];
 }
 
+// ++ INÍCIO DA CORREÇÃO ++
 interface OrderContextType extends OrderState {
   setStep: (step: number) => void;
+  selections: { // Adiciona o objeto 'selections'
+    individualItems: IndividualOrderItem[];
+    collectiveItems: CollectiveOrderItem[];
+  };
   // Itens Coletivos
   totalCollectiveItems: number;
   addCollectiveItem: (item: BreakfastMenuItem, category: BreakfastMenuCategory) => void;
   updateCollectiveItemQuantity: (itemId: string, newQuantity: number) => void;
   getCollectiveItemQuantity: (itemId: string) => number;
-  canAddItem: (item: BreakfastMenuItem, category: BreakfastMenuCategory) => boolean; // NOVO: Para verificar limites
+  canAddItem: (item: BreakfastMenuItem, category: BreakfastMenuCategory) => boolean;
   // Itens Individuais
-  selectIndividualItem: (personId: number, item: BreakfastMenuItem | 'NONE', category: BreakfastMenuCategory) => void; // Atualizado
-  selectFlavor: (personId: number, categoryId: string, itemId: string, flavor: Flavor) => void; // NOVO: Para sabores
+  selectIndividualItem: (personId: number, item: BreakfastMenuItem | 'NONE', category: BreakfastMenuCategory) => void;
+  selectFlavor: (personId: number, categoryId: string, itemId: string, flavor: Flavor) => void;
   getIndividualItem: (personId: number, categoryId: string) => IndividualOrderItem | undefined;
-  isPersonComplete: (personId: number, individualCategories: BreakfastMenuCategory[]) => boolean; // Lógica atualizada
+  isPersonComplete: (personId: number, individualCategories: BreakfastMenuCategory[]) => boolean;
   clearOrder: () => void;
 }
+// ++ FIM DA CORREÇÃO ++
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 export const OrderProvider = ({ children }: { children: ReactNode }) => {
     const { stay } = useGuest();
     const [state, setState] = useState<OrderState>({
-        currentStep: 1, // 1: Welcome, 2: Individual, 3: Collective, 4: Review, 5: Success
+        currentStep: 1,
         individualItems: [],
         collectiveItems: [],
     });
 
     const setStep = (step: number) => setState(prev => ({ ...prev, currentStep: step }));
-
     const clearOrder = () => setState(prev => ({ ...prev, individualItems: [], collectiveItems: [] }));
     
     // --- Lógica para Itens Coletivos (Acompanhamentos) ---
     const getCollectiveItemQuantity = (itemId: string) => state.collectiveItems.find(i => i.itemId === itemId)?.quantity || 0;
-
     const totalCollectiveItems = useMemo(() => state.collectiveItems.reduce((total, item) => total + item.quantity, 0), [state.collectiveItems]);
 
     const canAddItem = useCallback((item: BreakfastMenuItem, category: BreakfastMenuCategory): boolean => {
         const numberOfGuests = stay?.numberOfGuests || 1;
         if (category.limitType === 'none') return true;
-
         const limit = category.limitGuestMultiplier * numberOfGuests;
-        
         if (category.limitType === 'per_item') {
             const currentQuantity = getCollectiveItemQuantity(item.id);
             return currentQuantity < limit;
         }
-
         if (category.limitType === 'per_category') {
             const totalInCategory = state.collectiveItems
                 .filter(i => category.items.some(catItem => catItem.id === i.itemId))
                 .reduce((total, current) => total + current.quantity, 0);
             return totalInCategory < limit;
         }
-
         return true;
     }, [state.collectiveItems, stay?.numberOfGuests]);
 
@@ -86,7 +86,6 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
             if (newQuantity <= 0) {
                 return { ...prev, collectiveItems: prev.collectiveItems.filter(i => i.itemId !== itemId) };
             }
-            // Aqui, a verificação de limite é mais complexa e é mais fácil delegar ao usuário via UI
             return { ...prev, collectiveItems: prev.collectiveItems.map(i => i.itemId === itemId ? { ...i, quantity: newQuantity } : i) };
         });
     };
@@ -125,22 +124,25 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         
         return individualCategories.every(cat => {
             const selection = state.individualItems.find(item => item.personId === personId && item.categoryId === cat.id);
-            if (!selection) return false; // Nenhuma seleção feita na categoria
-            if (selection.itemId === 'NONE') return true; // "Não quero" é uma seleção completa
-
+            if (!selection) return false;
+            if (selection.itemId === 'NONE') return true;
             const selectedItemFromMenu = cat.items.find(i => i.id === selection.itemId);
-            // Se o item do menu tem sabores, a seleção só está completa se um sabor foi escolhido
             if (selectedItemFromMenu && selectedItemFromMenu.flavors.length > 0) {
                 return !!selection.flavorId;
             }
-            
-            return true; // Item selecionado e não tem sabores
+            return true;
         });
     }, [state.individualItems]);
     
     const value = {
         ...state,
         setStep,
+        // ++ INÍCIO DA CORREÇÃO ++
+        selections: { // Adiciona o objeto 'selections' ao valor do contexto
+            individualItems: state.individualItems,
+            collectiveItems: state.collectiveItems,
+        },
+        // ++ FIM DA CORREÇÃO ++
         totalCollectiveItems,
         addCollectiveItem,
         updateCollectiveItemQuantity,

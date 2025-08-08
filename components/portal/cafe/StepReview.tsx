@@ -3,21 +3,18 @@
 import React, { useState } from 'react';
 import { useGuest } from '@/context/GuestProvider';
 import { useOrder } from '@/context/OrderContext';
-import { BreakfastMenuCategory, IndividualOrderItem, CollectiveOrderItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
-import { format, addDays } from 'date-fns';
-import { toast } from 'sonner';
 
+// ++ INÍCIO DA CORREÇÃO ++
 interface StepReviewProps {
-  individualCategories: BreakfastMenuCategory[];
-  collectiveCategories: BreakfastMenuCategory[];
+  onConfirmOrder: () => Promise<void>; // Define que o componente espera receber esta função
 }
+// ++ FIM DA CORREÇÃO ++
 
-// Componente de Resumo para manter o código limpo
 const OrderSummarySection: React.FC<{ title: string; children: React.ReactNode; hasItems: boolean; noItemsText: string }> = ({ title, children, hasItems, noItemsText }) => (
     <div className="border-t pt-4">
         <h4 className="font-bold text-lg mb-2">{title}</h4>
@@ -25,51 +22,21 @@ const OrderSummarySection: React.FC<{ title: string; children: React.ReactNode; 
     </div>
 );
 
-export const StepReview: React.FC<StepReviewProps> = ({ individualCategories, collectiveCategories }) => {
+// ++ CORREÇÃO: O componente agora recebe a prop 'onConfirmOrder'
+export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
     const { stay } = useGuest();
     const { setStep, individualItems, collectiveItems } = useOrder();
     const [generalNotes, setGeneralNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const deliveryDateString = format(addDays(new Date(), 1), 'yyyy-MM-dd');
-
+    // ++ CORREÇÃO: A lógica de envio foi movida para o componente pai (BreakfastFlow).
+    // Esta função agora apenas chama a prop recebida.
     const handleConfirmOrder = async () => {
-        if (!stay) {
-            toast.error("Erro de sessão", { description: "Não foi possível identificar o hóspede. Por favor, tente novamente." });
-            return;
-        }
-
         setIsSubmitting(true);
-        const toastId = toast.loading("Enviando seu pedido...");
-
-        try {
-            const response = await fetch('/api/portal/cafe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    stayId: stay.id,
-                    deliveryDate: deliveryDateString,
-                    numberOfGuests: stay.numberOfGuests,
-                    individualItems,
-                    collectiveItems,
-                    generalNotes,
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || "Não foi possível registrar seu pedido.");
-            }
-            
-            toast.success("Pedido enviado com sucesso!", { id: toastId });
-            sessionStorage.setItem(`order-${stay.id}-${deliveryDateString}`, 'true'); // Marca que o pedido foi feito
-            setStep(5); // Avança para a tela de sucesso
-
-        } catch (error: any) {
-            toast.error("Erro ao enviar o pedido", { id: toastId, description: error.message });
-        } finally {
-            setIsSubmitting(false);
-        }
+        // Adiciona as anotações ao estado global antes de enviar (opcional, mas boa prática)
+        // Se precisar das notas no envio, ajuste o OrderContext para guardá-las.
+        await onConfirmOrder();
+        setIsSubmitting(false);
     };
 
     return (
@@ -81,7 +48,6 @@ export const StepReview: React.FC<StepReviewProps> = ({ individualCategories, co
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                {/* Resumo das Escolhas Individuais */}
                 <OrderSummarySection
                     title="Escolhas Individuais"
                     hasItems={individualItems.length > 0}
@@ -99,7 +65,6 @@ export const StepReview: React.FC<StepReviewProps> = ({ individualCategories, co
                     ))}
                 </OrderSummarySection>
 
-                {/* Resumo dos Acompanhamentos */}
                  <OrderSummarySection
                     title="Acompanhamentos da Cesta"
                     hasItems={collectiveItems.length > 0}
@@ -112,7 +77,6 @@ export const StepReview: React.FC<StepReviewProps> = ({ individualCategories, co
                    </ul>
                 </OrderSummarySection>
 
-                {/* Campo de Observações */}
                 <div>
                     <Label htmlFor="general-notes">Observações Gerais (opcional)</Label>
                     <Textarea
@@ -124,11 +88,10 @@ export const StepReview: React.FC<StepReviewProps> = ({ individualCategories, co
                     />
                 </div>
                 
-                {/* Botões de Navegação */}
                 <div className="mt-8 flex justify-between items-center">
                     <Button 
                         variant="outline"
-                        onClick={() => setStep(3)} // Volta para Acompanhamentos
+                        onClick={() => setStep(3)}
                         disabled={isSubmitting}
                     >
                         <ArrowLeft className="w-4 h-4 mr-2" />
@@ -136,7 +99,7 @@ export const StepReview: React.FC<StepReviewProps> = ({ individualCategories, co
                     </Button>
                     <Button
                         size="lg"
-                        onClick={handleConfirmOrder}
+                        onClick={handleConfirmOrder} // Chama a função local que chama a prop
                         disabled={isSubmitting}
                     >
                         {isSubmitting ? (

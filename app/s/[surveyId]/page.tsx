@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import * as firestore from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
+import { getAuth } from "firebase/auth"; // Import getAuth
 import { Survey, SurveyQuestion, SurveyResponse, SurveyResponseAnswer } from "@/types/survey";
 
 import { Button } from '@/components/ui/button';
@@ -13,10 +14,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from '@/components/ui/label';
 import { toast, Toaster } from 'sonner';
-import { Loader2, Send, Star, CheckCircle, Smile, Frown, Meh } from 'lucide-react';
+import { Loader2, Send, Star, CheckCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
-// Componente para a questão de avaliação com 5 estrelas
+// (Rating5Stars and Nps0To10 components remain unchanged)
 const Rating5Stars = ({ onChange, value }: { value: number; onChange: (value: number) => void; }) => {
     const [hover, setHover] = useState(0);
     return (
@@ -25,8 +26,7 @@ const Rating5Stars = ({ onChange, value }: { value: number; onChange: (value: nu
                 const ratingValue = index + 1;
                 return (
                     <button
-                        type="button"
-                        key={ratingValue}
+                        type="button" key={ratingValue}
                         onClick={() => onChange(ratingValue)}
                         onMouseEnter={() => setHover(ratingValue)}
                         onMouseLeave={() => setHover(0)}
@@ -43,22 +43,15 @@ const Rating5Stars = ({ onChange, value }: { value: number; onChange: (value: nu
         </div>
     );
 };
-
-
-// Componente para a questão de NPS de 0 a 10
 const Nps0To10 = ({ onChange, value }: { value: number; onChange: (value: number) => void; }) => {
     return (
         <div className="flex flex-wrap items-center justify-center gap-2">
             {[...Array(11)].map((_, index) => (
                 <button
-                    key={index}
-                    type="button"
+                    key={index} type="button"
                     onClick={() => onChange(index)}
                     className={`flex h-10 w-10 items-center justify-center rounded-md border text-sm font-medium transition-colors
-                        ${value === index
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-background hover:bg-accent'
-                        }
+                        ${value === index ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}
                         ${index <= 6 ? 'hover:bg-red-100' : index <= 8 ? 'hover:bg-yellow-100' : 'hover:bg-green-100'}
                     `}
                 >
@@ -69,15 +62,11 @@ const Nps0To10 = ({ onChange, value }: { value: number; onChange: (value: number
     );
 };
 
-// Componente principal da página da pesquisa
 export default function SurveyPage() {
     const params = useParams();
     const searchParams = useSearchParams();
     const surveyId = params.surveyId as string;
-
-    // ## INÍCIO DA CORREÇÃO: Lendo o parâmetro 'stayId' em vez de 'stay' ##
     const stayId = searchParams.get('stayId');
-    // ## FIM DA CORREÇÃO ##
 
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [survey, setSurvey] = useState<Survey | null>(null);
@@ -89,40 +78,30 @@ export default function SurveyPage() {
 
 
     useEffect(() => {
-        const initializeDb = async () => {
-            const firestoreDb = await getFirebaseDb();
-            setDb(firestoreDb);
-        };
+        const initializeDb = async () => { setDb(await getFirebaseDb()); };
         initializeDb();
     }, []);
 
     useEffect(() => {
         if (!db || !surveyId) return;
-
         if (!stayId) {
-            setError("Link de pesquisa inválido. O identificador da estadia não foi encontrado. Por favor, verifique o link que você recebeu.");
+            setError("Link de pesquisa inválido. O identificador da estadia não foi encontrado.");
             setLoading(false);
             return;
         }
-
         const fetchSurvey = async () => {
             setLoading(true);
             try {
                 const surveyRef = firestore.doc(db, 'surveys', surveyId);
                 const surveySnap = await firestore.getDoc(surveyRef);
-
                 if (!surveySnap.exists()) {
-                    setError("Pesquisa não encontrada ou indisponível.");
-                    return;
+                    setError("Pesquisa não encontrada ou indisponível."); return;
                 }
                 const surveyData = { id: surveySnap.id, ...surveySnap.data() } as Survey;
-
                 const questionsQuery = firestore.query(firestore.collection(surveyRef, "questions"), firestore.orderBy("position", "asc"));
                 const questionsSnapshot = await firestore.getDocs(questionsQuery);
                 const questionsData = questionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SurveyQuestion));
-
                 setSurvey({ ...surveyData, questions: questionsData });
-
             } catch (error) {
                 toast.error("Falha ao carregar a pesquisa.");
                 setError("Ocorreu um erro ao carregar os dados da pesquisa.");
@@ -130,7 +109,6 @@ export default function SurveyPage() {
                 setLoading(false);
             }
         };
-
         fetchSurvey();
     }, [db, surveyId, stayId]);
     
@@ -138,10 +116,14 @@ export default function SurveyPage() {
         setAnswers(prev => ({ ...prev, [questionId]: answer }));
     };
 
+    // ++ INÍCIO DA CORREÇÃO: Lógica de envio via API ++
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!db || !survey || !stayId) {
-            toast.error("Não foi possível enviar sua resposta. Faltam informações essenciais.");
+        const auth = getAuth();
+        const user = auth.currentUser;
+
+        if (!survey || !stayId || !user) {
+            toast.error("Não foi possível enviar. Sessão inválida ou dados faltando.");
             return;
         }
 
@@ -149,40 +131,53 @@ export default function SurveyPage() {
         const toastId = toast.loading("Enviando suas respostas...");
 
         try {
+            const idToken = await user.getIdToken();
+
             const responseAnswers: SurveyResponseAnswer[] = Object.entries(answers).map(([questionId, answer]) => ({
                 questionId,
                 questionText: survey.questions.find(q => q.id === questionId)?.text || 'N/A',
                 answer,
             }));
 
-            const responseData: Omit<SurveyResponse, 'id'> = {
+            const responseData: Omit<SurveyResponse, 'id' | 'submittedAt'> = {
                 surveyId: survey.id,
                 stayId: stayId,
-                submittedAt: firestore.Timestamp.now(),
                 answers: responseAnswers,
             };
+            
+            // Envia os dados para a nova API segura
+            const response = await fetch('/api/portal/surveys', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify({ responseData })
+            });
 
-            await firestore.addDoc(firestore.collection(db, 'surveyResponses'), responseData);
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || "Não foi possível registrar suas respostas.");
+            }
             
             toast.success("Obrigado pelo seu feedback!", { id: toastId });
             setIsSubmitSuccessful(true);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Submission Error:", error);
-            toast.error("Ocorreu um erro ao enviar suas respostas.", { id: toastId });
+            toast.error("Ocorreu um erro ao enviar suas respostas.", { id: toastId, description: error.message });
         } finally {
             setIsSubmitting(false);
         }
     };
+    // ++ FIM DA CORREÇÃO ++
 
     if (loading) {
         return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando...</div>;
     }
-
     if (error) {
         return <div className="flex h-screen w-full items-center justify-center text-center text-red-500 p-8">{error}</div>;
     }
-
     if (!survey) {
         return <div className="flex h-screen w-full items-center justify-center text-red-500">Pesquisa não encontrada ou inválida.</div>;
     }

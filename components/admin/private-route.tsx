@@ -4,19 +4,20 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+// Importe os outros providers que buscam dados
+import { PropertyProvider } from '@/context/PropertyContext';
+import { OrderProvider } from '@/context/OrderContext';
 
 export default function PrivateRoute({ children }: { children: React.ReactNode }) {
     const { user, loading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        // Apenas redireciona se o carregamento inicial terminou e não há usuário
         if (!loading && !user) {
             router.push('/admin/login');
         }
     }, [user, loading, router]);
 
-    // Exibe um loader enquanto a verificação está em andamento
     if (loading || !user) {
         return (
             <div className="min-h-screen w-full flex items-center justify-center">
@@ -25,6 +26,13 @@ export default function PrivateRoute({ children }: { children: React.ReactNode }
         );
     }
     
-    // Se o usuário estiver logado, exibe o conteúdo da página
-    return <>{children}</>;
+    // CORREÇÃO: Envolvemos o 'children' com os providers de dados.
+    // Agora eles só rodam para usuários autenticados.
+    return (
+        <PropertyProvider>
+            <OrderProvider>
+                {children}
+            </OrderProvider>
+        </PropertyProvider>
+    );
 }

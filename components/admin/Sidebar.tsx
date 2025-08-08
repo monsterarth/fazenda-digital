@@ -3,11 +3,10 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Property } from '@/types';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, BedDouble, Coffee, Calendar, BarChart2, Settings, LogOut,
-    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield
+    Home, PaintBrush, Utensils, CalendarCheck, FileText, Wrench, Shield
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getAuth, signOut } from 'firebase/auth';
@@ -19,21 +18,20 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
+import { useProperty } from '@/context/PropertyContext'; // ++ Importa o hook do contexto
 
-
-// Lista de navegação principal
+// As listas de navegação permanecem as mesmas
 const mainNavItems = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/stays', label: 'Estadias', icon: BedDouble },
     { href: '/admin/pedidos/cafe', label: 'Pedidos Café', icon: Coffee },
     { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
-    { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 }, // Rota de exemplo
+    { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },
 ];
 
-// Lista de navegação de configurações
 const settingsNavItems = [
     { href: '/admin/settings/cabanas', label: 'Cabanas', icon: Home },
-    { href: '/admin/settings/personalizacao', label: 'Personalização', icon: Paintbrush },
+    { href: '/admin/settings/personalizacao', label: 'Personalização', icon: PaintBrush },
     { href: '/admin/settings/cafe', label: 'Cardápio Café', icon: Utensils },
     { href: '/admin/settings/agendamentos', label: 'Gerenciar Agend.', icon: CalendarCheck },
     { href: '/admin/settings/pesquisas', label: 'Gerenciar Pesquisas', icon: FileText },
@@ -41,11 +39,12 @@ const settingsNavItems = [
     { href: '/admin/settings/politicas', label: 'Políticas', icon: Shield },
 ];
 
-
-export function Sidebar({ property }: { property: Property | null }) {
+// ++ A prop 'property' foi removida da assinatura do componente
+export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
     const { user } = useAuth();
+    const { property } = useProperty(); // ++ Os dados da propriedade agora vêm do contexto
 
     const handleLogout = async () => {
         const auth = getAuth();

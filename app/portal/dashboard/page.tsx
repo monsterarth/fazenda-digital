@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Calendar, MessageSquareHeart, Star, BookOpenCheck, Coffee, Wifi, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { ActionCard } from '@/components/portal/ActionCard';
-import { SimpleBookingItem } from '@/components/portal/SimpleBookingItem'; // <-- Importa o novo componente
+import { SimpleBookingItem } from '@/components/portal/SimpleBookingItem';
 import { Cabin } from '@/types'; 
 import { getFirebaseDb, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
+import { format } from 'date-fns'; // Importa a função format
 
 export default function GuestDashboardPage() {
     const { stay, isLoading: isGuestLoading } = useGuest();
@@ -46,10 +47,15 @@ export default function GuestDashboardPage() {
 
     const upcomingBookings = useMemo(() => {
         if (!stay?.bookings) return [];
+        
+        // ## INÍCIO DA CORREÇÃO: Filtra agendamentos apenas para o dia de HOJE ##
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
         const relevantStatuses = ['confirmado', 'solicitado', 'pendente', 'em_andamento'];
+        
         return stay.bookings
-            .filter(b => relevantStatuses.includes(b.status))
+            .filter(b => b.date === todayStr && relevantStatuses.includes(b.status))
             .sort((a, b) => (a.startTime || a.timeSlotLabel || '00:00').localeCompare(b.startTime || b.timeSlotLabel || '00:00'));
+        // ## FIM DA CORREÇÃO ##
     }, [stay]);
 
     if (isGuestLoading || isPropertyLoading || loadingAncillaryData || !stay || !property) {
@@ -63,13 +69,11 @@ export default function GuestDashboardPage() {
                 <p className="text-lg text-muted-foreground">Bem-vindo(a) à sua central do hóspede.</p>
             </header>
             
-            {/* Card Principal: Resumo do Dia */}
             <Card>
                 <CardHeader>
                     <CardTitle>Resumo do Dia</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {/* Seção de Agendamentos Compacta */}
                     <div>
                         <h3 className="text-md font-semibold mb-2">Seus Agendamentos</h3>
                         {upcomingBookings.length > 0 ? (
@@ -85,7 +89,6 @@ export default function GuestDashboardPage() {
                         )}
                     </div>
 
-                    {/* Seção de Wi-Fi Discreta */}
                     {cabin?.wifiSsid && (
                         <div className="pt-4 border-t">
                              <h3 className="text-md font-semibold mb-2">Wi-Fi da Cabana</h3>
@@ -109,7 +112,6 @@ export default function GuestDashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* Grid de Ações Rápidas */}
             <div>
                  <h2 className="text-xl font-bold text-foreground mb-4">O que deseja fazer?</h2>
                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

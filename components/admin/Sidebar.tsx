@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, BedDouble, Coffee, Calendar, BarChart2, Settings, LogOut,
-    Home, PaintBrush, Utensils, CalendarCheck, FileText, Wrench, Shield
+    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getAuth, signOut } from 'firebase/auth';
@@ -31,7 +31,7 @@ const mainNavItems = [
 
 const settingsNavItems = [
     { href: '/admin/settings/cabanas', label: 'Cabanas', icon: Home },
-    { href: '/admin/settings/personalizacao', label: 'Personalização', icon: PaintBrush },
+    { href: '/admin/settings/personalizacao', label: 'Personalização', icon: Paintbrush },
     { href: '/admin/settings/cafe', label: 'Cardápio Café', icon: Utensils },
     { href: '/admin/settings/agendamentos', label: 'Gerenciar Agend.', icon: CalendarCheck },
     { href: '/admin/settings/pesquisas', label: 'Gerenciar Pesquisas', icon: FileText },

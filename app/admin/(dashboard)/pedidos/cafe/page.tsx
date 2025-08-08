@@ -8,6 +8,7 @@ import { toast, Toaster } from 'sonner';
 import { format, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,16 +25,23 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
 export default function CafePedidosPage() {
+    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
     const [orders, setOrders] = useState<OrderWithStay[]>([]);
     const [property, setProperty] = useState<Property | null>(null);
     const [loading, setLoading] = useState(true);
     const { printComponent, isPrinting } = usePrint();
     const [selectedOrders, setSelectedOrders] = useState<OrderWithStay[]>([]);
-    const [hideArchived, setHideArchived] = useState(true); // Renomeado para maior clareza
+    const [hideArchived, setHideArchived] = useState(true);
     
     const [detailsModal, setDetailsModal] = useState<{ isOpen: boolean; order: OrderWithStay | null }>({ isOpen: false, order: null });
 
     useEffect(() => {
+        // ++ CORREÇÃO: A inicialização agora espera pela confirmação de admin
+        if (!isAdmin) {
+            // Se o usuário não for admin, não tenta criar o listener
+            return;
+        }
+
         const initializeListener = async () => {
             if (!db) { toast.error('Não foi possível conectar ao banco de dados.'); setLoading(false); return; }
             
@@ -73,15 +81,13 @@ export default function CafePedidosPage() {
             
             return () => unsubscribe();
         };
+        
         initializeListener();
-    }, []);
+        
+    }, [isAdmin]); // ++ A dependência do useEffect agora é o status de admin
 
-    // ==========================================================
-    // CORREÇÃO APLICADA AQUI
-    // ==========================================================
     const filteredOrders = useMemo(() => {
         if (hideArchived) {
-            // Agora filtra tanto 'delivered' quanto 'canceled'
             return orders.filter(order => order.status !== 'delivered' && order.status !== 'canceled');
         }
         return orders;
@@ -121,7 +127,7 @@ export default function CafePedidosPage() {
         return isValid(date) ? format(date, formatString, { locale: ptBR }) : 'Data inválida';
     };
 
-    if (loading) {
+    if (loading && orders.length === 0) {
         return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando pedidos...</div>;
     }
 
@@ -208,7 +214,6 @@ export default function CafePedidosPage() {
                                 ))
                             ) : ( 
                                 <TableRow>
-                                    {/* Mensagem atualizada para refletir a nova regra de filtro */}
                                     <TableCell colSpan={6} className="text-center h-24">
                                         {hideArchived ? 'Nenhum pedido ativo ou pendente encontrado.' : 'Nenhum pedido encontrado.'}
                                     </TableCell>

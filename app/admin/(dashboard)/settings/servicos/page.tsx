@@ -7,6 +7,7 @@ import { Service } from '@/types';
 import { useForm, useFieldArray, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,19 +21,15 @@ import { toast, Toaster } from 'sonner';
 import { Loader2, PlusCircle, Edit, Trash2, CalendarCog, X, Clock, Wand2, Handshake } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
-// Esquema de validação para um único TimeSlot
 const timeSlotSchema = z.object({
   id: z.string(),
   label: z.string().min(1, "O rótulo é obrigatório."),
 });
 
-// ## INÍCIO DA CORREÇÃO ##
-// Ajustado o schema para usar array de objetos, que é o padrão esperado pelo useFieldArray.
 const serviceSchema = z.object({
     name: z.string().min(2, "O nome do serviço é obrigatório."),
     type: z.enum(['slots', 'preference', 'on_demand']),
     defaultStatus: z.enum(['open', 'closed']).optional(),
-    
     units: z.array(z.object({ value: z.string() })).optional(),
     timeSlots: z.array(timeSlotSchema).optional(),
     additionalOptions: z.array(z.object({ value: z.string() })).optional(),
@@ -56,9 +53,9 @@ const serviceSchema = z.object({
 });
 
 type ServiceFormValues = z.infer<typeof serviceSchema>;
-// ## FIM DA CORREÇÃO ##
 
 export default function ManageServicesPage() {
+    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [services, setServices] = useState<Service[]>([]);
     const [loading, setLoading] = useState(true);
@@ -85,6 +82,9 @@ export default function ManageServicesPage() {
     const { fields: optionFields, append: appendOption, remove: removeOption } = useFieldArray({ control: form.control, name: "additionalOptions" });
 
     useEffect(() => {
+        // ++ CORREÇÃO: A inicialização agora espera pela confirmação de admin
+        if (!isAdmin) return;
+
         const initializeApp = async () => {
             const firestoreDb = await getFirebaseDb();
             setDb(firestoreDb);
@@ -100,13 +100,13 @@ export default function ManageServicesPage() {
                 setLoading(false);
             }, (error) => {
                 console.error("Erro no Firestore:", error);
-                toast.error("Falha ao carregar serviços.");
+                toast.error("Falha ao carregar serviços. Verifique as permissões.");
                 setLoading(false);
             });
             return () => unsubscribe();
         };
         initializeApp();
-    }, []);
+    }, [isAdmin]); // ++ A dependência do useEffect agora é o status de admin
 
     const handleOpenModal = (service: Service | null) => {
         setEditingService(service);
@@ -115,7 +115,6 @@ export default function ManageServicesPage() {
                 name: service.name,
                 type: service.type,
                 defaultStatus: service.defaultStatus,
-                // Ajustado para converter de string[] para {value: string}[]
                 units: service.units && service.units.length > 0 ? service.units.map(u => ({ value: u })) : [{ value: '' }],
                 timeSlots: service.timeSlots || [{id: new Date().toISOString(), label: ''}],
                 additionalOptions: service.additionalOptions && service.additionalOptions.length > 0 ? service.additionalOptions.map(opt => ({ value: opt })) : [{ value: '' }],
@@ -145,7 +144,6 @@ export default function ManageServicesPage() {
                 type: data.type,
             };
 
-            // Ajustado para extrair o 'value' do objeto antes de salvar
             if (data.type === 'slots') {
                 dataToSave.units = data.units?.map(u => u.value).filter(u => u && u.trim() !== '') || [];
                 dataToSave.timeSlots = data.timeSlots?.filter(ts => ts && ts.label.trim() !== '') || [];
@@ -205,6 +203,10 @@ export default function ManageServicesPage() {
         }
     }
 
+    if (loading) {
+        return <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>
+    }
+
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6">
             <Toaster richColors position="top-center" />
@@ -219,9 +221,6 @@ export default function ManageServicesPage() {
                     </Button>
                 </CardHeader>
                 <CardContent>
-                    {loading ? (
-                        <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>
-                    ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -263,7 +262,6 @@ export default function ManageServicesPage() {
                                 )}
                             </TableBody>
                         </Table>
-                    )}
                 </CardContent>
             </Card>
 
@@ -308,12 +306,10 @@ export default function ManageServicesPage() {
                                     <div className="space-y-2">
                                         <FormLabel>Unidades (Ex: Jacuzzi 1)</FormLabel>
                                         {unitFields.map((field, index) => (
-                                            // Ajustado para registrar 'units.[index].value'
                                             <FormField key={field.id} control={form.control} name={`units.${index}.value`} render={({ field }) => (
                                                 <FormItem className="flex items-center gap-2"><FormControl><Input placeholder={`Unidade ${index + 1}`} {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeUnit(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
                                             )}/>
                                         ))}
-                                        {/* Ajustado para adicionar um objeto ao array */}
                                         <Button type="button" variant="outline" size="sm" onClick={() => appendUnit({ value: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Unidade</Button>
                                         <FormMessage>{form.formState.errors.units?.message}</FormMessage>
                                     </div>
@@ -335,12 +331,10 @@ export default function ManageServicesPage() {
                                     <div className="space-y-2">
                                         <FormLabel>Opções Adicionais (Ex: Troca de toalhas)</FormLabel>
                                         {optionFields.map((field, index) => (
-                                            // Ajustado para registrar 'additionalOptions.[index].value'
                                             <FormField key={field.id} control={form.control} name={`additionalOptions.${index}.value`} render={({ field }) => (
                                                  <FormItem className="flex items-center gap-2"><FormControl><Input placeholder={`Opção ${index + 1}`} {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
                                             )}/>
                                         ))}
-                                        {/* Ajustado para adicionar um objeto ao array */}
                                         <Button type="button" variant="outline" size="sm" onClick={() => appendOption({ value: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Opção</Button>
                                     </div>
                                 </div>

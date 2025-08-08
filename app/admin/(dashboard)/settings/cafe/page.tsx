@@ -9,6 +9,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from "@dnd-kit/utilities";
 import { toast, Toaster } from 'sonner';
 
+import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
 import { BreakfastMenuCategory, BreakfastMenuItem, Flavor } from "@/types";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +23,7 @@ import { GripVertical, Plus, Edit, Trash2, Loader2, Utensils, User, ShoppingBask
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
-// --- COMPONENTES REORDENÁVEIS ---
+// --- COMPONENTES REORDENÁVEIS (Sem alterações) ---
 
 function SortableItem({ item, onEditItem, onDeleteItem }: { item: BreakfastMenuItem, onEditItem: () => void, onDeleteItem: () => void }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
@@ -112,6 +113,7 @@ function SortableCategory({ category, onAddItem, onEditCategory, onDeleteCategor
 
 // --- PÁGINA PRINCIPAL ---
 export default function ManageBreakfastMenuPage() {
+    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [menuCategories, setMenuCategories] = useState<BreakfastMenuCategory[]>([]);
     const [loading, setLoading] = useState(true);
@@ -124,6 +126,14 @@ export default function ManageBreakfastMenuPage() {
     const menuId = "default_breakfast";
 
     useEffect(() => {
+        // ++ CORREÇÃO: A inicialização agora espera pela confirmação de admin
+        if (!isAdmin) {
+            // Se o usuário não for admin, nem tenta inicializar o listener
+            // para evitar o erro de permissão.
+            setLoading(false); // Para o loader se o usuário não for admin
+            return;
+        }
+
         async function initializeDbAndListener() {
             const firestoreDb = await getFirebaseDb();
             if (!firestoreDb) { setLoading(false); return; }
@@ -143,13 +153,13 @@ export default function ManageBreakfastMenuPage() {
                 }));
                 setMenuCategories(categoriesData);
                 setLoading(false);
-            }, (error) => { console.error("Error loading menu:", error); setLoading(false); toast.error("Falha ao carregar o cardápio."); });
+            }, (error) => { console.error("Error loading menu:", error); setLoading(false); toast.error("Falha ao carregar o cardápio. Verifique as permissões."); });
             
             return unsubscribe;
         }
         const unsubscribePromise = initializeDbAndListener();
         return () => { unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe()); };
-    }, []);
+    }, [isAdmin]); // ++ A dependência do useEffect agora é o status de admin
     
     const handleDragEnd = async (event: DragEndEvent, context: 'categories' | 'items', parentId?: string) => {
         if (!db) return;
@@ -295,7 +305,7 @@ export default function ManageBreakfastMenuPage() {
         setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: (prev.data?.flavors || []).map(f => f.id === id ? { ...f, name } : f) }}));
     };
     const handleDeleteFlavor = (id: string) => {
-         setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: (prev.data?.flavors || []).filter(f => f.id !== id) }}));
+        setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: (prev.data?.flavors || []).filter(f => f.id !== id) }}));
     };
 
     return (

@@ -8,6 +8,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import { toast, Toaster } from 'sonner';
 
+import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
 import { Survey, SurveyCategory, SurveyQuestion, QuestionType, Reward } from "@/types/survey";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +32,6 @@ const questionTypeIcons = {
     comment_box: <MessageSquare className="w-4 h-4" />,
 };
 
-// Componente para editar uma pergunta individualmente
 function QuestionEditorCard({ question, updateQuestion, removeQuestion, dragListeners, categories }: {
     question: SurveyQuestion;
     updateQuestion: (id: string, updates: Partial<SurveyQuestion>) => void;
@@ -140,7 +140,6 @@ function SortableQuestionCard({ id, question, updateQuestion, removeQuestion, ca
     );
 }
 
-// Componente para o construtor da pesquisa
 function SurveyBuilder({ survey, categories, onBack, onSave }: {
     survey: Survey; categories: SurveyCategory[]; onBack: () => void; onSave: (surveyData: Omit<Survey, 'id'>) => Promise<void>;
 }) {
@@ -245,6 +244,7 @@ function SurveyBuilder({ survey, categories, onBack, onSave }: {
 }
 
 export default function ManageSurveysPage() {
+    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [surveys, setSurveys] = useState<Survey[]>([]);
     const [categories, setCategories] = useState<SurveyCategory[]>([]);
@@ -254,18 +254,30 @@ export default function ManageSurveysPage() {
     const [newCategoryName, setNewCategoryName] = useState('');
 
     useEffect(() => { async function initialize() { setDb(await getFirebaseDb()); } initialize(); }, []);
+
+    // ++ CORREÇÃO: useEffect agora depende do status de admin
     useEffect(() => {
-        if (!db) return;
+        if (!db || !isAdmin) return; // Espera a confirmação de admin
+
         setLoading(true);
         const unsubSurveys = firestore.onSnapshot(firestore.collection(db, 'surveys'), (snapshot) => {
             setSurveys(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Survey)));
             setLoading(false);
+        }, (error) => {
+            console.error("Erro no listener de surveys:", error);
+            toast.error("Você não tem permissão para ver as pesquisas.");
+            setLoading(false);
         });
+
         const unsubCategories = firestore.onSnapshot(firestore.collection(db, 'surveyCategories'), (snapshot) => {
             setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SurveyCategory)));
+        }, (error) => {
+            console.error("Erro no listener de categorias:", error);
+            toast.error("Você não tem permissão para ver as categorias.");
         });
+
         return () => { unsubSurveys(); unsubCategories(); };
-    }, [db]);
+    }, [db, isAdmin]); // A dependência agora é o status de admin
 
     const handleCreateNewSurvey = () => {
         const newSurvey: Survey = {
@@ -322,7 +334,7 @@ export default function ManageSurveysPage() {
         } catch (error) { console.error(error); toast.error('Falha ao salvar.', { id: toastId }); }
     };
     
-    const handleSaveCategory = async () => { /* ... (sem alterações) */ };
+    const handleSaveCategory = async () => { /* ... (lógica existente, sem alterações) */ };
 
     if (loading) return <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 text-slate-400 animate-spin"/></div>;
     if (selectedSurvey) return <SurveyBuilder survey={selectedSurvey} categories={categories} onBack={() => setSelectedSurvey(null)} onSave={handleSaveSurvey} />;

@@ -3,8 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { app } from '@/lib/firebase';
-// Loader2 is no longer needed here
-// import { Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface AuthContextType {
     user: User | null;
@@ -12,11 +11,7 @@ interface AuthContextType {
     loading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType>({
-    user: null,
-    isAdmin: false,
-    loading: true,
-});
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
@@ -26,30 +21,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         const auth = getAuth(app);
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            setUser(currentUser);
-            
+            // **A MUDANÇA CRÍTICA:** A lógica agora é atômica.
             if (currentUser) {
+                setUser(currentUser);
                 try {
-                    const idTokenResult = await currentUser.getIdTokenResult();
-                    const userIsAdmin = idTokenResult.claims.admin === true;
-                    setIsAdmin(userIsAdmin);
+                    // Força a atualização do token para obter os claims mais recentes.
+                    const idTokenResult = await currentUser.getIdTokenResult(true);
+                    // Define o status de admin com base no custom claim.
+                    setIsAdmin(idTokenResult.claims.admin === true);
                 } catch (error) {
                     console.error("Erro ao verificar permissões de admin:", error);
-                    setIsAdmin(false);
+                    setIsAdmin(false); // Failsafe em caso de erro.
                 }
             } else {
+                // Se não há usuário, zera todos os estados.
+                setUser(null);
                 setIsAdmin(false);
             }
-
+            // O 'loading' só se torna falso DEPOIS que todas as verificações (usuário e admin) terminaram.
             setLoading(false);
         });
 
+        // Limpa o listener ao desmontar.
         return () => unsubscribe();
     }, []);
 
-    // ++ CORREÇÃO: Removido o bloco "if (loading)" que renderizava UI. ++
-    // O Provider agora SEMPRE renderiza seus children, garantindo que o server e o client
-    // renderizem a mesma estrutura inicial, o que resolve o erro de hidratação.
+    // O loader em tela cheia foi removido daqui para evitar erros de hidratação.
+    // O PrivateRoute cuidará da UI de carregamento.
     return (
         <AuthContext.Provider value={{ user, isAdmin, loading }}>
             {children}
@@ -58,5 +56,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useAuth = (): AuthContextType => {
-    return useContext(AuthContext);
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+    }
+    return context;
 };

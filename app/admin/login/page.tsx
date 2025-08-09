@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,29 +9,50 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast, Toaster } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { app } from '@/lib/firebase'; // Garanta que o 'app' do firebase seja exportado
 
 export default function AdminLoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
-    const auth = getAuth();
+    const auth = getAuth(app);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
+        const toastId = toast.loading("Autenticando...");
+
         try {
-            await signInWithEmailAndPassword(auth, email, password);
-            toast.success("Login realizado com sucesso!");
-            router.push('/admin/stays'); // Redireciona para a página de gestão
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // ++ A MUDANÇA CRÍTICA E CRIATIVA ++
+            // Forçamos a atualização do token de ID para obter os custom claims IMEDIATAMENTE.
+            // O 'true' garante que estamos pegando a versão mais recente do servidor.
+            toast.loading("Verificando permissões de administrador...", { id: toastId });
+            const idTokenResult = await user.getIdTokenResult(true);
+
+            // Verificamos o claim de admin AQUI, na página de login, antes de redirecionar.
+            if (idTokenResult.claims.admin === true) {
+                toast.success("Login realizado com sucesso!", { id: toastId });
+                // Só redirecionamos DEPOIS de ter 100% de certeza que o usuário é admin.
+                router.push('/admin/stays');
+            } else {
+                // Se o usuário é válido mas não é admin, nós o deslogamos e mostramos um erro.
+                await signOut(auth);
+                throw new Error("Você não tem permissão para acessar esta área.");
+            }
+
         } catch (error: any) {
-            console.error(error);
-            toast.error("Falha no login", {
-                description: "Verifique seu e-mail e senha.",
-            });
-        } finally {
+            let description = "Verifique seu e-mail e senha.";
+            if (error.message.includes("permissão")) {
+                description = error.message;
+            }
+            toast.error("Falha no login", { id: toastId, description });
             setLoading(false);
         }
+        // O setLoading só é desativado em caso de falha, pois o sucesso causa um redirecionamento.
     };
 
     return (

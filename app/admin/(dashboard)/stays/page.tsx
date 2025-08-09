@@ -11,9 +11,13 @@ import { Loader2, PlusCircle, Users, FileCheck2 } from 'lucide-react';
 import { CreateStayDialog } from '@/components/admin/stays/create-stay-dialog';
 import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
 import { StaysList } from '@/components/admin/stays/stays-list';
-import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog'; // Importa o novo modal de edição
+import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog';
+// ++ INÍCIO DA CORREÇÃO: Importa o hook de autenticação ++
+import { useAuth } from '@/context/AuthContext';
 
 export default function ManageStaysPage() {
+    // ++ INÍCIO DA CORREÇÃO: Usa o hook para verificar o status de admin ++
+    const { isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [pendingCheckIns, setPendingCheckIns] = useState<PreCheckIn[]>([]);
     const [activeStays, setActiveStays] = useState<Stay[]>([]);
@@ -24,7 +28,15 @@ export default function ManageStaysPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
 
+    // ++ INÍCIO DA CORREÇÃO: O useEffect agora espera pela confirmação de admin ++
     useEffect(() => {
+        // Se a verificação de admin ainda não terminou, ou se o usuário não é um admin,
+        // não faz absolutamente nada. Isso previne a busca prematura de dados.
+        if (!isAdmin) {
+            setLoading(false); // Garante que o loader pare se o usuário não for admin
+            return;
+        }
+
         const initializeApp = async () => {
             setLoading(true);
             const firestoreDb = await getFirebaseDb();
@@ -36,22 +48,20 @@ export default function ManageStaysPage() {
                 return;
             }
 
-            // Listener para Pré-Check-ins Pendentes
+            // Agora, estas chamadas só são feitas quando temos certeza de que o usuário é um admin.
             const qCheckIns = firestore.query(firestore.collection(firestoreDb, 'preCheckIns'), firestore.where('status', '==', 'pendente'));
             const unsubscribeCheckIns = firestore.onSnapshot(qCheckIns, (snapshot) => {
                 const checkInsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PreCheckIn));
                 setPendingCheckIns(checkInsData);
             }, console.error);
 
-            // Listener para Estadias Ativas
             const qStays = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where('status', '==', 'active'), firestore.orderBy('checkInDate', 'asc'));
             const unsubscribeStays = firestore.onSnapshot(qStays, (snapshot) => {
                 const staysData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay));
                 setActiveStays(staysData);
-                setLoading(false);
+                setLoading(false); // Para o loader apenas depois que os dados essenciais chegam
             }, console.error);
 
-            // Listener para Cabanas
             const qCabins = firestore.query(firestore.collection(firestoreDb, 'cabins'), firestore.orderBy('posicao', 'asc'));
             const unsubscribeCabins = firestore.onSnapshot(qCabins, (snapshot) => {
                 const cabinsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabin));
@@ -64,8 +74,9 @@ export default function ManageStaysPage() {
                 unsubscribeCabins();
             };
         };
+
         initializeApp();
-    }, []);
+    }, [isAdmin]); // ++ A dependência do useEffect agora é o status de admin ++
 
     const handleOpenEditModal = (stay: Stay) => {
         setSelectedStay(stay);
@@ -77,7 +88,6 @@ export default function ManageStaysPage() {
         setSelectedStay(null);
     };
 
-    // Memoização para otimizar re-renderizações
     const memoizedPendingCheckIns = useMemo(() => pendingCheckIns, [pendingCheckIns]);
     const memoizedActiveStays = useMemo(() => activeStays, [activeStays]);
     const memoizedCabins = useMemo(() => cabins, [cabins]);

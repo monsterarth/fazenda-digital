@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import * as firestore from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
-import { getAuth } from "firebase/auth"; // Import getAuth
+import { getAuth } from "firebase/auth"; // ++ Importa o getAuth
 import { Survey, SurveyQuestion, SurveyResponse, SurveyResponseAnswer } from "@/types/survey";
 
 import { Button } from '@/components/ui/button';
@@ -14,10 +14,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from '@/components/ui/label';
 import { toast, Toaster } from 'sonner';
-import { Loader2, Send, Star, CheckCircle } from 'lucide-react';
+import { Loader2, Send, Star, CheckCircle, Gift } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
-// (Rating5Stars and Nps0To10 components remain unchanged)
+// (Componentes Rating5Stars e Nps0To10 não precisam de alterações)
 const Rating5Stars = ({ onChange, value }: { value: number; onChange: (value: number) => void; }) => {
     const [hover, setHover] = useState(0);
     return (
@@ -25,18 +25,8 @@ const Rating5Stars = ({ onChange, value }: { value: number; onChange: (value: nu
             {[...Array(5)].map((_, index) => {
                 const ratingValue = index + 1;
                 return (
-                    <button
-                        type="button" key={ratingValue}
-                        onClick={() => onChange(ratingValue)}
-                        onMouseEnter={() => setHover(ratingValue)}
-                        onMouseLeave={() => setHover(0)}
-                        className="transition-transform transform hover:scale-110"
-                    >
-                        <Star
-                            className="h-8 w-8"
-                            fill={ratingValue <= (hover || value) ? "#f59e0b" : "#e4e4e7"}
-                            stroke={ratingValue <= (hover || value) ? "#f59e0b" : "#a1a1aa"}
-                        />
+                    <button type="button" key={ratingValue} onClick={() => onChange(ratingValue)} onMouseEnter={() => setHover(ratingValue)} onMouseLeave={() => setHover(0)} className="transition-transform transform hover:scale-110">
+                        <Star className="h-8 w-8" fill={ratingValue <= (hover || value) ? "#f59e0b" : "#e4e4e7"} stroke={ratingValue <= (hover || value) ? "#f59e0b" : "#a1a1aa"} />
                     </button>
                 );
             })}
@@ -47,20 +37,14 @@ const Nps0To10 = ({ onChange, value }: { value: number; onChange: (value: number
     return (
         <div className="flex flex-wrap items-center justify-center gap-2">
             {[...Array(11)].map((_, index) => (
-                <button
-                    key={index} type="button"
-                    onClick={() => onChange(index)}
-                    className={`flex h-10 w-10 items-center justify-center rounded-md border text-sm font-medium transition-colors
-                        ${value === index ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}
-                        ${index <= 6 ? 'hover:bg-red-100' : index <= 8 ? 'hover:bg-yellow-100' : 'hover:bg-green-100'}
-                    `}
-                >
+                <button key={index} type="button" onClick={() => onChange(index)} className={`flex h-10 w-10 items-center justify-center rounded-md border text-sm font-medium transition-colors ${value === index ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'} ${index <= 6 ? 'hover:bg-red-100' : index <= 8 ? 'hover:bg-yellow-100' : 'hover:bg-green-100'}`}>
                     {index}
                 </button>
             ))}
         </div>
     );
 };
+
 
 export default function SurveyPage() {
     const params = useParams();
@@ -78,30 +62,40 @@ export default function SurveyPage() {
 
 
     useEffect(() => {
-        const initializeDb = async () => { setDb(await getFirebaseDb()); };
+        const initializeDb = async () => {
+            const firestoreDb = await getFirebaseDb();
+            setDb(firestoreDb);
+        };
         initializeDb();
     }, []);
 
     useEffect(() => {
         if (!db || !surveyId) return;
+
         if (!stayId) {
-            setError("Link de pesquisa inválido. O identificador da estadia não foi encontrado.");
+            setError("Link de pesquisa inválido. O identificador da estadia não foi encontrado. Por favor, verifique o link que você recebeu.");
             setLoading(false);
             return;
         }
+
         const fetchSurvey = async () => {
             setLoading(true);
             try {
                 const surveyRef = firestore.doc(db, 'surveys', surveyId);
                 const surveySnap = await firestore.getDoc(surveyRef);
+
                 if (!surveySnap.exists()) {
-                    setError("Pesquisa não encontrada ou indisponível."); return;
+                    setError("Pesquisa não encontrada ou indisponível.");
+                    return;
                 }
                 const surveyData = { id: surveySnap.id, ...surveySnap.data() } as Survey;
+
                 const questionsQuery = firestore.query(firestore.collection(surveyRef, "questions"), firestore.orderBy("position", "asc"));
                 const questionsSnapshot = await firestore.getDocs(questionsQuery);
                 const questionsData = questionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SurveyQuestion));
+
                 setSurvey({ ...surveyData, questions: questionsData });
+
             } catch (error) {
                 toast.error("Falha ao carregar a pesquisa.");
                 setError("Ocorreu um erro ao carregar os dados da pesquisa.");
@@ -109,6 +103,7 @@ export default function SurveyPage() {
                 setLoading(false);
             }
         };
+
         fetchSurvey();
     }, [db, surveyId, stayId]);
     
@@ -144,8 +139,7 @@ export default function SurveyPage() {
                 stayId: stayId,
                 answers: responseAnswers,
             };
-            
-            // Envia os dados para a nova API segura
+
             const response = await fetch('/api/portal/surveys', {
                 method: 'POST',
                 headers: {
@@ -175,9 +169,11 @@ export default function SurveyPage() {
     if (loading) {
         return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando...</div>;
     }
+
     if (error) {
         return <div className="flex h-screen w-full items-center justify-center text-center text-red-500 p-8">{error}</div>;
     }
+
     if (!survey) {
         return <div className="flex h-screen w-full items-center justify-center text-red-500">Pesquisa não encontrada ou inválida.</div>;
     }
@@ -241,10 +237,7 @@ export default function SurveyPage() {
                                                         <div key={option} className="flex items-center space-x-2">
                                                             {question.allowMultiple ? (
                                                                 <>
-                                                                    <Checkbox 
-                                                                        id={`${question.id}-${option}`}
-                                                                        checked={answers[question.id]?.includes(option) || false}
-                                                                        onCheckedChange={(checked) => {
+                                                                    <Checkbox id={`${question.id}-${option}`} checked={answers[question.id]?.includes(option) || false} onCheckedChange={(checked) => {
                                                                             const current = answers[question.id] || [];
                                                                             const newAnswers = checked ? [...current, option] : current.filter((item: string) => item !== option);
                                                                             handleAnswerChange(question.id, newAnswers);

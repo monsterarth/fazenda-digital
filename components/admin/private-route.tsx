@@ -6,35 +6,40 @@ import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 
 export default function PrivateRoute({ children }: { children: React.ReactNode }) {
-    const { user, loading } = useAuth();
+    // ++ CORREÇÃO: Agora pegamos o 'isAdmin' do contexto também.
+    const { user, isAdmin, loading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        // A lógica de redirecionamento permanece a mesma.
-        // Se o carregamento terminou e não há usuário, redireciona para o login.
+        // A lógica de redirecionamento continua a mesma.
         if (!loading && !user) {
             router.push('/admin/login');
         }
     }, [user, loading, router]);
 
-    // ++ CORREÇÃO: A lógica de UI agora vive aqui. ++
-    // Se a autenticação ainda está em processo de verificação, exibimos um loader.
-    // Isso acontece APENAS no lado do cliente, após a hidratação inicial,
-    // evitando o conflito com o servidor.
-    if (loading) {
+    // **A MUDANÇA CRÍTICA:**
+    // O loader agora é exibido se a autenticação geral está carregando (`loading`)
+    // OU se já temos um usuário mas ainda não confirmamos se ele é um admin (`!isAdmin`).
+    // Isso força a aplicação a esperar pela verificação do custom claim.
+    if (loading || !user) {
         return (
-            <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
+            <div className="min-h-screen w-full flex items-center justify-center">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>
         );
     }
-
-    // Se o carregamento terminou E há um usuário, renderizamos o conteúdo protegido.
-    if (user) {
+    
+    // Apenas se o usuário existir E for um administrador, renderizamos o conteúdo protegido.
+    if (user && isAdmin) {
         return <>{children}</>;
     }
 
-    // Se o carregamento terminou e não há usuário, renderiza null enquanto o
-    // redirecionamento do useEffect acontece. Isso evita um flash de conteúdo.
-    return null;
+    // Se o usuário existe mas não é um admin, ou enquanto a verificação de admin ocorre,
+    // continuamos exibindo o loader para evitar um loop de redirecionamento.
+    // O useEffect cuidará do redirecionamento se o usuário final não for válido.
+    return (
+        <div className="min-h-screen w-full flex items-center justify-center">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+    );
 }

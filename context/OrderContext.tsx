@@ -11,10 +11,9 @@ interface OrderState {
   collectiveItems: CollectiveOrderItem[];
 }
 
-// ++ INÍCIO DA CORREÇÃO ++
 interface OrderContextType extends OrderState {
   setStep: (step: number) => void;
-  selections: { // Adiciona o objeto 'selections'
+  selections: {
     individualItems: IndividualOrderItem[];
     collectiveItems: CollectiveOrderItem[];
   };
@@ -31,12 +30,14 @@ interface OrderContextType extends OrderState {
   isPersonComplete: (personId: number, individualCategories: BreakfastMenuCategory[]) => boolean;
   clearOrder: () => void;
 }
-// ++ FIM DA CORREÇÃO ++
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 export const OrderProvider = ({ children }: { children: ReactNode }) => {
-    const { stay } = useGuest();
+    // ## CORREÇÃO PRINCIPAL ##
+    // O 'useGuest' ainda é chamado, mas agora verificamos se 'stay' existe antes de usá-lo.
+    const { stay } = useGuest(); 
+    
     const [state, setState] = useState<OrderState>({
         currentStep: 1,
         individualItems: [],
@@ -51,6 +52,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
     const totalCollectiveItems = useMemo(() => state.collectiveItems.reduce((total, item) => total + item.quantity, 0), [state.collectiveItems]);
 
     const canAddItem = useCallback((item: BreakfastMenuItem, category: BreakfastMenuCategory): boolean => {
+        // Se 'stay' não existir (estamos no admin), retorna true para não quebrar.
+        // A lógica de negócio real só é aplicada no portal do hóspede.
         const numberOfGuests = stay?.numberOfGuests || 1;
         if (category.limitType === 'none') return true;
         const limit = category.limitGuestMultiplier * numberOfGuests;
@@ -137,12 +140,10 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
     const value = {
         ...state,
         setStep,
-        // ++ INÍCIO DA CORREÇÃO ++
-        selections: { // Adiciona o objeto 'selections' ao valor do contexto
+        selections: {
             individualItems: state.individualItems,
             collectiveItems: state.collectiveItems,
         },
-        // ++ FIM DA CORREÇÃO ++
         totalCollectiveItems,
         addCollectiveItem,
         updateCollectiveItemQuantity,

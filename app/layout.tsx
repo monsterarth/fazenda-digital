@@ -4,7 +4,6 @@ import "@/app/globals.css";
 import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "next-themes";
 import { Inter as FontSans } from "next/font/google";
-import { GuestProvider } from "@/context/GuestProvider";
 import { PropertyProvider } from "@/context/PropertyContext";
 
 const fontSans = FontSans({
@@ -43,15 +42,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* ++ CORREÇÃO: A ordem dos provedores foi invertida. ++ */}
-          {/* GuestProvider agora é o pai, envolvendo tudo. */}
-          <GuestProvider>
-            {/* PropertyProvider agora é o filho e pode usar o useGuest() com segurança. */}
-            <PropertyProvider>
-              {children}
-              <Toaster />
-            </PropertyProvider>
-          </GuestProvider>
+          {/* PropertyProvider é global porque a página de login pública e o portal precisam dele.
+              Ele agora será independente de outros contextos de autenticação. */}
+          <PropertyProvider>
+            {children}
+            <Toaster />
+          </PropertyProvider>
         </ThemeProvider>
       </body>
     </html>

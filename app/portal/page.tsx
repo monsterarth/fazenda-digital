@@ -5,17 +5,14 @@ import { useRouter } from 'next/navigation';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { setCookie } from 'cookies-next';
 
-import { getFirebaseDb } from '@/lib/firebase'; // Apenas para buscar dados da propriedade
-import { doc, getDoc } from 'firebase/firestore';
-import { Property } from '@/types';
-import { useGuest } from '@/context/GuestProvider'; // ++ Importa o useGuest
-
+import { useProperty } from '@/context/PropertyContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { Loader2, KeyRound } from 'lucide-react';
 import Image from 'next/image';
 
@@ -26,31 +23,17 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function GuestLoginPage() {
-    const [property, setProperty] = useState<Property | null>(null);
-    const [loading, setLoading] = useState(true);
-    const router = useRouter();
-    const { login } = useGuest(); // ++ Pega a função de login do nosso contexto
+    const { property, loading: propertyLoading } = useProperty();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const router = useRouter(); // Mantemos o router para uso futuro se necessário
 
     const form = useForm<LoginFormValues>({
         resolver: zodResolver(loginSchema),
         defaultValues: { token: "" },
     });
 
-    useEffect(() => {
-        const fetchProperty = async () => {
-            try {
-                const db = await getFirebaseDb();
-                const docRef = doc(db, 'properties', 'default');
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) { setProperty(docSnap.data() as Property); }
-            } catch (error) { console.error("Failed to fetch property", error); } 
-            finally { setLoading(false); }
-        };
-        fetchProperty();
-    }, []);
-
     const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
-        setLoading(true);
+        setIsSubmitting(true);
         const toastId = toast.loading("Verificando acesso...");
 
         try {
@@ -63,38 +46,38 @@ export default function GuestLoginPage() {
             const result = await response.json();
 
             if (!response.ok) {
-                throw new Error(result.error || 'Falha na autenticação.');
+                throw new Error(result.error || 'Falha na autenticação. Verifique o código.');
             }
 
-            // ++ A MUDANÇA CRÍTICA:
-            // Usamos a função login do contexto. Ela irá atualizar o estado
-            // do GuestProvider (isAuthenticated, user, stay) de forma síncrona.
-            await login(result.customToken);
+            setCookie('guest-token', result.customToken, { maxAge: 60 * 60 * 24 });
 
             toast.success("Acesso liberado! Redirecionando...", { id: toastId });
             
-            // Agora, quando o redirecionamento acontecer, o GuestProvider já terá
-            // o estado `isAuthenticated: true`, e o layout não irá te jogar de volta.
-            router.push('/portal/dashboard'); 
+            // ++ CORREÇÃO CRÍTICA DO REDIRECIONAMENTO ++
+            // Em vez de router.push, usamos window.location.href para forçar o recarregamento.
+            // Isso é mais robusto e contorna o erro do React que impedia a navegação.
+            window.location.href = '/portal/dashboard';
 
         } catch (error: any) {
+            console.error("Login error:", error);
             toast.error("Falha no acesso", {
                 id: toastId,
                 description: error.message,
             });
-            setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
-    if (loading) {
+    if (propertyLoading) {
         return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-10 w-10 animate-spin" /></div>;
     }
 
     return (
         <main className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+            <Toaster richColors position="top-center" />
             <Card className="w-full max-w-md">
                 <CardHeader className="text-center">
-                    {property?.logoUrl && <Image src={property.logoUrl} alt={property.name} width={96} height={96} className="mx-auto mb-4 rounded-md" />}
+                    {property?.logoUrl && <Image priority src={property.logoUrl} alt={property.name} width={96} height={96} className="mx-auto mb-4 rounded-md" />}
                     <CardTitle className="text-2xl">Portal do Hóspede</CardTitle>
                     <CardDescription>Insira seu código de acesso para continuar.</CardDescription>
                 </CardHeader>
@@ -110,8 +93,8 @@ export default function GuestLoginPage() {
                                         <FormControl>
                                             <InputOTP maxLength={6} {...field}>
                                                 <InputOTPGroup>
-                                                    <InputOTPSlot index={0} /><InputOTPSlot index={1} /><InputOTPSlot index={2} />
-                                                    <InputOTPSlot index={3} /><InputOTPSlot index={4} /><InputOTPSlot index={5} />
+                                                    <InputOTPSlot index={0} /> <InputOTPSlot index={1} /> <InputOTPSlot index={2} />
+                                                    <InputOTPSlot index={3} /> <InputOTPSlot index={4} /> <InputOTPSlot index={5} />
                                                 </InputOTPGroup>
                                             </InputOTP>
                                         </FormControl>
@@ -119,8 +102,8 @@ export default function GuestLoginPage() {
                                     </FormItem>
                                 )}
                             />
-                            <Button type="submit" className="w-full" size="lg" disabled={loading}>
-                                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                            <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
+                                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
                                 Entrar
                             </Button>
                         </form>

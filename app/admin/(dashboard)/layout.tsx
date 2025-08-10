@@ -4,7 +4,7 @@
 
 import PrivateRoute from "@/components/admin/private-route";
 import { Sidebar } from "@/components/admin/Sidebar";
-import { OrderProvider } from "@/context/OrderContext";
+// O OrderProvider foi removido daqui, pois ele depende do contexto do Hóspede
 import { PropertyProvider } from "@/context/PropertyContext";
 
 export default function DashboardLayout({
@@ -15,17 +15,16 @@ export default function DashboardLayout({
   return (
     // 1. A rota privada verifica a autenticação primeiro
     <PrivateRoute>
-      {/* 2. Se o usuário estiver logado, os provedores de dados são carregados */}
+      {/* 2. O PropertyProvider carrega dados gerais da propriedade para a Sidebar, etc. */}
       <PropertyProvider>
-        <OrderProvider>
-          {/* 3. Finalmente, o layout visual com a Sidebar é renderizado */}
+          {/* 3. O OrderProvider foi removido para evitar o erro.
+              As páginas de admin que precisam de dados de pedidos irão buscá-los diretamente. */}
           <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900">
             <Sidebar />
             <main className="flex-1 p-4 sm:p-6 lg:p-8">
               {children}
             </main>
           </div>
-        </OrderProvider>
       </PropertyProvider>
     </PrivateRoute>
   );

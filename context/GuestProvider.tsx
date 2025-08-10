@@ -2,72 +2,45 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut, User } from 'firebase/auth';
-import { getFirebaseDb } from '@/lib/firebase';
+import { app, getFirebaseDb } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-// ++ Importa o tipo PreCheckIn
-import { Stay, PreCheckIn } from '@/types'; 
-import { deleteCookie } from 'cookies-next';
+import { Stay, PreCheckIn } from '@/types';
+import { getCookie, deleteCookie } from 'cookies-next';
 import { toast } from 'sonner';
 
-// ++ INÍCIO DA CORREÇÃO ++
 interface GuestContextType {
     user: User | null;
     stay: Stay | null;
-    preCheckIn: PreCheckIn | null; // Adiciona 'preCheckIn' ao tipo do contexto
+    preCheckIn: PreCheckIn | null;
     isAuthenticated: boolean;
     isLoading: boolean;
-    login: (customToken: string) => Promise<void>;
     logout: () => void;
-    setStay: (stay: Stay) => void; // Adiciona 'setStay' ao tipo do contexto
 }
-// ++ FIM DA CORREÇÃO ++
 
 const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
-export const GuestProvider = ({ children }: { children: React.ReactNode }) => {
+export const GuestProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [stay, setStay] = useState<Stay | null>(null);
-    const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null); // ++ Adiciona o estado para preCheckIn
+    const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     const logout = useCallback(async () => {
-        setIsLoading(true);
-        const auth = getAuth();
+        const auth = getAuth(app);
         await signOut(auth);
         deleteCookie('guest-token');
         setUser(null);
         setStay(null);
-        setPreCheckIn(null); // ++ Limpa o preCheckIn no logout
-        setIsLoading(false);
-    }, []);
-    
-    // A função 'login' não precisa de alterações, pois o useEffect principal já busca o preCheckIn
-    const login = useCallback(async (customToken: string) => {
-        const auth = getAuth();
-        const userCredential = await signInWithCustomToken(auth, customToken);
-        const loggedInUser = userCredential.user;
-
-        if (loggedInUser) {
-            const idTokenResult = await loggedInUser.getIdTokenResult();
-            const stayId = idTokenResult.claims.stayId as string;
-            
-            if (stayId) {
-                const db = await getFirebaseDb();
-                const stayRef = doc(db, 'stays', stayId);
-                const staySnap = await getDoc(stayRef);
-                if (staySnap.exists()) {
-                    setStay({ id: staySnap.id, ...staySnap.data() } as Stay);
-                }
-            }
-            setUser(loggedInUser);
-        }
+        setPreCheckIn(null);
     }, []);
 
-    // Este useEffect agora também é responsável por buscar o preCheckIn
     useEffect(() => {
-        const auth = getAuth();
+        const auth = getAuth(app);
+        
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
+                // Se onAuthStateChanged nos der um usuário, o login foi um sucesso.
+                // Agora, buscamos os dados associados.
                 try {
                     const idTokenResult = await user.getIdTokenResult(true);
                     if (idTokenResult.claims.isGuest) {
@@ -76,12 +49,9 @@ export const GuestProvider = ({ children }: { children: React.ReactNode }) => {
                             const db = await getFirebaseDb();
                             const stayRef = doc(db, 'stays', stayId);
                             const staySnap = await getDoc(stayRef);
-                            
                             if (staySnap.exists()) {
                                 const stayData = { id: staySnap.id, ...staySnap.data() } as Stay;
                                 setStay(stayData);
-
-                                // ++ INÍCIO DA LÓGICA PARA BUSCAR O PRE-CHECK-IN ++
                                 if (stayData.preCheckInId) {
                                     const preCheckInRef = doc(db, 'preCheckIns', stayData.preCheckInId);
                                     const preCheckInSnap = await getDoc(preCheckInRef);
@@ -89,30 +59,49 @@ export const GuestProvider = ({ children }: { children: React.ReactNode }) => {
                                         setPreCheckIn({ id: preCheckInSnap.id, ...preCheckInSnap.data() } as PreCheckIn);
                                     }
                                 }
-                                // ++ FIM DA LÓGICA ++
                             }
                         }
                         setUser(user);
                     } else {
+                        // O usuário logado não é um hóspede, então limpamos o estado.
                         await logout();
                     }
-                } catch(error) {
-                    console.error("Erro ao verificar autenticação do hóspede:", error);
-                    toast.error("Sua sessão é inválida. Por favor, faça login novamente.");
+                } catch (error) {
+                    console.error("Erro ao processar dados do hóspede:", error);
                     await logout();
+                } finally {
+                    // Finalizamos o carregamento após processar o usuário.
+                    setIsLoading(false);
                 }
             } else {
-                setUser(null);
-                setStay(null);
-                setPreCheckIn(null); // ++ Limpa o preCheckIn se não houver usuário
+                // Se não há usuário, verificamos se há um token no cookie para tentar o login.
+                const token = getCookie('guest-token');
+                if (token && typeof token === 'string') {
+                    try {
+                        // Tentamos o login. Se funcionar, o onAuthStateChanged irá disparar novamente,
+                        // desta vez com um objeto 'user', e o bloco acima será executado.
+                        // Não mudamos isLoading aqui, pois estamos aguardando o próximo disparo.
+                        await signInWithCustomToken(auth, token);
+                         // Uma vez que o login é feito, removemos o cookie para uso único.
+                        deleteCookie('guest-token');
+                    } catch (error) {
+                        // O token era inválido. Limpamos e finalizamos o carregamento.
+                        console.error("Token do cookie inválido:", error);
+                        deleteCookie('guest-token');
+                        setIsLoading(false);
+                    }
+                } else {
+                    // Não há usuário e não há token. O estado é "não logado".
+                    setIsLoading(false);
+                }
             }
-            setIsLoading(false);
         });
+
         return () => unsubscribe();
     }, [logout]);
 
     return (
-        <GuestContext.Provider value={{ user, stay, preCheckIn, isAuthenticated: !!user, isLoading, login, logout, setStay }}>
+        <GuestContext.Provider value={{ user, stay, preCheckIn, isAuthenticated: !!user, isLoading, logout }}>
             {children}
         </GuestContext.Provider>
     );
@@ -121,7 +110,7 @@ export const GuestProvider = ({ children }: { children: React.ReactNode }) => {
 export const useGuest = () => {
     const context = useContext(GuestContext);
     if (context === undefined) {
-        throw new Error('useGuest must be used within a GuestProvider');
+        throw new Error('useGuest deve ser usado dentro de um GuestProvider');
     }
     return context;
 };

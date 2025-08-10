@@ -1,11 +1,10 @@
 "use client";
 
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { getFirebaseDb } from '@/lib/firebase';
+import { getFirebaseDb, app } from '@/lib/firebase';
 import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { Property, BreakfastMenuCategory, BreakfastMenuItem } from '@/types';
-// ++ Importa o useGuest para saber o status de autenticação do hóspede
-import { useGuest } from './GuestProvider'; 
 
 interface PropertyContextType {
     property: Property | null;
@@ -16,30 +15,40 @@ interface PropertyContextType {
 const PropertyContext = createContext<PropertyContextType | undefined>(undefined);
 
 export const PropertyProvider = ({ children }: { children: ReactNode }) => {
-    // ++ Usa o hook do GuestProvider para saber se o hóspede está logado e carregando
-    const { isAuthenticated, isLoading: isGuestLoading } = useGuest(); 
     const [property, setProperty] = useState<Property | null>(null);
     const [breakfastMenu, setBreakfastMenu] = useState<BreakfastMenuCategory[]>([]);
     const [loading, setLoading] = useState(true);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+    useEffect(() => {
+        const auth = getAuth(app);
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            setCurrentUser(user);
+        });
+        return () => unsubscribe();
+    }, []);
 
     useEffect(() => {
         const fetchAllData = async () => {
             setLoading(true);
-            try {
-                const db = await getFirebaseDb();
-                if (!db) throw new Error("DB connection failed");
+            const db = await getFirebaseDb();
+            if (!db) {
+                setLoading(false);
+                return;
+            }
 
-                // 1. Busca os dados públicos da propriedade (sempre)
+            try {
                 const propertyRef = doc(db, 'properties', 'default');
                 const propertyDoc = await getDoc(propertyRef);
                 if (propertyDoc.exists()) {
                     setProperty(propertyDoc.data() as Property);
                 }
+            } catch (error) {
+                console.error("Failed to load public property data:", error);
+            }
 
-                // 2. ++ LÓGICA CONDICIONAL PARA O CARDÁPIO ++
-                // Só tenta buscar o cardápio se a autenticação do hóspede foi verificada
-                // e confirmada como bem-sucedida.
-                if (!isGuestLoading && isAuthenticated) {
+            if (currentUser) {
+                try {
                     const menuRef = doc(db, "breakfastMenus", "default_breakfast");
                     const categoriesQuery = query(collection(menuRef, "categories"), orderBy("order", "asc"));
                     const categoriesSnapshot = await getDocs(categoriesQuery);
@@ -52,21 +61,19 @@ export const PropertyProvider = ({ children }: { children: ReactNode }) => {
                     }));
                     
                     setBreakfastMenu(categoriesData);
-                } else {
-                    // Se o usuário não estiver logado, garante que o menu esteja vazio.
+                } catch (error) {
+                    console.log("Could not load breakfast menu, likely due to permissions (this is okay for some users like admins).");
                     setBreakfastMenu([]);
                 }
-
-            } catch (error) {
-                console.error("Error loading property context data:", error);
-            } finally {
-                setLoading(false);
+            } else {
+                setBreakfastMenu([]);
             }
+
+            setLoading(false);
         };
         
         fetchAllData();
-    // ++ A dependência agora é o status de autenticação do hóspede
-    }, [isAuthenticated, isGuestLoading]); 
+    }, [currentUser]); 
 
     return (
         <PropertyContext.Provider value={{ property, loading, breakfastMenu }}>

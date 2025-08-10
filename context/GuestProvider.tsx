@@ -6,7 +6,6 @@ import { app, getFirebaseDb } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { Stay, PreCheckIn } from '@/types';
 import { getCookie, deleteCookie } from 'cookies-next';
-import { toast } from 'sonner';
 
 interface GuestContextType {
     user: User | null;
@@ -39,8 +38,6 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
-                // Se onAuthStateChanged nos der um usuário, o login foi um sucesso.
-                // Agora, buscamos os dados associados.
                 try {
                     const idTokenResult = await user.getIdTokenResult(true);
                     if (idTokenResult.claims.isGuest) {
@@ -63,35 +60,22 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                         }
                         setUser(user);
                     } else {
-                        // O usuário logado não é um hóspede, então limpamos o estado.
                         await logout();
                     }
                 } catch (error) {
                     console.error("Erro ao processar dados do hóspede:", error);
                     await logout();
                 } finally {
-                    // Finalizamos o carregamento após processar o usuário.
                     setIsLoading(false);
                 }
             } else {
-                // Se não há usuário, verificamos se há um token no cookie para tentar o login.
                 const token = getCookie('guest-token');
                 if (token && typeof token === 'string') {
-                    try {
-                        // Tentamos o login. Se funcionar, o onAuthStateChanged irá disparar novamente,
-                        // desta vez com um objeto 'user', e o bloco acima será executado.
-                        // Não mudamos isLoading aqui, pois estamos aguardando o próximo disparo.
-                        await signInWithCustomToken(auth, token);
-                         // Uma vez que o login é feito, removemos o cookie para uso único.
-                        deleteCookie('guest-token');
-                    } catch (error) {
-                        // O token era inválido. Limpamos e finalizamos o carregamento.
-                        console.error("Token do cookie inválido:", error);
+                    signInWithCustomToken(auth, token).catch(() => {
                         deleteCookie('guest-token');
                         setIsLoading(false);
-                    }
+                    });
                 } else {
-                    // Não há usuário e não há token. O estado é "não logado".
                     setIsLoading(false);
                 }
             }
@@ -110,7 +94,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
 export const useGuest = () => {
     const context = useContext(GuestContext);
     if (context === undefined) {
-        throw new Error('useGuest deve ser usado dentro de um GuestProvider');
+        throw new Error('useGuest must be used within a GuestProvider');
     }
     return context;
 };

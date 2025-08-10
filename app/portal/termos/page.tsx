@@ -11,30 +11,28 @@ import { Loader2, ArrowLeft } from 'lucide-react';
 import { getFirebaseDb } from '@/lib/firebase';
 import { doc, updateDoc, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
 import { toast, Toaster } from 'sonner';
-import { Property, Stay } from '@/types'; // Importa o tipo Property
+import { Property, Stay } from '@/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
 export default function TermsAndPoliciesPage() {
-    const { stay, preCheckIn, setStay, isLoading: isGuestLoading } = useGuest();
+    // CORREÇÃO: Removido 'setStay' da desestruturação, pois não está disponível e não é usado.
+    const { stay, preCheckIn, isLoading: isGuestLoading } = useGuest();
     const router = useRouter();
     
     const [acceptedGeneral, setAcceptedGeneral] = useState(false);
     const [acceptedPet, setAcceptedPet] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // ## INÍCIO DA CORREÇÃO: A página agora busca e gerencia seus próprios dados da propriedade ##
     const [property, setProperty] = useState<Property | null>(null);
     const [isLoadingProperty, setIsLoadingProperty] = useState(true);
 
     useEffect(() => {
-        // Esta função busca os dados da propriedade diretamente, tornando o componente autônomo.
         const fetchPropertyData = async () => {
             try {
                 const db = await getFirebaseDb();
-                const propertyRef = doc(db, "properties", "main_property"); // Ajuste se o ID for dinâmico
+                const propertyRef = doc(db, "properties", "default");
                 const propertySnap = await getDoc(propertyRef);
                 if (propertySnap.exists()) {
                     setProperty(propertySnap.data() as Property);
@@ -51,11 +49,9 @@ export default function TermsAndPoliciesPage() {
 
         fetchPropertyData();
     }, []);
-    // ## FIM DA CORREÇÃO ##
 
     const hasPets = useMemo(() => (preCheckIn?.pets?.length || 0) > 0, [preCheckIn]);
     
-    // ## INÍCIO DA CORREÇÃO: Lógica de verificação de aceite corrigida e mais robusta ##
     const hasAcceptedLatestPolicies = useMemo(() => {
         if (!stay || !property?.policies) {
             return false;
@@ -64,21 +60,17 @@ export default function TermsAndPoliciesPage() {
         const accepted = stay.policiesAccepted;
         const policies = property.policies;
         
-        // Assegura que o objeto de aceite e as políticas existem antes de comparar
         if (!accepted || !policies) return false;
 
-        // Verifica a política geral
         const generalPolicyAccepted = 
             accepted.general && 
             policies.general?.lastUpdatedAt &&
             accepted.general.toMillis() >= policies.general.lastUpdatedAt.toMillis();
 
-        // Se o hóspede não tem pets, apenas a política geral importa
         if (!hasPets) {
             return !!generalPolicyAccepted;
         }
 
-        // Se tem pets, a política de pets também precisa ter sido aceita
         const petPolicyAccepted = 
             accepted.pet &&
             policies.pet?.lastUpdatedAt &&
@@ -86,7 +78,6 @@ export default function TermsAndPoliciesPage() {
 
         return !!generalPolicyAccepted && !!petPolicyAccepted;
     }, [stay, property, hasPets]);
-    // ## FIM DA CORREÇÃO ##
 
     const canAccept = hasPets ? acceptedGeneral && acceptedPet : acceptedGeneral;
 
@@ -99,30 +90,19 @@ export default function TermsAndPoliciesPage() {
             const db = await getFirebaseDb();
             const stayRef = doc(db, "stays", stay.id);
 
-            const newPoliciesAccepted = {
-                ...stay.policiesAccepted,
+            const newPoliciesAccepted: { general: any; pet?: any } = {
                 general: serverTimestamp(),
             };
             if (hasPets) {
-                (newPoliciesAccepted as any).pet = serverTimestamp();
+                newPoliciesAccepted.pet = serverTimestamp();
             }
             
             await updateDoc(stayRef, {
                 policiesAccepted: newPoliciesAccepted
             });
-
-            const updatedStay = { 
-                ...stay, 
-                policiesAccepted: {
-                    ...stay.policiesAccepted,
-                    general: Timestamp.now(),
-                    ...(hasPets && { pet: Timestamp.now() })
-                }
-            };
             
-            setStay(updatedStay);
-            sessionStorage.setItem('synapse-stay', JSON.stringify(updatedStay));
             toast.success("Termos aceitos! Redirecionando...", { id: toastId });
+            // Redireciona de volta para o dashboard após o aceite.
             router.push('/portal/dashboard');
         } catch (error) {
             toast.error("Não foi possível salvar seu aceite.", { id: toastId });

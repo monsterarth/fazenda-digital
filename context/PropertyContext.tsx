@@ -20,8 +20,6 @@ export const PropertyProvider = ({ children }: { children: ReactNode }) => {
     const [loading, setLoading] = useState(true);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-    // Efeito para observar o estado de autenticação.
-    // Isso torna este provedor autônomo e resiliente.
     useEffect(() => {
         const auth = getAuth(app);
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -36,7 +34,7 @@ export const PropertyProvider = ({ children }: { children: ReactNode }) => {
             const db = await getFirebaseDb();
             if (!db) { setLoading(false); return; }
 
-            // 1. Busca os dados públicos da propriedade (deve sempre funcionar)
+            // 1. Busca os dados públicos da propriedade (deve sempre funcionar).
             try {
                 const propertyRef = doc(db, 'properties', 'default');
                 const propertyDoc = await getDoc(propertyRef);
@@ -47,11 +45,10 @@ export const PropertyProvider = ({ children }: { children: ReactNode }) => {
                 console.error("Failed to load public property data:", error);
             }
 
-            // 2. Lógica de busca de dados privados
+            // 2. Busca dados privados somente se as condições forem atendidas.
             if (currentUser) {
                 const idTokenResult = await currentUser.getIdTokenResult();
-                // Só tenta buscar o cardápio se o usuário for um hóspede.
-                // Admins não precisam do cardápio neste contexto, o que resolve o erro de permissão.
+                // Apenas tenta buscar o cardápio se o usuário for um hóspede.
                 if (idTokenResult.claims.isGuest === true) {
                     try {
                         const menuRef = doc(db, "breakfastMenus", "default_breakfast");
@@ -69,17 +66,19 @@ export const PropertyProvider = ({ children }: { children: ReactNode }) => {
                         setBreakfastMenu([]);
                     }
                 } else {
-                    setBreakfastMenu([]); // Garante que o menu esteja vazio para não-hóspedes
+                    // Garante que o menu esteja vazio para não-hóspedes (como admins).
+                    setBreakfastMenu([]);
                 }
             } else {
-                setBreakfastMenu([]); // Garante que o menu esteja vazio para usuários deslogados
+                // Garante que o menu esteja vazio para usuários deslogados.
+                setBreakfastMenu([]);
             }
 
             setLoading(false);
         };
         
         fetchAllData();
-    }, [currentUser]); // Re-executa sempre que o usuário mudar
+    }, [currentUser]);
 
     return (
         <PropertyContext.Provider value={{ property, loading, breakfastMenu }}>

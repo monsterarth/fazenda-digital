@@ -46,7 +46,7 @@ export default function RootLayout({
           {/* ++ CORREÇÃO: A ordem dos provedores foi invertida. ++ */}
           {/* GuestProvider agora é o pai, envolvendo tudo. */}
           <GuestProvider>
-            {/* PropertyProvider agora é o filho e pode usar o hook useGuest() com segurança. */}
+            {/* PropertyProvider agora é o filho e pode usar o useGuest() com segurança. */}
             <PropertyProvider>
               {children}
               <Toaster />

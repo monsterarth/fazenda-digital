@@ -17,7 +17,7 @@ const PropertyContext = createContext<PropertyContextType | undefined>(undefined
 
 export const PropertyProvider = ({ children }: { children: ReactNode }) => {
     // ++ Usa o hook do GuestProvider para saber se o hóspede está logado e carregando
-    const { isAuthenticated, isLoading: isGuestLoading } = useGuest();
+    const { isAuthenticated, isLoading: isGuestLoading } = useGuest(); 
     const [property, setProperty] = useState<Property | null>(null);
     const [breakfastMenu, setBreakfastMenu] = useState<BreakfastMenuCategory[]>([]);
     const [loading, setLoading] = useState(true);

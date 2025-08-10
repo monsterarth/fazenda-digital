@@ -59,10 +59,12 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   
+  // A página de login pública não precisa do GuestProvider
   if (pathname === '/portal') {
     return <>{children}</>;
   }
 
+  // Todas as outras páginas DENTRO do portal são envolvidas pelo GuestProvider
   return (
     <GuestProvider>
         <AuthLayout>{children}</AuthLayout>

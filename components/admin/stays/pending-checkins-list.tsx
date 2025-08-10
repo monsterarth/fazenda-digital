@@ -80,6 +80,7 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                 status: 'active',
                 preCheckInId: selectedCheckIn.id,
                 createdAt: new Date().toISOString(),
+                pets: undefined
             };
             batch.set(stayRef, newStay);
             const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);

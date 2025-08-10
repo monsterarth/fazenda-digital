@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
 import Image from 'next/image';
 
 export default function GuestSchedulingPage() {
@@ -36,14 +36,11 @@ export default function GuestSchedulingPage() {
     const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
     const todayFormatted = useMemo(() => format(new Date(), "eeee, dd 'de' MMMM", { locale: ptBR }), []);
 
-    // Redireciona se o usuário não estiver logado (sem alterações)
     useEffect(() => {
         if (!isGuestLoading && !stay) router.push('/portal');
     }, [stay, isGuestLoading, router]);
 
-    // ++ CORREÇÃO: A busca de dados agora espera pela confirmação do 'stay' do hóspede.
     useEffect(() => {
-        // Só continua se o login do hóspede foi verificado e temos os dados da estadia.
         if (isGuestLoading || !stay) return;
 
         const initializeData = async () => {
@@ -51,31 +48,28 @@ export default function GuestSchedulingPage() {
             setDb(firestoreDb);
             if (!firestoreDb) { toast.error("Erro de conexão."); setLoadingData(false); return; }
 
-            // Listener para 'structures'
             const structuresQuery = firestore.query(firestore.collection(firestoreDb, 'structures'));
             const unsubStructures = firestore.onSnapshot(structuresQuery, snap => {
                 setStructures(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Structure)));
-                setLoadingData(false); // Para o loading principal aqui
+                setLoadingData(false);
             }, error => {
                 console.error("Erro ao carregar estruturas:", error);
                 toast.error("Não foi possível carregar as opções de agendamento.");
                 setLoadingData(false);
             });
 
-            // Listener para 'bookings'
             const bookingsQuery = firestore.query(firestore.collection(firestoreDb, 'bookings'), firestore.where('date', '==', today));
             const unsubBookings = firestore.onSnapshot(bookingsQuery, snap => {
                 setBookings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
             }, error => {
                 console.error("Erro ao carregar agendamentos existentes:", error);
-                // Não é um erro crítico se apenas este listener falhar, a página ainda pode funcionar.
             });
             
             return () => { unsubStructures(); unsubBookings(); };
         };
         
         initializeData();
-    }, [stay, isGuestLoading, today]); // A dependência agora é o 'stay'
+    }, [stay, isGuestLoading, today]);
 
     const userBookings = useMemo(() => {
         if (!stay) return [];
@@ -86,20 +80,22 @@ export default function GuestSchedulingPage() {
         const { structure, timeSlot, unit } = dialogState.data;
         if (!db || !stay || !structure || !timeSlot) return toast.error("Não foi possível fazer a reserva.");
         
-        const existingBooking = userBookings.find(b => b.structureId === structure.id);
-        const toastId = toast.loading(existingBooking ? "Alterando agendamento..." : "Processando agendamento...");
+        const existingBookingForStructure = userBookings.find(b => b.structureId === structure.id);
+        const toastId = toast.loading(existingBookingForStructure ? "Alterando agendamento..." : "Processando agendamento...");
 
         try {
-            if(existingBooking) await firestore.deleteDoc(firestore.doc(db, 'bookings', existingBooking.id));
+            if(existingBookingForStructure) {
+                await firestore.deleteDoc(firestore.doc(db, 'bookings', existingBookingForStructure.id));
+            }
             
             const status = structure.approvalMode === 'automatic' ? 'confirmado' : 'pendente';
 
-            const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
+            const newBookingData: Omit<Booking, 'id' | 'createdAt'> = {
                 structureId: structure.id,
                 structureName: structure.name,
                 unitId: unit || '',
                 stayId: stay.id,
-                guestId: stay.id, // Ou um ID de usuário se houver
+                guestId: stay.id,
                 guestName: stay.guestName,
                 cabinId: stay.cabinName,
                 date: today,
@@ -108,8 +104,19 @@ export default function GuestSchedulingPage() {
                 status: status,
             };
 
-            await firestore.addDoc(firestore.collection(db, 'bookings'), { ...newBooking, createdAt: firestore.serverTimestamp() });
+            const newDocRef = await firestore.addDoc(firestore.collection(db, 'bookings'), { ...newBookingData, createdAt: firestore.serverTimestamp() });
 
+            const optimisticBooking: Booking = {
+                id: newDocRef.id,
+                createdAt: firestore.Timestamp.now(),
+                ...newBookingData
+            };
+
+            setBookings(prevBookings => [
+                ...prevBookings.filter(b => b.id !== existingBookingForStructure?.id),
+                optimisticBooking
+            ]);
+            
             const successMessage = status === 'confirmado'
                 ? "Reserva confirmada com sucesso!"
                 : "Solicitação enviada! Aguarde a confirmação da recepção.";
@@ -138,18 +145,20 @@ export default function GuestSchedulingPage() {
     
     const getStatusForSlot = (structure: Structure, timeSlot: TimeSlot, unit?: string) => {
         const now = new Date();
-        const slotTime = parse(timeSlot.startTime, 'HH:mm', new Date());
+        const slotTime = parse(`${today} ${timeSlot.startTime}`, 'yyyy-MM-dd HH:mm', new Date());
         if (slotTime < now) return { status: 'passou' };
+
         const booking = bookings.find(b => 
             b.startTime === timeSlot.startTime && 
             b.structureId === structure.id &&
             (structure.managementType === 'by_structure' || b.unitId === unit)
         );
+
         if (booking) {
             if (stay && booking.stayId === stay.id) return { status: 'meu_horario' };
-            if (booking.status === 'confirmado' || booking.status === 'cancelado' || booking.status === 'pendente') return { status: 'indisponivel' };
-            if (booking.status === 'disponivel') return { status: 'disponivel' };
+            return { status: 'indisponivel' };
         }
+        
         if (structure.defaultStatus === 'open') return { status: 'disponivel' };
         return { status: 'indisponivel' };
     };
@@ -160,7 +169,7 @@ export default function GuestSchedulingPage() {
 
     return (
         <div className="container mx-auto p-4 md:p-6">
-            <Toaster richColors position="top-center" />
+            {/* O Toaster foi removido daqui */}
             <div className="mb-8">
                 <h1 className="text-3xl font-bold">Agendamentos</h1>
                 <p className="text-muted-foreground">Disponibilidade para hoje, {todayFormatted}.</p>
@@ -195,7 +204,7 @@ export default function GuestSchedulingPage() {
                     return (
                         <Card key={structure.id}>
                             <CardHeader className="flex flex-row items-center gap-4">
-                                <Image src={structure.photoURL} alt={structure.name} width={100} height={60} className="rounded-lg object-cover aspect-video" />
+                                {structure.photoURL && <Image src={structure.photoURL} alt={structure.name} width={100} height={60} className="rounded-lg object-cover aspect-video" />}
                                 <div>
                                     <CardTitle>{structure.name}</CardTitle>
                                     {hasBookingForThisStructure && <CardDescription className="text-orange-600 flex items-center gap-1 pt-1"><AlertTriangle size={14}/> Você já possui uma solicitação para esta estrutura.</CardDescription>}

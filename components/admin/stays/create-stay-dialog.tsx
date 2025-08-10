@@ -89,6 +89,7 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ isOpen, onCl
                 status: 'active',
                 preCheckInId: preCheckInRef.id,
                 createdAt: new Date().toISOString(),
+                pets: undefined
             };
             batch.set(stayRef, newStay);
             batch.update(preCheckInRef, { stayId: stayRef.id });

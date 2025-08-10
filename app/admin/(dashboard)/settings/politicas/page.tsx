@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'; // Importa updateDoc
 import { Property } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Save, FileText, Eye, Pencil, Dog } from 'lucide-react';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -21,14 +21,13 @@ export default function ManagePoliciesPage() {
     const [activePolicy, setActivePolicy] = useState<PolicyType>('general');
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [propertyId, setPropertyId] = useState<string | null>(null);
+    
+    const propertyId = "main_property"; 
 
     useEffect(() => {
         const fetchProperty = async () => {
-            const PROP_ID = "main_property"; 
-            setPropertyId(PROP_ID);
             const db = await getFirebaseDb();
-            const propertyRef = doc(db, "properties", PROP_ID);
+            const propertyRef = doc(db, "properties", propertyId);
             const propertySnap = await getDoc(propertyRef);
 
             if (propertySnap.exists()) {
@@ -39,10 +38,9 @@ export default function ManagePoliciesPage() {
             setLoading(false);
         };
         fetchProperty();
-    }, []);
+    }, [propertyId]);
 
     const handleSave = async () => {
-        if (!propertyId) return toast.error("ID da propriedade não encontrado.");
         setIsSaving(true);
         const toastId = toast.loading(`Salvando Políticas (${activePolicy === 'general' ? 'Gerais' : 'Pet'})...`);
 
@@ -50,17 +48,20 @@ export default function ManagePoliciesPage() {
             const db = await getFirebaseDb();
             const propertyRef = doc(db, "properties", propertyId);
             const contentToSave = activePolicy === 'general' ? generalPolicy : petPolicy;
-
+            
+            // ## CORREÇÃO DEFINITIVA: Usando updateDoc com notação de ponto ##
+            // Isso garante que estamos atualizando apenas o campo específico (general ou pet)
+            // dentro do mapa 'policies', sem sobrescrever o outro.
+            const fieldPath = `policies.${activePolicy}`;
             const updateData = {
-                policies: {
-                    [activePolicy]: {
-                        content: contentToSave,
-                        lastUpdatedAt: serverTimestamp()
-                    }
+                [fieldPath]: {
+                    content: contentToSave,
+                    lastUpdatedAt: serverTimestamp()
                 }
             };
 
-            await setDoc(propertyRef, updateData, { merge: true });
+            await updateDoc(propertyRef, updateData);
+            
             toast.success("Políticas salvas com sucesso!", { id: toastId });
         } catch (error) {
             console.error("Erro ao salvar políticas:", error);
@@ -78,7 +79,6 @@ export default function ManagePoliciesPage() {
 
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6">
-            <Toaster richColors position="top-center" />
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><FileText /> Editor de Políticas e Termos</CardTitle>

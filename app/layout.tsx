@@ -42,11 +42,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* PropertyProvider é global porque a página de login pública e o portal precisam dele.
-              Ele agora será independente de outros contextos de autenticação. */}
           <PropertyProvider>
             {children}
-            <Toaster />
+            {/* ESTE é o único <Toaster /> que deve existir no projeto */}
+            <Toaster richColors position="top-center" />
           </PropertyProvider>
         </ThemeProvider>
       </body>

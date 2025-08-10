@@ -9,16 +9,31 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { getFirebaseDb } from '@/lib/firebase';
-import { doc, updateDoc, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
-import { toast, Toaster } from 'sonner';
+import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { toast } from 'sonner';
 import { Property, Stay } from '@/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
+// Função auxiliar para verificar se as políticas mais recentes foram aceitas
+const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
+    if (!stay.policiesAccepted || !property.policies) return false;
+    
+    const hasPets = (stay.pets?.length || 0) > 0;
+    const { general, pet } = stay.policiesAccepted;
+    const { general: generalPolicy, pet: petPolicy } = property.policies;
+
+    const generalAccepted = general && generalPolicy?.lastUpdatedAt && general.toMillis() >= generalPolicy.lastUpdatedAt.toMillis();
+    
+    if (!hasPets) return !!generalAccepted;
+    
+    const petAccepted = pet && petPolicy?.lastUpdatedAt && pet.toMillis() >= petPolicy.lastUpdatedAt.toMillis();
+    return !!generalAccepted && !!petAccepted;
+};
+
 export default function TermsAndPoliciesPage() {
-    // CORREÇÃO: Removido 'setStay' da desestruturação, pois não está disponível e não é usado.
     const { stay, preCheckIn, isLoading: isGuestLoading } = useGuest();
     const router = useRouter();
     
@@ -32,7 +47,7 @@ export default function TermsAndPoliciesPage() {
         const fetchPropertyData = async () => {
             try {
                 const db = await getFirebaseDb();
-                const propertyRef = doc(db, "properties", "default");
+                const propertyRef = doc(db, "properties", "main_property");
                 const propertySnap = await getDoc(propertyRef);
                 if (propertySnap.exists()) {
                     setProperty(propertySnap.data() as Property);
@@ -52,32 +67,11 @@ export default function TermsAndPoliciesPage() {
 
     const hasPets = useMemo(() => (preCheckIn?.pets?.length || 0) > 0, [preCheckIn]);
     
-    const hasAcceptedLatestPolicies = useMemo(() => {
-        if (!stay || !property?.policies) {
-            return false;
-        }
-
-        const accepted = stay.policiesAccepted;
-        const policies = property.policies;
-        
-        if (!accepted || !policies) return false;
-
-        const generalPolicyAccepted = 
-            accepted.general && 
-            policies.general?.lastUpdatedAt &&
-            accepted.general.toMillis() >= policies.general.lastUpdatedAt.toMillis();
-
-        if (!hasPets) {
-            return !!generalPolicyAccepted;
-        }
-
-        const petPolicyAccepted = 
-            accepted.pet &&
-            policies.pet?.lastUpdatedAt &&
-            accepted.pet.toMillis() >= policies.pet.lastUpdatedAt.toMillis();
-
-        return !!generalPolicyAccepted && !!petPolicyAccepted;
-    }, [stay, property, hasPets]);
+    // ## LÓGICA DE VERIFICAÇÃO CONSISTENTE ##
+    const alreadyAccepted = useMemo(() => {
+        if (!stay || !property) return false;
+        return hasAcceptedLatestPolicies(stay, property);
+    }, [stay, property]);
 
     const canAccept = hasPets ? acceptedGeneral && acceptedPet : acceptedGeneral;
 
@@ -90,21 +84,22 @@ export default function TermsAndPoliciesPage() {
             const db = await getFirebaseDb();
             const stayRef = doc(db, "stays", stay.id);
 
-            const newPoliciesAccepted: { general: any; pet?: any } = {
-                general: serverTimestamp(),
-            };
+            const updates: { [key: string]: any } = {};
+            updates['policiesAccepted.general'] = serverTimestamp();
+            
             if (hasPets) {
-                newPoliciesAccepted.pet = serverTimestamp();
+                updates['policiesAccepted.pet'] = serverTimestamp();
             }
             
-            await updateDoc(stayRef, {
-                policiesAccepted: newPoliciesAccepted
-            });
+            await updateDoc(stayRef, updates);
             
             toast.success("Termos aceitos! Redirecionando...", { id: toastId });
-            // Redireciona de volta para o dashboard após o aceite.
-            router.push('/portal/dashboard');
+
+            // Força um recarregamento para que o GuestProvider reavalie e redirecione.
+            window.location.reload();
+
         } catch (error) {
+            console.error("Erro ao salvar aceite:", error);
             toast.error("Não foi possível salvar seu aceite.", { id: toastId });
             setIsSubmitting(false);
         }
@@ -116,13 +111,12 @@ export default function TermsAndPoliciesPage() {
 
     return (
         <div className="min-h-screen bg-secondary p-4 md:p-8 flex items-center justify-center">
-            <Toaster richColors position="top-center" />
             <Card className="w-full max-w-3xl shadow-lg">
                 <CardHeader>
                     <CardTitle className="text-2xl">Políticas e Termos de Uso</CardTitle>
                     <CardDescription>
                         {stay ? `Olá, ${stay.guestName.split(' ')[0]}! ` : ''}
-                        {hasAcceptedLatestPolicies ? "Estes são os termos que você aceitou." : "Para continuar, por favor, leia e aceite nossos termos."}
+                        {alreadyAccepted ? "Estes são os termos que você aceitou." : "Para continuar, por favor, leia e aceite nossos termos."}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -145,24 +139,24 @@ export default function TermsAndPoliciesPage() {
                     <div className="space-y-3">
                         <div className="flex items-center space-x-2">
                             <Checkbox id="terms-general" 
-                                checked={hasAcceptedLatestPolicies || acceptedGeneral} 
+                                checked={alreadyAccepted || acceptedGeneral} 
                                 onCheckedChange={(c) => setAcceptedGeneral(!!c)} 
-                                disabled={hasAcceptedLatestPolicies} 
+                                disabled={alreadyAccepted} 
                             />
-                            <Label htmlFor="terms-general" className={cn(hasAcceptedLatestPolicies && "text-muted-foreground")}>Li e concordo com as Políticas Gerais.</Label>
+                            <Label htmlFor="terms-general" className={cn(alreadyAccepted && "text-muted-foreground")}>Li e concordo com as Políticas Gerais.</Label>
                         </div>
                         {hasPets && (
                             <div className="flex items-center space-x-2">
                                 <Checkbox id="terms-pet" 
-                                    checked={hasAcceptedLatestPolicies || acceptedPet} 
+                                    checked={alreadyAccepted || acceptedPet} 
                                     onCheckedChange={(c) => setAcceptedPet(!!c)} 
-                                    disabled={hasAcceptedLatestPolicies}
+                                    disabled={alreadyAccepted}
                                 />
-                                <Label htmlFor="terms-pet" className={cn(hasAcceptedLatestPolicies && "text-muted-foreground")}>Li e concordo com as Políticas para Pets.</Label>
+                                <Label htmlFor="terms-pet" className={cn(alreadyAccepted && "text-muted-foreground")}>Li e concordo com as Políticas para Pets.</Label>
                             </div>
                         )}
                     </div>
-                     {hasAcceptedLatestPolicies ? (
+                     {alreadyAccepted ? (
                         <Button asChild className="w-full sm:w-auto">
                             <Link href="/portal/dashboard"><ArrowLeft className="mr-2 h-4 w-4" /> Voltar ao Início</Link>
                         </Button>

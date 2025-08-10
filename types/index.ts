@@ -5,6 +5,7 @@ import { Timestamp, DocumentReference } from "firebase/firestore";
 // ========================================================================
 
 export interface Stay {
+  pets: any;
   id: string;
   guestName: string;
   cabinId: string;

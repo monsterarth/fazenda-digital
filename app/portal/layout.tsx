@@ -66,11 +66,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   
   // Se a rota for a página de login pública, renderiza o conteúdo diretamente, SEM o GuestProvider.
+  // Isso evita que o GuestProvider tente autenticar desnecessariamente na página de login.
   if (pathname === '/portal') {
     return <>{children}</>;
   }
 
   // Para TODAS as outras rotas dentro do portal, envolve com o GuestProvider para ativar a autenticação.
+  // O AuthLayout interno cuidará do redirecionamento se o usuário não estiver logado.
   return (
     <GuestProvider>
         <AuthLayout>{children}</AuthLayout>

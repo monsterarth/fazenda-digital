@@ -8,7 +8,7 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { BreakfastOrder } from '@/types';
 import { format, addDays } from 'date-fns';
-import { getAuth } from 'firebase/auth'; // ++ Importa o getAuth
+import { getAuth } from 'firebase/auth';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import { OrderSidebar } from './OrderSidebar';
 import { StateCard } from './StateCard';
 import { Coffee, Utensils, Lock, ShieldCheck, Edit, TimerOff } from 'lucide-react';
 import { isOrderingWindowActive } from '@/lib/utils';
-import { toast } from 'sonner'; // Importa o toast
+import { toast } from 'sonner';
 
 export const BreakfastFlow: React.FC = () => {
     const { property, loading: propertyLoading, breakfastMenu } = useProperty();
@@ -69,8 +69,9 @@ export const BreakfastFlow: React.FC = () => {
         isOrderingWindowActive(breakfastConfig?.orderingStartTime, breakfastConfig?.orderingEndTime),
     [breakfastConfig]);
 
-    // ++ INÍCIO DA CORREÇÃO DA LÓGICA DE ENVIO ++
-    const handleSendOrder = async () => {
+    // ++ INÍCIO DA CORREÇÃO ++
+    // A função agora recebe as 'generalNotes' do passo de revisão.
+    const handleSendOrder = async (generalNotes: string) => {
         const auth = getAuth();
         const user = auth.currentUser;
 
@@ -81,14 +82,19 @@ export const BreakfastFlow: React.FC = () => {
 
         const toastId = toast.loading("Enviando seu pedido...");
         try {
-            // Obtém o token de ID do usuário logado. Este token prova a identidade para a sua API.
             const idToken = await user.getIdToken();
 
+            // A estrutura de dados foi corrigida aqui:
+            // - Os 'selections' (individualItems, collectiveItems) são espalhados no nível principal.
+            // - 'numberOfGuests' e 'generalNotes' foram adicionados.
             const orderData = {
+                stayId: stay.id, // Adicionado para referência no back-end
                 guestName: stay.guestName,
                 cabinName: stay.cabinName,
+                numberOfGuests: stay.numberOfGuests,
                 deliveryDate: deliveryDateString,
-                selections: selections,
+                ...selections, // Espalha { individualItems, collectiveItems }
+                generalNotes: generalNotes,
                 status: 'pending',
             };
 
@@ -96,7 +102,6 @@ export const BreakfastFlow: React.FC = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    // Inclui o token no cabeçalho de autorização.
                     'Authorization': `Bearer ${idToken}`
                 },
                 body: JSON.stringify({
@@ -113,7 +118,8 @@ export const BreakfastFlow: React.FC = () => {
             toast.success("Pedido enviado com sucesso!", { id: toastId });
             setStep(5);
             setEditMode(false);
-            clearOrder();
+            // Não limpamos a ordem aqui, pois o estado será atualizado com o 'existingOrder'
+            // em uma próxima renderização, mostrando a tela de sucesso.
 
         } catch (error: any) {
             toast.error("Erro ao enviar o pedido", { id: toastId, description: error.message });
@@ -160,6 +166,7 @@ export const BreakfastFlow: React.FC = () => {
                 {currentStep === 1 && <StepWelcome />}
                 {currentStep === 2 && <StepIndividualChoices categories={individualCategories} />}
                 {currentStep === 3 && <StepAccompaniments categories={collectiveCategories} />}
+                {/* A prop onConfirmOrder agora passa a função handleSendOrder corrigida */}
                 {currentStep === 4 && <StepReview onConfirmOrder={handleSendOrder} />}
                 {currentStep === 5 && <StepSuccess />}
             </div>

@@ -1,4 +1,5 @@
 import { Timestamp, DocumentReference } from "firebase/firestore";
+import { ReactNode } from "react";
 
 // ========================================================================
 // 1. ESTRUTURA CENTRAL: A ESTADIA DO HÓSPEDE (O CORAÇÃO DO SISTEMA)
@@ -130,6 +131,9 @@ export interface Flavor {
 }
 
 export interface BreakfastMenuItem {
+  obs: any;
+  selectedOption: string;
+  quantity: ReactNode;
   id: string;
   name: string;
   description?: string;
@@ -167,6 +171,9 @@ export interface CollectiveOrderItem {
 }
 
 export interface BreakfastOrder {
+    guestName: ReactNode;
+    cabinName: ReactNode;
+    items: any;
     id: string;
     stayId: string;
     deliveryDate: string;

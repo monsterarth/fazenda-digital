@@ -10,8 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 
 // ++ INÍCIO DA CORREÇÃO ++
+// A assinatura da prop foi alterada para aceitar uma string (as notas)
 interface StepReviewProps {
-  onConfirmOrder: () => Promise<void>; // Define que o componente espera receber esta função
+  onConfirmOrder: (notes: string) => Promise<void>; 
 }
 // ++ FIM DA CORREÇÃO ++
 
@@ -22,22 +23,23 @@ const OrderSummarySection: React.FC<{ title: string; children: React.ReactNode; 
     </div>
 );
 
-// ++ CORREÇÃO: O componente agora recebe a prop 'onConfirmOrder'
 export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
     const { stay } = useGuest();
     const { setStep, individualItems, collectiveItems } = useOrder();
     const [generalNotes, setGeneralNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // ++ CORREÇÃO: A lógica de envio foi movida para o componente pai (BreakfastFlow).
-    // Esta função agora apenas chama a prop recebida.
+    // ++ INÍCIO DA CORREÇÃO ++
+    // A função de confirmação agora passa o estado 'generalNotes' para a prop.
     const handleConfirmOrder = async () => {
         setIsSubmitting(true);
-        // Adiciona as anotações ao estado global antes de enviar (opcional, mas boa prática)
-        // Se precisar das notas no envio, ajuste o OrderContext para guardá-las.
-        await onConfirmOrder();
+        await onConfirmOrder(generalNotes);
+        // O estado de 'isSubmitting' será gerenciado pelo componente pai após o retorno da promise.
+        // Isso evita que o botão seja reativado prematuramente em caso de erro na API.
+        // No entanto, para uma melhor experiência em caso de erro, resetamos aqui também.
         setIsSubmitting(false);
     };
+    // ++ FIM DA CORREÇÃO ++
 
     return (
         <Card className="shadow-lg border-2 w-full">
@@ -58,7 +60,7 @@ export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
                             <p className="font-semibold">Hóspede {personId}:</p>
                             <ul className="list-disc list-inside pl-2 text-sm text-muted-foreground">
                                 {individualItems.filter(item => item.personId === personId).map(item => (
-                                    <li key={`${item.itemId}-${item.categoryId}`}>{item.itemName} <span className="text-xs">({item.categoryName})</span></li>
+                                    <li key={`${item.itemId}-${item.categoryId}`}>{item.itemName} <span className="text-xs">({item.categoryName})</span> {item.flavorName && `- ${item.flavorName}`}</li>
                                 ))}
                             </ul>
                         </div>
@@ -99,7 +101,7 @@ export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
                     </Button>
                     <Button
                         size="lg"
-                        onClick={handleConfirmOrder} // Chama a função local que chama a prop
+                        onClick={handleConfirmOrder}
                         disabled={isSubmitting}
                     >
                         {isSubmitting ? (

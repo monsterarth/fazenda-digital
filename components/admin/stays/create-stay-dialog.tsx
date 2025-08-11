@@ -24,8 +24,6 @@ interface CreateStayDialogProps {
 const generateToken = (): string => Math.floor(100000 + Math.random() * 900000).toString();
 
 export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ isOpen, onClose, cabins, db }) => {
-    // CORREÇÃO FINAL: Usamos o tipo explícito 'FullStayFormValues'
-    // Isso garante que o tipo do 'form' é exatamente o que 'StayFormFields' espera.
     const form = useForm<FullStayFormValues>({
         resolver: zodResolver(fullStaySchema),
         defaultValues: {
@@ -39,8 +37,8 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ isOpen, onCl
             estimatedArrivalTime: '16:00',
             knowsVehiclePlate: true,
             vehiclePlate: '',
-            companions: [], // O tipo está correto agora
-            pets: [],       // O tipo está correto agora
+            companions: [],
+            pets: [],
             cabinId: '',
             dates: { from: new Date(), to: addDays(new Date(), 2) },
         },
@@ -78,6 +76,9 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ isOpen, onCl
             };
             batch.set(preCheckInRef, preCheckInData);
 
+            // ++ INÍCIO DA CORREÇÃO ++
+            // O campo `pets` agora recebe os dados do formulário, garantindo que
+            // não seja `undefined`.
             const newStay: Omit<Stay, 'id'> = {
                 guestName: data.leadGuestName,
                 cabinId: selectedCabin.id,
@@ -89,8 +90,10 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ isOpen, onCl
                 status: 'active',
                 preCheckInId: preCheckInRef.id,
                 createdAt: new Date().toISOString(),
-                pets: undefined
+                pets: data.pets.map(p => ({...p, weight: Number(p.weight), age: p.age.toString()})) || [], // Corrigido aqui
             };
+            // ++ FIM DA CORREÇÃO ++
+
             batch.set(stayRef, newStay);
             batch.update(preCheckInRef, { stayId: stayRef.id });
 

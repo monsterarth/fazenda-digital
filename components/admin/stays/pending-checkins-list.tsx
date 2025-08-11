@@ -67,8 +67,13 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
         try {
             const selectedCabin = cabins.find(c => c.id === data.cabinId);
             if (!selectedCabin) throw new Error("Cabana não encontrada.");
+            
             const batch = firestore.writeBatch(db);
             const stayRef = firestore.doc(firestore.collection(db, 'stays'));
+            
+            // ++ INÍCIO DA CORREÇÃO ++
+            // O campo `pets` agora recebe os dados do pré-check-in ou um array vazio.
+            // Isso evita que o valor `undefined` seja enviado ao Firestore.
             const newStay: Omit<Stay, 'id'> = {
                 guestName: selectedCheckIn.leadGuestName,
                 cabinId: selectedCabin.id,
@@ -80,12 +85,17 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                 status: 'active',
                 preCheckInId: selectedCheckIn.id,
                 createdAt: new Date().toISOString(),
-                pets: undefined
+                pets: selectedCheckIn.pets || [], // Corrigido aqui
             };
+            // ++ FIM DA CORREÇÃO ++
+
             batch.set(stayRef, newStay);
+            
             const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);
             batch.update(preCheckInRef, { status: 'validado', stayId: stayRef.id });
+            
             await batch.commit();
+            
             toast.success("Estadia validada com sucesso!", { id: toastId, description: `Token: ${newStay.token}` });
             setIsModalOpen(false);
             setSelectedCheckIn(null);

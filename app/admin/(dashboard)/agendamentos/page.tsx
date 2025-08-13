@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast, Toaster } from 'sonner';
-import { Calendar as CalendarIcon, Loader2, Lock, Unlock, User, Trash2, XSquare, CheckSquare, AlertTriangle, PlusCircle, Sparkles, BedDouble, Check, X, Bell } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Lock, Unlock, User, Trash2, XSquare, CheckSquare, AlertTriangle, PlusCircle, Sparkles, BedDouble, Check, X, Bell, RefreshCw } from 'lucide-react';
 import { format, startOfDay, isBefore, parse, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -21,8 +21,8 @@ import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 
 // --- Tipos e Interfaces ---
-// SlotStatusType mapeia o status do booking para o status visual na interface.
 type SlotStatusType = 'disponivel' | 'reservado' | 'pendente' | 'bloqueado' | 'fechado' | 'passou';
+type DailyOverrides = { [structureId: string]: 'open' | 'closed' };
 type SlotInfo = {
     id: string;
     status: SlotStatusType;
@@ -71,6 +71,7 @@ export default function AdminBookingsDashboard() {
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [structures, setStructures] = useState<Structure[]>([]);
     const [bookings, setBookings] = useState<Booking[]>([]);
+    const [dailyOverrides, setDailyOverrides] = useState<DailyOverrides>({});
     const [activeGuests, setActiveGuests] = useState<Guest[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
@@ -90,10 +91,7 @@ export default function AdminBookingsDashboard() {
 
             const unsubStructures = firestore.onSnapshot(firestore.collection(firestoreDb, 'structures'), snap => {
                 setStructures(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Structure)));
-            }, (error) => {
-                console.error("Erro no listener de structures:", error);
-                toast.error("Você não tem permissão para ver as estruturas.");
-            });
+            }, (error) => console.error("Erro no listener de structures:", error));
 
             const staysQuery = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where("status", "==", "active"));
             const unsubStays = firestore.onSnapshot(staysQuery, snap => {
@@ -101,10 +99,7 @@ export default function AdminBookingsDashboard() {
                     id: doc.id, guestId: doc.data().guestId, guestName: doc.data().guestName || 'Hóspede sem nome', cabinName: doc.data().cabinName || 'Cabana?',
                 }));
                 setActiveGuests(guestData);
-            }, (error) => {
-                console.error("Erro no listener de stays:", error);
-                toast.error("Você não tem permissão para ver as estadias ativas.");
-            });
+            }, (error) => console.error("Erro no listener de stays:", error));
 
             return () => { unsubStructures(); unsubStays(); };
         };
@@ -116,16 +111,26 @@ export default function AdminBookingsDashboard() {
 
         setLoading(true);
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        
+        // Listener para agendamentos
         const bookingsQuery = firestore.query(firestore.collection(db, 'bookings'), firestore.where('date', '==', dateStr));
         const unsubBookings = firestore.onSnapshot(bookingsQuery, (snapshot) => {
             setBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
             setLoading(false);
         }, (error) => {
             console.error("Erro no listener de bookings:", error);
-            toast.error("Você não tem permissão para ver os agendamentos.");
             setLoading(false);
         });
-        return () => unsubBookings();
+
+        // Listener para as exceções diárias
+        const overrideDocRef = firestore.doc(db, 'daily_overrides', dateStr);
+        const unsubOverrides = firestore.onSnapshot(overrideDocRef, (doc) => {
+            setDailyOverrides(doc.exists() ? doc.data() : {});
+        }, (error) => {
+            console.error("Erro no listener de daily_overrides:", error);
+        });
+
+        return () => { unsubBookings(); unsubOverrides(); };
     }, [db, selectedDate, isAdmin]);
 
     const pendingBookings = useMemo(() => {
@@ -153,25 +158,28 @@ export default function AdminBookingsDashboard() {
         if (isBefore(slotDateTime, now) && isEqual(startOfDay(now), startOfDay(selectedDate))) {
             status = 'passou';
         } else if (booking) {
+            // 1. Prioridade máxima: um agendamento existente
             switch (booking.status) {
-                case 'confirmado':
-                    status = 'reservado';
-                    break;
-                case 'pendente':
-                    status = 'pendente';
-                    break;
-                case 'bloqueado':
-                    status = 'bloqueado';
-                    break;
-                default:
-                    status = 'disponivel'; // Caso default para segurança
+                case 'confirmado': status = 'reservado'; break;
+                case 'pendente': status = 'pendente'; break;
+                case 'bloqueado': status = 'bloqueado'; break;
+                default: status = 'disponivel';
             }
         } else {
-            status = structure.defaultStatus === 'open' ? 'disponivel' : 'fechado';
+            // 2. Segunda prioridade: a exceção diária
+            const overrideStatus = dailyOverrides[structure.id];
+            if (overrideStatus === 'open') {
+                status = 'disponivel';
+            } else if (overrideStatus === 'closed') {
+                status = 'fechado';
+            } else {
+                // 3. Terceira prioridade: o status padrão da estrutura
+                status = structure.defaultStatus === 'open' ? 'disponivel' : 'fechado';
+            }
         }
 
         return { id, status, structure, unit, startTime: timeSlot.startTime, endTime: timeSlot.endTime, booking };
-    }, [bookingsMap, selectedDate]);
+    }, [bookingsMap, selectedDate, dailyOverrides]);
 
     const handleSlotClick = (slotInfo: SlotInfo) => {
         if (isDateInPast) return toast.info("Não é possível alterar disponibilidade de datas passadas.");
@@ -183,6 +191,20 @@ export default function AdminBookingsDashboard() {
         } else {
             setModalState({ open: true, slotInfo });
             setSelectedStayId('');
+        }
+    };
+    
+    const handleOverrideAction = async (structureId: string, action: 'open' | 'revert') => {
+        if (!db) return;
+        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        const toastId = toast.loading("Atualizando status do dia...");
+        try {
+            const overrideDocRef = firestore.doc(db, 'daily_overrides', dateStr);
+            const updateData = { [structureId]: action === 'open' ? 'open' : firestore.deleteField() };
+            await firestore.setDoc(overrideDocRef, updateData, { merge: true });
+            toast.success("Status do dia atualizado!", { id: toastId });
+        } catch(error: any) {
+            toast.error("Falha ao atualizar status do dia.", { id: toastId, description: error.message });
         }
     };
 
@@ -204,8 +226,10 @@ export default function AdminBookingsDashboard() {
                 await firestore.deleteDoc(existingDocRef);
                 toast.success("Solicitação recusada.", { id: toastId });
             }
-            else if ((action === 'cancel' || action === 'release') && existingDocRef) {
-                await firestore.deleteDoc(existingDocRef);
+            else if ((action === 'cancel' || action === 'release')) {
+                if (existingDocRef) {
+                    await firestore.deleteDoc(existingDocRef);
+                }
                 toast.success("Horário liberado/cancelado!", { id: toastId });
             }
             else if (action === 'block') {
@@ -255,12 +279,12 @@ export default function AdminBookingsDashboard() {
         try {
             const batch = firestore.writeBatch(db);
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
-
+    
             selectedSlots.forEach(slot => {
                 if (slot.booking) {
                     batch.delete(firestore.doc(db, 'bookings', slot.booking.id));
                 }
-
+    
                 if (action === 'block') {
                     const docRef = firestore.doc(firestore.collection(db, 'bookings'));
                     const baseBooking: Omit<Booking, 'id' | 'createdAt'> = {
@@ -268,8 +292,6 @@ export default function AdminBookingsDashboard() {
                     };
                     batch.set(docRef, { ...baseBooking, createdAt: firestore.serverTimestamp() });
                 }
-                // Na ação 'release', apenas deletamos os bookings existentes, o que já foi feito na condicional acima.
-                // Se o slot já estava "disponível", não há booking para deletar.
             });
             await batch.commit();
             toast.success("Ação em massa concluída!", { id: toastId });
@@ -346,11 +368,24 @@ export default function AdminBookingsDashboard() {
                     {structures.map(structure => (
                         <Card key={structure.id}>
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-3">
-                                    <Image src={structure.photoURL} alt={structure.name} width={48} height={30} className="rounded-md object-cover aspect-video" />
-                                    {structure.name}
-                                </CardTitle>
-                            </CardHeader>
+                                <div className="flex justify-between items-start">
+                                    <CardTitle className="flex items-center gap-3">
+                                        <Image src={structure.photoURL} alt={structure.name} width={48} height={30} className="rounded-md object-cover aspect-video" />
+                                        {structure.name}
+                                    </CardTitle>
+                                    {structure.defaultStatus === 'closed' && !isDateInPast && (
+                                        dailyOverrides[structure.id] === 'open' ? (
+                                            <Button size="sm" variant="outline" onClick={() => handleOverrideAction(structure.id, 'revert')} className="h-8 text-xs">
+                                                <RefreshCw className="h-3 w-3 mr-1.5" /> Reverter
+                                            </Button>
+                                        ) : (
+                                            <Button size="sm" variant="secondary" onClick={() => handleOverrideAction(structure.id, 'open')} className="h-8 text-xs">
+                                                <Unlock className="h-3 w-3 mr-1.5" /> Abrir no dia
+                                            </Button>
+                                        )
+                                    )}
+                                </div>
+                             </CardHeader>
                             <CardContent className="space-y-3">
                                 {
                                     (structure.managementType === 'by_structure' ? [null] : structure.units).map((unit) => (

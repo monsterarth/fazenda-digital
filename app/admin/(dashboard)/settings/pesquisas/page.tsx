@@ -8,14 +8,14 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import { toast, Toaster } from 'sonner';
 
-import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
+import { useAuth } from '@/context/AuthContext';
 import { Survey, SurveyCategory, SurveyQuestion, QuestionType, Reward } from "@/types/survey";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { GripVertical, Plus, Edit, Trash2, Loader2, List, Settings, Star, CheckSquare, MessageSquare, Divide, Minus, Type, ArrowLeft, Save, Gift } from "lucide-react";
+import { GripVertical, Plus, Edit, Trash2, Loader2, List, Settings, Star, CheckSquare, MessageSquare, Divide, Minus, Type, ArrowLeft, Save, Gift, X, AlertTriangle } from "lucide-react";
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -157,7 +157,7 @@ function SurveyBuilder({ survey, categories, onBack, onSave }: {
 
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     const addNewQuestion = (type: QuestionType) => {
-        const newQuestion: SurveyQuestion = { id: `q_${Date.now()}`, text: '', type, position: questions.length, ...(type === 'multiple_choice' && { options: [''] }) };
+        const newQuestion: SurveyQuestion = { id: `q_${Date.now()}`, text: '', type, position: questions.length, ...(type === 'multiple_choice' && { options: [] }) };
         setQuestions(prev => [...prev, newQuestion]);
     };
     const updateQuestion = useCallback((id: string, updates: Partial<SurveyQuestion>) => { setQuestions(prev => prev.map(q => (q.id === id ? { ...q, ...updates } : q))); }, []);
@@ -244,7 +244,7 @@ function SurveyBuilder({ survey, categories, onBack, onSave }: {
 }
 
 export default function ManageSurveysPage() {
-    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
+    const { isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [surveys, setSurveys] = useState<Survey[]>([]);
     const [categories, setCategories] = useState<SurveyCategory[]>([]);
@@ -252,12 +252,12 @@ export default function ManageSurveysPage() {
     const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
     const [categoryModalOpen, setCategoryModalOpen] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
+    const [confirmDeleteCat, setConfirmDeleteCat] = useState<{ open: boolean, categoryId: string | null, categoryName: string | null }>({ open: false, categoryId: null, categoryName: null });
 
     useEffect(() => { async function initialize() { setDb(await getFirebaseDb()); } initialize(); }, []);
 
-    // ++ CORREÇÃO: useEffect agora depende do status de admin
     useEffect(() => {
-        if (!db || !isAdmin) return; // Espera a confirmação de admin
+        if (!db || !isAdmin) return;
 
         setLoading(true);
         const unsubSurveys = firestore.onSnapshot(firestore.collection(db, 'surveys'), (snapshot) => {
@@ -277,7 +277,7 @@ export default function ManageSurveysPage() {
         });
 
         return () => { unsubSurveys(); unsubCategories(); };
-    }, [db, isAdmin]); // A dependência agora é o status de admin
+    }, [db, isAdmin]);
 
     const handleCreateNewSurvey = () => {
         const newSurvey: Survey = {
@@ -334,7 +334,36 @@ export default function ManageSurveysPage() {
         } catch (error) { console.error(error); toast.error('Falha ao salvar.', { id: toastId }); }
     };
     
-    const handleSaveCategory = async () => { /* ... (lógica existente, sem alterações) */ };
+    const handleSaveCategory = async () => {
+        if (!db) { toast.error("Conexão com o banco falhou."); return; }
+        if (!newCategoryName.trim()) { toast.error("O nome da categoria não pode ser vazio."); return; }
+        
+        const toastId = toast.loading("Salvando categoria...");
+        
+        try {
+            const categoriesCollection = firestore.collection(db, 'surveyCategories');
+            await firestore.addDoc(categoriesCollection, { name: newCategoryName });
+            setNewCategoryName('');
+            setCategoryModalOpen(false);
+            toast.success("Categoria salva com sucesso!", { id: toastId });
+        } catch (error: any) {
+            console.error(error);
+            toast.error("Falha ao salvar a categoria.", { id: toastId, description: error.message });
+        }
+    };
+    
+    const handleDeleteCategory = async () => {
+        if (!db || !confirmDeleteCat.categoryId) return;
+        const toastId = toast.loading("Excluindo categoria...");
+        try {
+            await firestore.deleteDoc(firestore.doc(db, 'surveyCategories', confirmDeleteCat.categoryId));
+            setConfirmDeleteCat({ open: false, categoryId: null, categoryName: null });
+            toast.success("Categoria excluída!", { id: toastId });
+        } catch (error: any) {
+            console.error(error);
+            toast.error("Falha ao excluir a categoria.", { id: toastId, description: error.message });
+        }
+    };
 
     if (loading) return <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 text-slate-400 animate-spin"/></div>;
     if (selectedSurvey) return <SurveyBuilder survey={selectedSurvey} categories={categories} onBack={() => setSelectedSurvey(null)} onSave={handleSaveSurvey} />;
@@ -368,7 +397,12 @@ export default function ManageSurveysPage() {
                 <div>
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between"><CardTitle>Categorias (KPIs)</CardTitle><Button size="sm" variant="outline" onClick={() => setCategoryModalOpen(true)}><Plus className="mr-1 h-4 w-4" /> Nova</Button></CardHeader>
-                        <CardContent><div className="space-y-1 text-sm">{categories.map(cat => <p key={cat.id} className="p-2 rounded hover:bg-slate-100">{cat.name}</p>)}</div></CardContent>
+                        <CardContent><div className="space-y-1 text-sm">{categories.map(cat => (
+                            <div key={cat.id} className="flex items-center justify-between p-2 rounded hover:bg-slate-100">
+                                <p>{cat.name}</p>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-100" onClick={() => setConfirmDeleteCat({ open: true, categoryId: cat.id, categoryName: cat.name })}><Trash2 className="w-4 h-4" /></Button>
+                            </div>
+                        ))}</div></CardContent>
                     </Card>
                 </div>
             </div>
@@ -377,6 +411,15 @@ export default function ManageSurveysPage() {
                     <DialogHeader><DialogTitle>Nova Categoria</DialogTitle><DialogDescription>Crie uma categoria para agrupar as perguntas e analisar os KPIs.</DialogDescription></DialogHeader>
                     <div className="py-4"><Label htmlFor="category-name">Nome da Categoria</Label><Input id="category-name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} /></div>
                     <DialogFooter><Button variant="outline" onClick={() => setCategoryModalOpen(false)}>Cancelar</Button><Button onClick={handleSaveCategory}>Salvar</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={confirmDeleteCat.open} onOpenChange={(open) => !open && setConfirmDeleteCat({ open: false, categoryId: null, categoryName: null })}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-red-500"><AlertTriangle className="h-5 w-5" /> Confirmar Exclusão</DialogTitle>
+                        <DialogDescription>Tem certeza que deseja excluir a categoria **"{confirmDeleteCat.categoryName}"**? Esta ação é irreversível.</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter><Button variant="outline" onClick={() => setConfirmDeleteCat({ open: false, categoryId: null, categoryName: null })}>Cancelar</Button><Button variant="destructive" onClick={handleDeleteCategory}>Excluir Categoria</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

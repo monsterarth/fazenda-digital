@@ -135,14 +135,16 @@ export default function AdminBookingsDashboard() {
     const bookingsMap = useMemo(() => {
         const map = new Map<string, Booking>();
         bookings.forEach(b => {
-            const key = `${b.structureId}-${b.unitId || ''}-${b.startTime}`;
+            // CORREÇÃO: Usar o nullish coalescing operator para garantir que unitId seja sempre uma string
+            const key = `${b.structureId}-${b.unitId ?? ''}-${b.startTime}`;
             map.set(key, b);
         });
         return map;
     }, [bookings]);
 
     const getSlotInfo = useCallback((structure: Structure, unit: string | null, timeSlot: TimeSlot): SlotInfo => {
-        const id = `${structure.id}-${unit || ''}-${timeSlot.startTime}`;
+        // CORREÇÃO: Usar o nullish coalescing operator para garantir que unit seja sempre uma string
+        const id = `${structure.id}-${unit ?? ''}-${timeSlot.startTime}`;
         const booking = bookingsMap.get(id);
         let status: SlotStatusType;
         const now = new Date();
@@ -345,7 +347,7 @@ export default function AdminBookingsDashboard() {
                              <CardContent className="space-y-3">
                                 {
                                     (structure.managementType === 'by_structure' ? [null] : structure.units).map((unit) => (
-                                         <div key={unit}>
+                                         <div key={unit ?? 'no-unit'}>
                                             {structure.managementType === 'by_unit' && <h4 className="text-sm font-semibold text-muted-foreground mb-1.5">{unit}</h4>}
                                             <div className="space-y-1">
                                                 {(structure.timeSlots || []).map(timeSlot => {

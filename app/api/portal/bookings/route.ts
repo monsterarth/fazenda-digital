@@ -32,27 +32,26 @@ export async function POST(request: Request) {
             }
 
             return adminDb.runTransaction(async (transaction) => {
+                // Normaliza o unitId para garantir que seja sempre uma string
+                const normalizedUnitId = bookingData.unitId ?? '';
+
                 // Primeiro, verifica se o slot desejado já está ocupado por outro hóspede.
                 const slotQuery = adminDb.collection('bookings')
                     .where('date', '==', bookingData.date)
                     .where('structureId', '==', bookingData.structureId)
-                    .where('unitId', '==', bookingData.unitId)
+                    .where('unitId', '==', normalizedUnitId)
                     .where('startTime', '==', bookingData.startTime)
                     .limit(1);
                 const slotSnapshot = await transaction.get(slotQuery);
 
                 if (!slotSnapshot.empty) {
                     const existingBooking = slotSnapshot.docs[0].data() as Booking;
-                    // Se o slot já tem um agendamento e o stayId não é o do hóspede atual (e não é um slot de admin)
                     if (existingBooking.stayId !== stayId && existingBooking.stayId !== 'admin') {
                         throw new Error("Este horário já foi reservado por outro hóspede.");
                     }
-                    // Se o agendamento existente é um slot de admin, o hóspede pode reservá-lo.
-                    // Se é um agendamento do próprio hóspede, ele será sobrescrito.
-                    // Não é necessário fazer nada aqui, pois o agendamento anterior será tratado no próximo passo.
                 }
 
-                // Em seguida, verifica se o hóspede já possui outro agendamento na mesma estrutura hoje.
+                // Em seguida, verifica se o hóspede já possui outro agendamento na mesma estrutura e dia.
                 const userExistingBookingQuery = adminDb.collection('bookings')
                     .where('stayId', '==', stayId)
                     .where('date', '==', bookingData.date)
@@ -61,16 +60,15 @@ export async function POST(request: Request) {
                 const userExistingBookingSnapshot = await transaction.get(userExistingBookingQuery);
 
                 if (!userExistingBookingSnapshot.empty) {
-                    // Se o hóspede já tem uma reserva, a exclui antes de criar a nova.
-                    // Isso garante que cada hóspede tenha apenas um agendamento por estrutura por dia.
                     const existingBookingDoc = userExistingBookingSnapshot.docs[0];
                     transaction.delete(existingBookingDoc.ref);
                 }
 
-                // Cria a nova reserva dentro da transação.
+                // Cria a nova reserva dentro da transação, usando o unitId normalizado
                 const newBookingRef = adminDb.collection('bookings').doc();
                 const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
                     ...bookingData,
+                    unitId: normalizedUnitId,
                     stayId: stayId,
                     guestId: stayId,
                     guestName: stayInfo.guestName,

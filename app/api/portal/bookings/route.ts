@@ -1,3 +1,5 @@
+// src/app/api/portal/bookings/route.ts
+
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import { firestore } from 'firebase-admin';
@@ -16,10 +18,11 @@ export async function POST(request: Request) {
         if (!decodedToken.isGuest || !decodedToken.stayId) {
             return NextResponse.json({ error: "Permissão negada." }, { status: 403 });
         }
-        
+
         const stayId = decodedToken.stayId;
         const { action, bookingData, bookingIdToCancel } = await request.json();
 
+        // Operação de CRIAR/ATUALIZAR AGENDAMENTO
         if (action === 'create') {
             if (!bookingData || !bookingData.date || !bookingData.structureId || !bookingData.startTime) {
                 return NextResponse.json({ error: "Dados do agendamento não fornecidos." }, { status: 400 });
@@ -31,48 +34,48 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error: "Estadia não encontrada." }, { status: 404 });
             }
 
+            // Realiza todas as operações dentro de uma transação para garantir atomicidade.
             return adminDb.runTransaction(async (transaction) => {
-                // Normaliza o unitId para garantir que seja sempre uma string
-                const normalizedUnitId = bookingData.unitId ?? '';
+                const normalizedUnitId = bookingData.unitId ?? null;
 
-                // Primeiro, verifica se o slot desejado já está ocupado por outro hóspede.
+                // 1. Verifica se o horário está realmente disponível.
                 const slotQuery = adminDb.collection('bookings')
                     .where('date', '==', bookingData.date)
                     .where('structureId', '==', bookingData.structureId)
                     .where('unitId', '==', normalizedUnitId)
-                    .where('startTime', '==', bookingData.startTime)
-                    .limit(1);
+                    .where('startTime', '==', bookingData.startTime);
                 const slotSnapshot = await transaction.get(slotQuery);
 
                 if (!slotSnapshot.empty) {
                     const existingBooking = slotSnapshot.docs[0].data() as Booking;
-                    if (existingBooking.stayId !== stayId && existingBooking.stayId !== 'admin') {
-                        throw new Error("Este horário já foi reservado por outro hóspede.");
+                    // Lançamos um erro se o slot já estiver ocupado por outra pessoa
+                    // ou por um bloqueio de admin (status 'bloqueado').
+                    if (existingBooking.stayId !== stayId) {
+                        throw new Error("Este horário já está reservado.");
                     }
                 }
-
-                // Em seguida, verifica se o hóspede já possui outro agendamento na mesma estrutura e dia.
+                
+                // 2. Procura e cancela qualquer agendamento existente do mesmo hóspede
+                // para a mesma estrutura na mesma data.
                 const userExistingBookingQuery = adminDb.collection('bookings')
                     .where('stayId', '==', stayId)
                     .where('date', '==', bookingData.date)
-                    .where('structureId', '==', bookingData.structureId)
-                    .limit(1);
+                    .where('structureId', '==', bookingData.structureId);
                 const userExistingBookingSnapshot = await transaction.get(userExistingBookingQuery);
 
-                if (!userExistingBookingSnapshot.empty) {
-                    const existingBookingDoc = userExistingBookingSnapshot.docs[0];
-                    transaction.delete(existingBookingDoc.ref);
-                }
+                userExistingBookingSnapshot.docs.forEach(doc => {
+                    transaction.delete(doc.ref);
+                });
 
-                // Cria a nova reserva dentro da transação, usando o unitId normalizado
+                // 3. Cria a nova reserva.
                 const newBookingRef = adminDb.collection('bookings').doc();
                 const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
                     ...bookingData,
                     unitId: normalizedUnitId,
                     stayId: stayId,
-                    guestId: stayId,
+                    guestId: stayId, // Mantendo a consistência de ID do hóspede
                     guestName: stayInfo.guestName,
-                    cabinId: stayInfo.cabinId,
+                    cabinId: stayInfo.cabinName, // Corrigido para `cabinName`
                     createdAt: firestore.FieldValue.serverTimestamp(),
                 };
                 transaction.set(newBookingRef, newBooking);
@@ -80,6 +83,7 @@ export async function POST(request: Request) {
                 return NextResponse.json({ success: true, bookingId: newBookingRef.id });
             });
 
+        // Operação de CANCELAR AGENDAMENTO
         } else if (action === 'cancel') {
             if (!bookingIdToCancel) {
                 return NextResponse.json({ error: "ID do agendamento para cancelar não fornecido." }, { status: 400 });
@@ -97,6 +101,7 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error: "Você não tem permissão para cancelar este agendamento." }, { status: 403 });
             }
 
+            // Apenas deleta o agendamento se for do hóspede.
             await bookingRef.delete();
             return NextResponse.json({ success: true, message: "Agendamento cancelado com sucesso." });
 

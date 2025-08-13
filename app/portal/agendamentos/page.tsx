@@ -1,3 +1,4 @@
+// src/app/portal/agendamentos/page.tsx
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -8,10 +9,10 @@ import { Structure, Booking, TimeSlot } from '@/types/scheduling';
 import { format, parse, isBefore, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CalendarCheck, AlertTriangle, XCircle, ArrowLeft, Sparkles } from 'lucide-react';
+import { Loader2, CalendarCheck, AlertTriangle, XCircle, ArrowLeft, Sparkles, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -23,20 +24,30 @@ const TimeSlotButton = ({ status, timeSlot, onClick, ...props }: { status: strin
     let variant: 'default' | 'secondary' | 'outline' = 'outline';
     let disabled = false;
     let className = "";
+    let icon = null;
 
     switch (status) {
         case 'meu_horario':
             variant = 'default';
             className = "bg-brand-primary hover:bg-brand-primary/90 text-white shadow-md";
+            icon = <CalendarCheck className="h-4 w-4 mr-1"/>;
             break;
         case 'disponivel':
             variant = 'secondary';
             className = "bg-white/70 hover:bg-brand-light-green text-brand-dark-green border-brand-mid-green/40 shadow-sm";
             break;
-        case 'indisponivel':
-        case 'passou':
+        case 'bloqueado':
+            disabled = true;
+            className = "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 line-through cursor-not-allowed";
+            icon = <Lock className="h-4 w-4 mr-1"/>;
+            break;
+        case 'indisponivel': // Reservado por outro hóspede ou pendente
             disabled = true;
             className = "bg-brand-mid-green/30 text-brand-mid-green cursor-not-allowed line-through";
+            break;
+        case 'passou':
+            disabled = true;
+            className = "bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-600 cursor-not-allowed line-through";
             break;
     }
 
@@ -48,6 +59,7 @@ const TimeSlotButton = ({ status, timeSlot, onClick, ...props }: { status: strin
             className={cn("w-full h-auto text-sm py-2 px-1 transition-all", className)}
             {...props}
         >
+            {icon}
             {timeSlot.startTime}
         </Button>
     );
@@ -136,14 +148,14 @@ export default function GuestSchedulingPage() {
 
         if (bookingForSlot) {
             switch (bookingForSlot.status) {
-                case 'disponivel':
-                    return { status: 'disponivel' };
                 case 'confirmado':
                 case 'pendente':
                     if (stay && bookingForSlot.stayId === stay.id) {
-                        return { status: 'meu_horario' };
+                        return { status: 'meu_horario', booking: bookingForSlot };
                     }
                     return { status: 'indisponivel' };
+                case 'bloqueado':
+                    return { status: 'bloqueado' };
                 default:
                     return { status: 'indisponivel' };
             }
@@ -156,7 +168,6 @@ export default function GuestSchedulingPage() {
         return { status: 'indisponivel' };
     }, [bookings, stay, today]);
 
-    // Lógica para enviar o agendamento para a API
     const handleBooking = async () => {
         const { structure, timeSlot, unit } = dialogState.data;
         if (!stay || !structure || !timeSlot) {
@@ -179,7 +190,6 @@ export default function GuestSchedulingPage() {
             date: today,
             startTime: timeSlot.startTime,
             endTime: timeSlot.endTime,
-            status: structure.approvalMode === 'automatic' ? 'confirmado' : 'pendente',
         };
 
         const toastId = toast.loading(existingBookingForStructure ? "Alterando seu agendamento..." : "Processando agendamento...");
@@ -199,7 +209,7 @@ export default function GuestSchedulingPage() {
                 throw new Error(result.error);
             }
 
-            const successMessage = bookingData.status === 'confirmado'
+            const successMessage = structure.approvalMode === 'automatic'
                 ? "Reserva confirmada com sucesso!"
                 : "Solicitação enviada! Aguarde a confirmação no seu painel.";
             toast.success(successMessage, { id: toastId });
@@ -212,7 +222,6 @@ export default function GuestSchedulingPage() {
         }
     };
 
-    // Lógica para cancelar o agendamento via API
     const handleCancelBooking = async () => {
         const { bookingId } = dialogState.data;
         if (!bookingId) return;
@@ -294,7 +303,7 @@ export default function GuestSchedulingPage() {
                                        </div>
                                        <div className="flex items-center gap-2">
                                            <Badge variant={b.status === 'confirmado' ? 'default' : 'secondary'} className={cn(b.status === 'confirmado' ? 'bg-brand-primary text-white' : 'bg-brand-mid-green/50 text-brand-dark-green')}>
-                                               {b.status}
+                                               {b.status === 'confirmado' ? 'Confirmado' : 'Pendente'}
                                            </Badge>
                                            <Button
                                                size="sm"

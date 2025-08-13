@@ -1,9 +1,10 @@
+// src/app/admin/(dashboard)/agendamentos/page.tsx
 "use client"
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as firestore from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase';
-import { Structure, Booking, TimeSlot } from '@/types/scheduling';
+import { Structure, Booking, TimeSlot, BookingStatus } from '@/types/scheduling';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -20,15 +21,16 @@ import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 
 // --- Tipos e Interfaces ---
+// SlotStatusType mapeia o status do booking para o status visual na interface.
 type SlotStatusType = 'disponivel' | 'reservado' | 'pendente' | 'bloqueado' | 'fechado' | 'passou';
 type SlotInfo = {
-  id: string;
-  status: SlotStatusType;
-  structure: Structure;
-  unit: string | null;
-  startTime: string;
-  endTime: string;
-  booking?: Booking;
+    id: string;
+    status: SlotStatusType;
+    structure: Structure;
+    unit: string | null;
+    startTime: string;
+    endTime: string;
+    booking?: Booking;
 };
 type Guest = { id: string; guestId: string; guestName: string; cabinName: string; };
 
@@ -42,7 +44,7 @@ function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
             case 'pendente': return { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-800 dark:text-yellow-300', icon: <User className="h-4 w-4 animate-pulse" />, label: slotInfo.booking?.guestName };
             case 'bloqueado': return { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-800 dark:text-red-400', icon: <Lock className="h-4 w-4" />, label: 'Bloqueado' };
             case 'fechado': return { bg: 'bg-gray-200 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400', icon: <Lock className="h-4 w-4" />, label: 'Fechado' };
-            case 'passou': return { bg: 'bg-gray-100 dark:bg-gray-900', text: 'text-gray-500 dark:text-gray-600', icon: slotInfo.booking ? <User className="h-4 w-4 opacity-50" /> : <Lock className="h-4 w-4 opacity-50"/>, label: slotInfo.booking?.guestName || 'Passou' };
+            case 'passou': return { bg: 'bg-gray-100 dark:bg-gray-900', text: 'text-gray-500 dark:text-gray-600', icon: slotInfo.booking ? <User className="h-4 w-4 opacity-50" /> : <Lock className="h-4 w-4 opacity-50" />, label: slotInfo.booking?.guestName || 'Passou' };
             default: return { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-800 dark:text-green-400', icon: <Unlock className="h-4 w-4" />, label: 'Disponível' };
         }
     }, [slotInfo]);
@@ -135,16 +137,14 @@ export default function AdminBookingsDashboard() {
     const bookingsMap = useMemo(() => {
         const map = new Map<string, Booking>();
         bookings.forEach(b => {
-            // CORREÇÃO: Usar o nullish coalescing operator para garantir que unitId seja sempre uma string
-            const key = `${b.structureId}-${b.unitId ?? ''}-${b.startTime}`;
+            const key = `${b.structureId}-${b.unitId ?? 'null'}-${b.startTime}`;
             map.set(key, b);
         });
         return map;
     }, [bookings]);
 
     const getSlotInfo = useCallback((structure: Structure, unit: string | null, timeSlot: TimeSlot): SlotInfo => {
-        // CORREÇÃO: Usar o nullish coalescing operator para garantir que unit seja sempre uma string
-        const id = `${structure.id}-${unit ?? ''}-${timeSlot.startTime}`;
+        const id = `${structure.id}-${unit ?? 'null'}-${timeSlot.startTime}`;
         const booking = bookingsMap.get(id);
         let status: SlotStatusType;
         const now = new Date();
@@ -153,10 +153,19 @@ export default function AdminBookingsDashboard() {
         if (isBefore(slotDateTime, now) && isEqual(startOfDay(now), startOfDay(selectedDate))) {
             status = 'passou';
         } else if (booking) {
-            if (booking.status === 'confirmado') status = 'reservado';
-            else if (booking.status === 'pendente') status = 'pendente';
-            else if (booking.status === 'disponivel') status = 'disponivel';
-            else status = 'bloqueado';
+            switch (booking.status) {
+                case 'confirmado':
+                    status = 'reservado';
+                    break;
+                case 'pendente':
+                    status = 'pendente';
+                    break;
+                case 'bloqueado':
+                    status = 'bloqueado';
+                    break;
+                default:
+                    status = 'disponivel'; // Caso default para segurança
+            }
         } else {
             status = structure.defaultStatus === 'open' ? 'disponivel' : 'fechado';
         }
@@ -177,13 +186,15 @@ export default function AdminBookingsDashboard() {
         }
     };
 
-    const handleModalAction = async (action: 'create' | 'block' | 'open' | 'cancel' | 'approve' | 'decline') => {
+    const handleModalAction = async (action: 'create' | 'block' | 'release' | 'cancel' | 'approve' | 'decline') => {
         if (!db || !modalState.slotInfo) return;
         const { structure, unit, startTime, endTime, booking } = modalState.slotInfo;
         const toastId = toast.loading("Processando...");
 
         try {
             const existingDocRef = booking ? firestore.doc(db, 'bookings', booking.id) : null;
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            const collectionRef = firestore.collection(db, 'bookings');
 
             if (action === 'approve' && existingDocRef) {
                 await firestore.updateDoc(existingDocRef, { status: 'confirmado' });
@@ -193,34 +204,26 @@ export default function AdminBookingsDashboard() {
                 await firestore.deleteDoc(existingDocRef);
                 toast.success("Solicitação recusada.", { id: toastId });
             }
-            else if (action === 'cancel') {
-                if(existingDocRef) await firestore.deleteDoc(existingDocRef);
-                toast.success("Ação desfeita!", { id: toastId });
-            }
-            else if (action === 'open') {
-                const openBooking: Omit<Booking, 'id'|'createdAt'> = {
-                    structureId: structure.id, structureName: structure.name, unitId: unit, guestId: 'admin', guestName: 'Disponível', cabinId: 'N/A', date: format(selectedDate, 'yyyy-MM-dd'), startTime, endTime, status: 'disponivel', stayId: 'admin'
-                };
-                if(existingDocRef) await firestore.deleteDoc(existingDocRef);
-                await firestore.addDoc(firestore.collection(db, 'bookings'), { ...openBooking, createdAt: firestore.serverTimestamp() });
-                toast.success("Horário aberto!", { id: toastId });
+            else if ((action === 'cancel' || action === 'release') && existingDocRef) {
+                await firestore.deleteDoc(existingDocRef);
+                toast.success("Horário liberado/cancelado!", { id: toastId });
             }
             else if (action === 'block') {
-                const blockBooking: Omit<Booking, 'id'|'createdAt'> = {
-                    structureId: structure.id, structureName: structure.name, unitId: unit, guestId: 'admin', guestName: 'Admin', cabinId: 'N/A', date: format(selectedDate, 'yyyy-MM-dd'), startTime, endTime, status: 'cancelado', stayId: 'admin'
+                const blockBooking: Omit<Booking, 'id' | 'createdAt'> = {
+                    structureId: structure.id, structureName: structure.name, unitId: unit, stayId: 'admin', date: dateStr, startTime, endTime, status: 'bloqueado', guestName: 'Admin', cabinName: 'N/A'
                 };
-                if(existingDocRef) await firestore.deleteDoc(existingDocRef);
-                await firestore.addDoc(firestore.collection(db, 'bookings'), { ...blockBooking, createdAt: firestore.serverTimestamp() });
+                if (existingDocRef) await firestore.deleteDoc(existingDocRef);
+                await firestore.addDoc(collectionRef, { ...blockBooking, createdAt: firestore.serverTimestamp() });
                 toast.success("Horário bloqueado!", { id: toastId });
             }
             else if (action === 'create') {
                 const guest = activeGuests.find(g => g.id === selectedStayId);
                 if (!guest) return toast.error("Hóspede inválido.");
                 const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
-                    structureId: structure.id, structureName: structure.name, unitId: unit, stayId: guest.id, guestId: guest.guestId || '', guestName: guest.guestName, cabinId: guest.cabinName, date: format(selectedDate, 'yyyy-MM-dd'), startTime, endTime, status: 'confirmado',
+                    structureId: structure.id, structureName: structure.name, unitId: unit, stayId: guest.id, date: dateStr, startTime, endTime, status: 'confirmado', guestName: guest.guestName, cabinName: guest.cabinName
                 };
-                if(existingDocRef) await firestore.deleteDoc(existingDocRef);
-                await firestore.addDoc(firestore.collection(db, 'bookings'), { ...newBooking, createdAt: firestore.serverTimestamp() });
+                if (existingDocRef) await firestore.deleteDoc(existingDocRef);
+                await firestore.addDoc(collectionRef, { ...newBooking, createdAt: firestore.serverTimestamp() });
                 toast.success(`Reserva para ${guest.guestName} criada!`, { id: toastId });
             }
             setModalState({ open: false, slotInfo: null });
@@ -230,11 +233,11 @@ export default function AdminBookingsDashboard() {
     };
 
     const handlePendingAction = async (bookingId: string, action: 'approve' | 'decline') => {
-        if(!db) return;
+        if (!db) return;
         const toastId = toast.loading("Processando...");
         try {
             const docRef = firestore.doc(db, 'bookings', bookingId);
-            if(action === 'approve') {
+            if (action === 'approve') {
                 await firestore.updateDoc(docRef, { status: 'confirmado' });
                 toast.success("Reserva aprovada!", { id: toastId });
             } else {
@@ -242,9 +245,9 @@ export default function AdminBookingsDashboard() {
                 toast.success("Solicitação recusada.", { id: toastId });
             }
         } catch (error: any) {
-             toast.error(`Falha: ${error.message}`, { id: toastId });
+            toast.error(`Falha: ${error.message}`, { id: toastId });
         }
-    }
+    };
 
     const handleBulkAction = async (action: 'block' | 'release') => {
         if (!db || selectedSlots.size === 0) return;
@@ -252,17 +255,21 @@ export default function AdminBookingsDashboard() {
         try {
             const batch = firestore.writeBatch(db);
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
+
             selectedSlots.forEach(slot => {
-                if(slot.booking) batch.delete(firestore.doc(db, 'bookings', slot.booking.id));
-                const docRef = firestore.doc(firestore.collection(db, 'bookings'));
-                const baseBooking = {
-                    structureId: slot.structure.id, structureName: slot.structure.name, unitId: slot.unit, guestId: 'admin', date: dateStr, startTime: slot.startTime, endTime: slot.endTime, stayId: 'admin'
-                };
-                if (action === 'block') {
-                    batch.set(docRef, {...baseBooking, guestName: 'Admin', cabinId: 'N/A', status: 'cancelado', createdAt: firestore.serverTimestamp()});
-                } else if (action === 'release') {
-                   batch.set(docRef, {...baseBooking, guestName: 'Disponível', cabinId: 'N/A', status: 'disponivel', createdAt: firestore.serverTimestamp()});
+                if (slot.booking) {
+                    batch.delete(firestore.doc(db, 'bookings', slot.booking.id));
                 }
+
+                if (action === 'block') {
+                    const docRef = firestore.doc(firestore.collection(db, 'bookings'));
+                    const baseBooking: Omit<Booking, 'id' | 'createdAt'> = {
+                        structureId: slot.structure.id, structureName: slot.structure.name, unitId: slot.unit, stayId: 'admin', date: dateStr, startTime: slot.startTime, endTime: slot.endTime, status: 'bloqueado', guestName: 'Admin', cabinName: 'N/A'
+                    };
+                    batch.set(docRef, { ...baseBooking, createdAt: firestore.serverTimestamp() });
+                }
+                // Na ação 'release', apenas deletamos os bookings existentes, o que já foi feito na condicional acima.
+                // Se o slot já estava "disponível", não há booking para deletar.
             });
             await batch.commit();
             toast.success("Ação em massa concluída!", { id: toastId });
@@ -288,8 +295,8 @@ export default function AdminBookingsDashboard() {
                         <CardDescription>Gerencie reservas e disponibilidade das estruturas.</CardDescription>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                        <Button disabled={isDateInPast} variant={selectionMode ? "destructive" : "outline"} onClick={() => { setSelectionMode(!selectionMode); setSelectedSlots(new Map());}} className="w-full md:w-auto">
-                            {selectionMode ? <XSquare className="h-4 w-4 mr-2"/> : <CheckSquare className="h-4 w-4 mr-2" />}
+                        <Button disabled={isDateInPast} variant={selectionMode ? "destructive" : "outline"} onClick={() => { setSelectionMode(!selectionMode); setSelectedSlots(new Map()); }} className="w-full md:w-auto">
+                            {selectionMode ? <XSquare className="h-4 w-4 mr-2" /> : <CheckSquare className="h-4 w-4 mr-2" />}
                             {selectionMode ? "Cancelar" : "Ações em Massa"}
                         </Button>
                         <Popover>
@@ -310,7 +317,7 @@ export default function AdminBookingsDashboard() {
             {isDateInPast && <Card className="bg-amber-50 border-amber-200 dark:bg-amber-900/30"><CardContent className="p-3 text-amber-700 dark:text-amber-300 text-sm font-semibold flex items-center gap-2"><AlertTriangle className="h-4 w-4" />Modo de visualização. Não é possível alterar datas passadas.</CardContent></Card>}
 
             {!isDateInPast && pendingBookings.length > 0 && (
-                 <Card className="border-yellow-400 bg-yellow-50">
+                <Card className="border-yellow-400 bg-yellow-50">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-yellow-800"><Bell className="animate-ping" /> {pendingBookings.length} Nova(s) Solicitação(ões)</CardTitle>
                     </CardHeader>
@@ -319,7 +326,7 @@ export default function AdminBookingsDashboard() {
                             {pendingBookings.map(booking => (
                                 <div key={booking.id} className="flex items-center justify-between p-2 bg-white rounded-md">
                                     <div className="text-sm">
-                                        <span className="font-bold">{booking.guestName}</span> ({booking.cabinId}) solicitou <span className="font-bold">{booking.structureName}</span> às <span className="font-bold">{booking.startTime}</span>.
+                                        <span className="font-bold">{booking.guestName}</span> ({booking.cabinName}) solicitou <span className="font-bold">{booking.structureName}</span> às <span className="font-bold">{booking.startTime}</span>.
                                     </div>
                                     <div className="flex gap-2">
                                         <Button size="icon" className="h-8 w-8 bg-green-500 hover:bg-green-600" onClick={() => handlePendingAction(booking.id, 'approve')}><Check size={16} /></Button>
@@ -333,21 +340,21 @@ export default function AdminBookingsDashboard() {
             )}
 
             {loading && structures.length === 0 ? (
-                 <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>
+                <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                     {structures.map(structure => (
-                         <Card key={structure.id}>
-                             <CardHeader>
+                        <Card key={structure.id}>
+                            <CardHeader>
                                 <CardTitle className="flex items-center gap-3">
                                     <Image src={structure.photoURL} alt={structure.name} width={48} height={30} className="rounded-md object-cover aspect-video" />
                                     {structure.name}
                                 </CardTitle>
-                             </CardHeader>
-                             <CardContent className="space-y-3">
+                            </CardHeader>
+                            <CardContent className="space-y-3">
                                 {
                                     (structure.managementType === 'by_structure' ? [null] : structure.units).map((unit) => (
-                                         <div key={unit ?? 'no-unit'}>
+                                        <div key={unit ?? 'no-unit'}>
                                             {structure.managementType === 'by_unit' && <h4 className="text-sm font-semibold text-muted-foreground mb-1.5">{unit}</h4>}
                                             <div className="space-y-1">
                                                 {(structure.timeSlots || []).map(timeSlot => {
@@ -366,8 +373,8 @@ export default function AdminBookingsDashboard() {
                                         </div>
                                     ))
                                 }
-                             </CardContent>
-                         </Card>
+                            </CardContent>
+                        </Card>
                     ))}
                 </div>
             )}
@@ -386,7 +393,7 @@ export default function AdminBookingsDashboard() {
                         <DialogHeader>
                             <DialogTitle>Gerenciar Horário</DialogTitle>
                             <DialogDescription>
-                                {modalState.slotInfo.structure.name} ({modalState.slotInfo.unit}) - {modalState.slotInfo.startTime}
+                                {modalState.slotInfo.structure.name} ({modalState.slotInfo.unit ?? 'n/a'}) - {modalState.slotInfo.startTime}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="py-4 space-y-4">
@@ -398,9 +405,9 @@ export default function AdminBookingsDashboard() {
                                         <Button variant="destructive" onClick={() => handleModalAction('decline')}><X className="h-4 w-4 mr-2" />Recusar</Button>
                                     </>}
                                     {modalState.slotInfo.status === 'reservado' && <Button variant="outline" onClick={() => handleModalAction('cancel')}><Trash2 className="h-4 w-4 mr-2" />Cancelar Reserva</Button>}
-                                    {modalState.slotInfo.status === 'bloqueado' && <Button variant="outline" onClick={() => handleModalAction('cancel')}><Unlock className="h-4 w-4 mr-2" />Desbloquear</Button>}
-                                    {modalState.slotInfo.status === 'fechado' && <Button onClick={() => handleModalAction('open')}><Sparkles className="h-4 w-4 mr-2" />Abrir para Hóspedes</Button>}
-                                    {modalState.slotInfo.status === 'disponivel' && <Button variant="secondary" onClick={() => handleModalAction('block')}><Lock className="h-4 w-4 mr-2" />Bloquear Horário</Button>}
+                                    {modalState.slotInfo.status === 'bloqueado' && <Button variant="outline" onClick={() => handleModalAction('release')}><Unlock className="h-4 w-4 mr-2" />Desbloquear</Button>}
+                                    {(modalState.slotInfo.status === 'fechado' || modalState.slotInfo.status === 'disponivel') && <Button variant="secondary" onClick={() => handleModalAction('block')}><Lock className="h-4 w-4 mr-2" />Bloquear Horário</Button>}
+                                    {(modalState.slotInfo.status === 'fechado' || modalState.slotInfo.status === 'bloqueado') && <Button onClick={() => handleModalAction('release')}><Sparkles className="h-4 w-4 mr-2" />Abrir para Hóspedes</Button>}
                                 </div>
                             </div>
                             <div className="border-t my-4"></div>
@@ -409,20 +416,20 @@ export default function AdminBookingsDashboard() {
                                 <p className="text-xs text-muted-foreground">Selecione um hóspede ativo para criar uma nova reserva neste horário.</p>
                                 {activeGuests.length > 0 ? (
                                     <Select value={selectedStayId} onValueChange={setSelectedStayId}>
-                                       <SelectTrigger><SelectValue placeholder="Selecione um hóspede..." /></SelectTrigger>
-                                       <SelectContent>
-                                           {activeGuests.sort((a,b) => a.guestName.localeCompare(b.guestName)).map(g => <SelectItem key={g.id} value={g.id}>{g.guestName} ({g.cabinName})</SelectItem>)}
-                                       </SelectContent>
-                                   </Select>
+                                        <SelectTrigger><SelectValue placeholder="Selecione um hóspede..." /></SelectTrigger>
+                                        <SelectContent>
+                                            {activeGuests.sort((a, b) => a.guestName.localeCompare(b.guestName)).map(g => <SelectItem key={g.id} value={g.id}>{g.guestName} ({g.cabinName})</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
                                 ) : (
                                     <div className="p-3 rounded-md bg-amber-50 text-amber-800 text-sm flex items-center gap-2">
                                         <AlertTriangle className="h-4 w-4" />
                                         <p>Nenhum hóspede com status "active" na coleção "stays".</p>
                                     </div>
                                 )}
-                               <Button onClick={() => handleModalAction('create')} disabled={!selectedStayId} className="w-full">
-                                   <PlusCircle className="h-4 w-4 mr-2" /> Salvar Reserva para Hóspede
-                               </Button>
+                                <Button onClick={() => handleModalAction('create')} disabled={!selectedStayId} className="w-full">
+                                    <PlusCircle className="h-4 w-4 mr-2" /> Salvar Reserva para Hóspede
+                                </Button>
                             </div>
                         </div>
                     </DialogContent>

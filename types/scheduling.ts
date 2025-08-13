@@ -28,13 +28,12 @@ export interface Structure {
   managementType: 'by_structure' | 'by_unit';
   units: string[];
   defaultStatus: 'open' | 'closed';
-  approvalMode: 'automatic' | 'manual'; 
+  approvalMode: 'automatic' | 'manual';
 
-  
 
   // O campo 'timeSettings' foi substituído por 'timeSlots' para se alinhar
   // com a nova interface de configuração manual e gerada.
-  timeSlots: TimeSlot[]; 
+  timeSlots: TimeSlot[];
 }
 
 // ## FIM DA CORREÇÃO ##
@@ -46,9 +45,9 @@ export type BookingStatus = 'pendente' | 'confirmado' | 'cancelado' | 'em_andame
 export interface Booking {
   id: string;
   structureId: string;
-  structureName: string; 
-  unitId?: string;
-  
+  structureName: string;
+  unitId?: string | null; // Corrigido para aceitar null
+
   stayId: string;        // ID do documento da coleção 'stays'. É a âncora da reserva.
 
   guestId: string;      // ID do usuário (denormalizado para referência)
@@ -58,5 +57,5 @@ export interface Booking {
   startTime: string;     // Formato "HH:mm"
   endTime: string;       // Formato "HH:mm"
   status: BookingStatus;
-  createdAt: Timestamp;  
+  createdAt: Timestamp;
 }

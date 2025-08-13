@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from 'firebase/firestore';
-import { useGuest } from '@/context/GuestProvider';
+import { getAuth } from 'firebase/auth';
 import { Structure, Booking, TimeSlot } from '@/types/scheduling';
-import { format, parse, isBefore } from 'date-fns';
+import { format, parse, isBefore, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useGuest } from '@/context/GuestProvider';
 
 // Componente para um botão de horário customizado
 const TimeSlotButton = ({ status, timeSlot, onClick, ...props }: { status: string, timeSlot: TimeSlot, onClick?: () => void }) => {
@@ -40,10 +41,10 @@ const TimeSlotButton = ({ status, timeSlot, onClick, ...props }: { status: strin
     }
 
     return (
-        <Button 
-            variant={variant} 
-            disabled={disabled} 
-            onClick={onClick} 
+        <Button
+            variant={variant}
+            disabled={disabled}
+            onClick={onClick}
             className={cn("w-full h-auto text-sm py-2 px-1 transition-all", className)}
             {...props}
         >
@@ -60,7 +61,7 @@ export default function GuestSchedulingPage() {
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [loadingData, setLoadingData] = useState(true);
     const [dialogState, setDialogState] = useState<{ type: 'confirmBooking' | 'cancelBooking' | null; data: any; }>({ type: null, data: {} });
-    
+
     const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
     const todayFormatted = useMemo(() => format(new Date(), "eeee, dd 'de' MMMM", { locale: ptBR }), []);
 
@@ -104,13 +105,13 @@ export default function GuestSchedulingPage() {
                 console.error("Erro ao carregar agendamentos existentes:", error);
                 toast.error("Não foi possível verificar a disponibilidade em tempo real.");
             });
-            
+
             return () => {
                 unsubStructures();
                 unsubBookings();
             };
         };
-        
+
         initializeData();
     }, [stay, isGuestLoading, today]);
 
@@ -127,7 +128,7 @@ export default function GuestSchedulingPage() {
             return { status: 'passou' };
         }
 
-        const bookingForSlot = bookings.find(b => 
+        const bookingForSlot = bookings.find(b =>
             b.structureId === structure.id &&
             b.startTime === timeSlot.startTime &&
             (structure.managementType === 'by_structure' || b.unitId === unit)
@@ -147,72 +148,97 @@ export default function GuestSchedulingPage() {
                     return { status: 'indisponivel' };
             }
         }
-        
+
         if (structure.defaultStatus === 'open') {
             return { status: 'disponivel' };
         }
-        
+
         return { status: 'indisponivel' };
     }, [bookings, stay, today]);
 
+    // Lógica para enviar o agendamento para a API
     const handleBooking = async () => {
         const { structure, timeSlot, unit } = dialogState.data;
-        if (!db || !stay || !structure || !timeSlot) {
+        if (!stay || !structure || !timeSlot) {
             toast.error("Dados insuficientes para realizar o agendamento.");
             return;
         }
-        
-        // CORREÇÃO: Verificação mais robusta para agendamentos existentes
+
+        const auth = getAuth();
+        if (!auth.currentUser) {
+            toast.error("Usuário não autenticado.");
+            return;
+        }
+
         const existingBookingForStructure = userBookings.find(b => b.structureId === structure.id);
-        
+        const action = 'create';
+        const bookingData = {
+            structureId: structure.id,
+            structureName: structure.name,
+            unitId: unit || null,
+            date: today,
+            startTime: timeSlot.startTime,
+            endTime: timeSlot.endTime,
+            status: structure.approvalMode === 'automatic' ? 'confirmado' : 'pendente',
+        };
+
         const toastId = toast.loading(existingBookingForStructure ? "Alterando seu agendamento..." : "Processando agendamento...");
 
         try {
-            if (existingBookingForStructure) {
-                // Deleta o agendamento anterior para a mesma estrutura
-                await firestore.deleteDoc(firestore.doc(db, 'bookings', existingBookingForStructure.id));
-            }
-            
-            const status = structure.approvalMode === 'automatic' ? 'confirmado' : 'pendente';
-            const newBookingData: Omit<Booking, 'id' | 'createdAt'> = {
-                structureId: structure.id,
-                structureName: structure.name,
-                unitId: unit || undefined,
-                stayId: stay.id,
-                guestId: stay.id,
-                guestName: stay.guestName || stay.guestName,
-                cabinId: stay.cabinId,
-                date: today,
-                startTime: timeSlot.startTime,
-                endTime: timeSlot.endTime,
-                status: status,
-            };
-
-            await firestore.addDoc(firestore.collection(db, 'bookings'), { 
-                ...newBookingData, 
-                createdAt: firestore.serverTimestamp() 
+            const res = await fetch('/api/portal/bookings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${await auth.currentUser.getIdToken()}`
+                },
+                body: JSON.stringify({ action, bookingData })
             });
-            
-            const successMessage = status === 'confirmado'
+
+            const result = await res.json();
+            if (!res.ok) {
+                throw new Error(result.error);
+            }
+
+            const successMessage = bookingData.status === 'confirmado'
                 ? "Reserva confirmada com sucesso!"
                 : "Solicitação enviada! Aguarde a confirmação no seu painel.";
             toast.success(successMessage, { id: toastId });
 
         } catch (error: any) {
             console.error("Erro ao agendar:", error);
-            toast.error("Ocorreu um erro inesperado", { id: toastId, description: "Por favor, tente novamente." });
+            toast.error("Ocorreu um erro inesperado", { id: toastId, description: error.message });
         } finally {
             setDialogState({ type: null, data: {} });
         }
     };
-    
+
+    // Lógica para cancelar o agendamento via API
     const handleCancelBooking = async () => {
         const { bookingId } = dialogState.data;
-        if (!db || !bookingId) return;
+        if (!bookingId) return;
+
+        const auth = getAuth();
+        if (!auth.currentUser) {
+            toast.error("Usuário não autenticado.");
+            return;
+        }
 
         const toastId = toast.loading("Cancelando sua reserva...");
         try {
-            await firestore.deleteDoc(firestore.doc(db, 'bookings', bookingId));
+            const res = await fetch('/api/portal/bookings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${await auth.currentUser.getIdToken()}`
+                },
+                body: JSON.stringify({ action: 'cancel', bookingIdToCancel: bookingId })
+            });
+
+            const result = await res.json();
+            if (!res.ok) {
+                throw new Error(result.error);
+            }
+
             toast.success("Reserva cancelada com sucesso.", { id: toastId });
         } catch (error: any) {
             console.error("Erro ao cancelar:", error);
@@ -221,7 +247,8 @@ export default function GuestSchedulingPage() {
             setDialogState({ type: null, data: {} });
         }
     };
-    
+
+
     if (isGuestLoading || loadingData) {
         return (
             <div className="flex flex-col justify-center items-center h-screen bg-brand-light-green">
@@ -235,10 +262,10 @@ export default function GuestSchedulingPage() {
         <div className="min-h-screen bg-brand-light-green text-brand-dark-green flex flex-col items-center p-4 md:p-8">
             <div className="w-full max-w-5xl">
                 <div className="flex items-center gap-4 mb-6">
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={() => router.back()} 
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => router.back()}
                         className="text-brand-dark-green hover:bg-brand-mid-green/20"
                     >
                         <ArrowLeft className="h-6 w-6" />
@@ -261,7 +288,7 @@ export default function GuestSchedulingPage() {
                                {userBookings.map(b => (
                                    <li key={b.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm p-3 rounded-md bg-white/70 border border-brand-mid-green/20 shadow-sm">
                                        <div>
-                                           <span className="font-semibold">{b.structureName}</span> 
+                                           <span className="font-semibold">{b.structureName}</span>
                                            {b.unitId && <span className="text-brand-mid-green"> ({b.unitId})</span>}
                                            <span className="text-brand-mid-green ml-2 font-mono">{b.startTime} - {b.endTime}</span>
                                        </div>
@@ -269,10 +296,10 @@ export default function GuestSchedulingPage() {
                                            <Badge variant={b.status === 'confirmado' ? 'default' : 'secondary'} className={cn(b.status === 'confirmado' ? 'bg-brand-primary text-white' : 'bg-brand-mid-green/50 text-brand-dark-green')}>
                                                {b.status}
                                            </Badge>
-                                           <Button 
-                                               size="sm" 
-                                               variant="ghost" 
-                                               className="h-7 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50" 
+                                           <Button
+                                               size="sm"
+                                               variant="ghost"
+                                               className="h-7 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50"
                                                onClick={() => setDialogState({ type: 'cancelBooking', data: { bookingId: b.id } })}
                                            >
                                                <XCircle className="h-4 w-4 mr-1"/> Cancelar
@@ -305,11 +332,11 @@ export default function GuestSchedulingPage() {
                                             {(structure.timeSlots || []).map(timeSlot => {
                                                 const { status } = getStatusForSlot(structure, timeSlot);
                                                 return (
-                                                    <TimeSlotButton 
-                                                        key={timeSlot.id} 
-                                                        status={status} 
-                                                        timeSlot={timeSlot} 
-                                                        onClick={() => setDialogState({ type: 'confirmBooking', data: { structure, timeSlot } })}
+                                                    <TimeSlotButton
+                                                        key={timeSlot.id}
+                                                        status={status}
+                                                        timeSlot={timeSlot}
+                                                        onClick={() => setDialogState({ type: 'confirmBooking', data: { structure, timeSlot, hasExistingBooking: hasBookingForThisStructure } })}
                                                     />
                                                 );
                                             })}
@@ -323,11 +350,11 @@ export default function GuestSchedulingPage() {
                                                         {(structure.timeSlots || []).map(timeSlot => {
                                                             const { status } = getStatusForSlot(structure, timeSlot, unit);
                                                             return (
-                                                                <TimeSlotButton 
-                                                                    key={`${unit}-${timeSlot.id}`} 
-                                                                    status={status} 
-                                                                    timeSlot={timeSlot} 
-                                                                    onClick={() => setDialogState({ type: 'confirmBooking', data: { structure, timeSlot, unit } })}
+                                                                <TimeSlotButton
+                                                                    key={`${unit}-${timeSlot.id}`}
+                                                                    status={status}
+                                                                    timeSlot={timeSlot}
+                                                                    onClick={() => setDialogState({ type: 'confirmBooking', data: { structure, timeSlot, unit, hasExistingBooking: hasBookingForThisStructure } })}
                                                                 />
                                                             );
                                                         })}
@@ -342,13 +369,13 @@ export default function GuestSchedulingPage() {
                     })}
                 </div>
             </div>
-            
+
             <Dialog open={dialogState.type === 'confirmBooking'} onOpenChange={(open) => !open && setDialogState({ type: null, data: {} })}>
                 <DialogContent className="bg-white/90 backdrop-blur-sm">
                     <DialogHeader>
                         <DialogTitle className="text-brand-dark-green">Confirmar Agendamento</DialogTitle>
                         <DialogDescription className="text-brand-mid-green">
-                            {userBookings.some(b => b.structureId === dialogState.data.structure?.id) 
+                            {dialogState.data.hasExistingBooking
                                 ? `Você já tem uma reserva para ${dialogState.data.structure?.name}. Deseja substituí-la por este novo horário das ${dialogState.data.timeSlot?.startTime}?`
                                 : `Deseja solicitar o agendamento de ${dialogState.data.structure?.name} ${dialogState.data.unit ? `(${dialogState.data.unit})` : ''} para as ${dialogState.data.timeSlot?.startTime}?`
                             }

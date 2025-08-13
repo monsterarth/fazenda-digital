@@ -17,16 +17,16 @@ import { format, startOfDay, isBefore, parse, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
-import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
+import { useAuth } from '@/context/AuthContext';
 
 // --- Tipos e Interfaces ---
 type SlotStatusType = 'disponivel' | 'reservado' | 'pendente' | 'bloqueado' | 'fechado' | 'passou';
 type SlotInfo = {
-  id: string; 
+  id: string;
   status: SlotStatusType;
   structure: Structure;
-  unit: string;
-  startTime: string; 
+  unit: string | null;
+  startTime: string;
   endTime: string;
   booking?: Booking;
 };
@@ -48,20 +48,24 @@ function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
     }, [slotInfo]);
 
     return (
-        <div className={cn("w-full flex items-center p-2 rounded-md transition-all cursor-pointer", visuals.bg, isSelected ? 'ring-2 ring-blue-500' : 'hover:opacity-80')} onClick={onClick}>
+        <Button
+            className={cn("w-full flex items-center p-2 rounded-md transition-all cursor-pointer h-auto justify-start", visuals.bg, isSelected ? 'ring-2 ring-blue-500' : 'hover:opacity-80')}
+            onClick={onClick}
+            disabled={slotInfo.status === 'passou'}
+        >
             {inSelectionMode && <Checkbox checked={isSelected} className="mr-3" />}
             <div className={cn("flex items-center font-semibold text-sm", visuals.text)}>
                 {visuals.icon}
                 <span className="ml-2">{slotInfo.startTime}</span>
             </div>
             <span className={cn("text-xs truncate ml-auto pl-2 text-right", visuals.text)}>{visuals.label}</span>
-        </div>
+        </Button>
     );
 }
 
 // --- Página Principal ---
 export default function AdminBookingsDashboard() {
-    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
+    const { isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [structures, setStructures] = useState<Structure[]>([]);
     const [bookings, setBookings] = useState<Booking[]>([]);
@@ -74,9 +78,8 @@ export default function AdminBookingsDashboard() {
     const [selectedSlots, setSelectedSlots] = useState<Map<string, SlotInfo>>(new Map());
     const isDateInPast = useMemo(() => isBefore(selectedDate, startOfDay(new Date())), [selectedDate]);
 
-    // ++ CORREÇÃO: useEffect de inicialização agora depende do status de admin
     useEffect(() => {
-        if (!isAdmin) return; // Espera a confirmação de admin
+        if (!isAdmin) return;
 
         const initializeApp = async () => {
             const firestoreDb = await getFirebaseDb();
@@ -104,11 +107,10 @@ export default function AdminBookingsDashboard() {
             return () => { unsubStructures(); unsubStays(); };
         };
         initializeApp();
-    }, [isAdmin]); // A dependência agora é o status de admin
+    }, [isAdmin]);
 
-    // ++ CORREÇÃO: useEffect de busca de bookings também depende do status de admin
     useEffect(() => {
-        if (!db || !isAdmin) return; // Espera a confirmação de admin e a conexão com o DB
+        if (!db || !isAdmin) return;
 
         setLoading(true);
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -122,25 +124,25 @@ export default function AdminBookingsDashboard() {
             setLoading(false);
         });
         return () => unsubBookings();
-    }, [db, selectedDate, isAdmin]); // A dependência agora é o status de admin
+    }, [db, selectedDate, isAdmin]);
 
     const pendingBookings = useMemo(() => {
         return bookings
             .filter(b => b.status === 'pendente')
             .sort((a, b) => (a.createdAt as firestore.Timestamp).toMillis() - (b.createdAt as firestore.Timestamp).toMillis());
     }, [bookings]);
-    
+
     const bookingsMap = useMemo(() => {
         const map = new Map<string, Booking>();
         bookings.forEach(b => {
-            const key = `${b.structureId}-${b.unitId}-${b.startTime}`;
+            const key = `${b.structureId}-${b.unitId || ''}-${b.startTime}`;
             map.set(key, b);
         });
         return map;
     }, [bookings]);
-    
-    const getSlotInfo = useCallback((structure: Structure, unit: string, timeSlot: TimeSlot): SlotInfo => {
-        const id = `${structure.id}-${unit}-${timeSlot.startTime}`;
+
+    const getSlotInfo = useCallback((structure: Structure, unit: string | null, timeSlot: TimeSlot): SlotInfo => {
+        const id = `${structure.id}-${unit || ''}-${timeSlot.startTime}`;
         const booking = bookingsMap.get(id);
         let status: SlotStatusType;
         const now = new Date();
@@ -172,7 +174,7 @@ export default function AdminBookingsDashboard() {
             setSelectedStayId('');
         }
     };
-    
+
     const handleModalAction = async (action: 'create' | 'block' | 'open' | 'cancel' | 'approve' | 'decline') => {
         if (!db || !modalState.slotInfo) return;
         const { structure, unit, startTime, endTime, booking } = modalState.slotInfo;
@@ -192,7 +194,7 @@ export default function AdminBookingsDashboard() {
             else if (action === 'cancel') {
                 if(existingDocRef) await firestore.deleteDoc(existingDocRef);
                 toast.success("Ação desfeita!", { id: toastId });
-            } 
+            }
             else if (action === 'open') {
                 const openBooking: Omit<Booking, 'id'|'createdAt'> = {
                     structureId: structure.id, structureName: structure.name, unitId: unit, guestId: 'admin', guestName: 'Disponível', cabinId: 'N/A', date: format(selectedDate, 'yyyy-MM-dd'), startTime, endTime, status: 'disponivel', stayId: 'admin'
@@ -241,7 +243,7 @@ export default function AdminBookingsDashboard() {
              toast.error(`Falha: ${error.message}`, { id: toastId });
         }
     }
-    
+
     const handleBulkAction = async (action: 'block' | 'release') => {
         if (!db || selectedSlots.size === 0) return;
         const toastId = toast.loading(`${action === 'block' ? 'Bloqueando' : 'Liberando'} ${selectedSlots.size} horários...`);
@@ -268,8 +270,7 @@ export default function AdminBookingsDashboard() {
             toast.error(`Falha na operação: ${error.message}`, { id: toastId });
         }
     };
-    
-    // ** CORREÇÃO: Ajuste no estado de loading para uma melhor experiência do usuário
+
     if (loading && structures.length === 0) {
         return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando agendamentos...</div>;
     }
@@ -277,7 +278,7 @@ export default function AdminBookingsDashboard() {
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6 pb-24">
             <Toaster richColors position="top-center" />
-            
+
             <Card>
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
@@ -342,25 +343,27 @@ export default function AdminBookingsDashboard() {
                                 </CardTitle>
                              </CardHeader>
                              <CardContent className="space-y-3">
-                                {structure.units.map(unit => (
-                                     <div key={unit}>
-                                        {structure.managementType === 'by_unit' && <h4 className="text-sm font-semibold text-muted-foreground mb-1.5">{unit}</h4>}
-                                        <div className="space-y-1">
-                                            {(structure.timeSlots || []).map(timeSlot => {
-                                                const slotInfo = getSlotInfo(structure, unit, timeSlot);
-                                                return (
-                                                    <TimeSlotDisplay 
-                                                        key={slotInfo.id} 
-                                                        slotInfo={slotInfo}
-                                                        onClick={() => handleSlotClick(slotInfo)}
-                                                        inSelectionMode={selectionMode}
-                                                        isSelected={selectedSlots.has(slotInfo.id)}
-                                                    />
-                                                );
-                                            })}
+                                {
+                                    (structure.managementType === 'by_structure' ? [null] : structure.units).map((unit) => (
+                                         <div key={unit}>
+                                            {structure.managementType === 'by_unit' && <h4 className="text-sm font-semibold text-muted-foreground mb-1.5">{unit}</h4>}
+                                            <div className="space-y-1">
+                                                {(structure.timeSlots || []).map(timeSlot => {
+                                                    const slotInfo = getSlotInfo(structure, unit, timeSlot);
+                                                    return (
+                                                        <TimeSlotDisplay
+                                                            key={slotInfo.id}
+                                                            slotInfo={slotInfo}
+                                                            onClick={() => handleSlotClick(slotInfo)}
+                                                            inSelectionMode={selectionMode}
+                                                            isSelected={selectedSlots.has(slotInfo.id)}
+                                                        />
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))
+                                }
                              </CardContent>
                          </Card>
                     ))}
@@ -374,7 +377,7 @@ export default function AdminBookingsDashboard() {
                     <Button size="sm" onClick={() => handleBulkAction('release')} disabled={selectedSlots.size === 0}><Unlock className="h-4 w-4 mr-2" />Liberar</Button>
                 </div>
             )}
-            
+
             {modalState.slotInfo && (
                 <Dialog open={modalState.open} onOpenChange={(open) => !open && setModalState({ open: false, slotInfo: null })}>
                     <DialogContent>

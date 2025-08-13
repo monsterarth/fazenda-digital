@@ -69,8 +69,6 @@ export const BreakfastFlow: React.FC = () => {
         isOrderingWindowActive(breakfastConfig?.orderingStartTime, breakfastConfig?.orderingEndTime),
     [breakfastConfig]);
 
-    // ++ INÍCIO DA CORREÇÃO ++
-    // A função agora recebe as 'generalNotes' do passo de revisão.
     const handleSendOrder = async (generalNotes: string) => {
         const auth = getAuth();
         const user = auth.currentUser;
@@ -84,16 +82,13 @@ export const BreakfastFlow: React.FC = () => {
         try {
             const idToken = await user.getIdToken();
 
-            // A estrutura de dados foi corrigida aqui:
-            // - Os 'selections' (individualItems, collectiveItems) são espalhados no nível principal.
-            // - 'numberOfGuests' e 'generalNotes' foram adicionados.
             const orderData = {
-                stayId: stay.id, // Adicionado para referência no back-end
+                stayId: stay.id,
                 guestName: stay.guestName,
                 cabinName: stay.cabinName,
                 numberOfGuests: stay.numberOfGuests,
                 deliveryDate: deliveryDateString,
-                ...selections, // Espalha { individualItems, collectiveItems }
+                ...selections,
                 generalNotes: generalNotes,
                 status: 'pending',
             };
@@ -118,14 +113,11 @@ export const BreakfastFlow: React.FC = () => {
             toast.success("Pedido enviado com sucesso!", { id: toastId });
             setStep(5);
             setEditMode(false);
-            // Não limpamos a ordem aqui, pois o estado será atualizado com o 'existingOrder'
-            // em uma próxima renderização, mostrando a tela de sucesso.
 
         } catch (error: any) {
             toast.error("Erro ao enviar o pedido", { id: toastId, description: error.message });
         }
     }
-    // ++ FIM DA CORREÇÃO ++
 
     if (propertyLoading || guestLoading || existingOrder === undefined) {
         return <Skeleton className="h-96 w-full" />;
@@ -141,20 +133,34 @@ export const BreakfastFlow: React.FC = () => {
         if (existingOrder) {
             if (isWindowActive) {
                 return (
-                    <StateCard icon={<ShieldCheck className="h-10 w-10 text-green-600" />} title="Pedido Recebido!" description={`Já registramos sua cesta para amanhã. Você pode editar seu pedido até as ${breakfastConfig.orderingEndTime}.`}>
-                        <Button size="lg" onClick={() => setEditMode(true)}><Edit className="mr-2 h-4 w-4" /> Alterar Pedido</Button>
+                    <StateCard
+                        icon={<ShieldCheck className="h-10 w-10 text-brand-primary" />}
+                        title="Pedido Recebido!"
+                        description={`Já registramos sua cesta para amanhã. Você pode editar seu pedido até as ${breakfastConfig.orderingEndTime}.`}
+                    >
+                        <Button size="lg" className="bg-brand-dark-green text-white hover:bg-brand-mid-green transition-colors" onClick={() => setEditMode(true)}>
+                            <Edit className="mr-2 h-4 w-4" /> Alterar Pedido
+                        </Button>
                     </StateCard>
                 );
             } else {
                 return (
-                     <StateCard icon={<Lock className="h-10 w-10 text-primary" />} title="Pedido Confirmado" description={`Seu pedido já foi recebido e está sendo preparado! O período para alterações encerrou às ${breakfastConfig.orderingEndTime}.`} />
+                     <StateCard
+                        icon={<Lock className="h-10 w-10 text-brand-mid-green" />}
+                        title="Pedido Confirmado"
+                        description={`Seu pedido já foi recebido e está sendo preparado! O período para alterações encerrou às ${breakfastConfig.orderingEndTime}.`}
+                    />
                 );
             }
         } else {
             if (!isWindowActive) {
                 const defaultMessage = (property?.messages?.breakfastBasketDefaultMessage || "Fique tranquilo, uma cesta padrão para {X} pessoa(s) será preparada para você.").replace('{X}', stay?.numberOfGuests.toString() || '1');
                 return (
-                    <StateCard icon={<TimerOff className="h-10 w-10 text-destructive" />} title="Pedidos Encerrados" description={<>{`O horário para escolher os itens da sua cesta encerrou às ${breakfastConfig.orderingEndTime}.`}<br/>{defaultMessage}</>} />
+                    <StateCard
+                        icon={<TimerOff className="h-10 w-10 text-destructive" />}
+                        title="Pedidos Encerrados"
+                        description={<>{`O horário para escolher os itens da sua cesta encerrou às ${breakfastConfig.orderingEndTime}.`}<br/>{defaultMessage}</>}
+                    />
                 );
             }
         }
@@ -166,7 +172,6 @@ export const BreakfastFlow: React.FC = () => {
                 {currentStep === 1 && <StepWelcome />}
                 {currentStep === 2 && <StepIndividualChoices categories={individualCategories} />}
                 {currentStep === 3 && <StepAccompaniments categories={collectiveCategories} />}
-                {/* A prop onConfirmOrder agora passa a função handleSendOrder corrigida */}
                 {currentStep === 4 && <StepReview onConfirmOrder={handleSendOrder} />}
                 {currentStep === 5 && <StepSuccess />}
             </div>

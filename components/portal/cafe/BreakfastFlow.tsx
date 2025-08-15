@@ -175,7 +175,11 @@ export const BreakfastFlow: React.FC = () => {
                 {currentStep === 4 && <StepReview onConfirmOrder={handleSendOrder} />}
                 {currentStep === 5 && <StepSuccess />}
             </div>
-            <div className="lg:col-span-1">
+            {/* ++ INÍCIO DA ALTERAÇÃO ++ */}
+            {/* A classe "hidden" oculta o componente em telas pequenas (mobile) */}
+            {/* A classe "lg:block" faz com que ele reapareça em telas grandes (desktop) */}
+            <div className="hidden lg:block lg:col-span-1">
+            {/* ++ FIM DA ALTERAÇÃO ++ */}
                 {currentStep > 1 && currentStep < 5 && (
                     <OrderSidebar individualCategories={individualCategories} collectiveCategories={collectiveCategories} />
                 )}

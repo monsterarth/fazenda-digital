@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { ActionCard } from '@/components/portal/ActionCard';
 import { SimpleBookingItem } from '@/components/portal/SimpleBookingItem';
 import { Cabin } from '@/types';
-import { getFirebaseDb, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -19,7 +19,9 @@ import Image from 'next/image';
 import { deleteCookie } from 'cookies-next';
 
 export default function GuestDashboardPage() {
-    const { stay, isLoading: isGuestLoading } = useGuest();
+    // ++ INÍCIO DA CORREÇÃO: bookings agora vem do nosso provider centralizado ++
+    const { stay, bookings, isLoading: isGuestLoading, logout } = useGuest();
+    // ++ FIM DA CORREÇÃO ++
     const { property, loading: isPropertyLoading } = useProperty();
     const router = useRouter();
 
@@ -47,18 +49,19 @@ export default function GuestDashboardPage() {
         fetchCabinData();
     }, [stay]);
 
+    // ++ INÍCIO DA CORREÇÃO: O useMemo agora depende dos 'bookings' do provider ++
     const upcomingBookings = useMemo(() => {
-        if (!stay?.bookings) return [];
         const todayStr = format(new Date(), 'yyyy-MM-dd');
-        const relevantStatuses = ['confirmado', 'solicitado', 'pendente', 'em_andamento'];
-        return stay.bookings
+        // Mantive os status relevantes para o dashboard
+        const relevantStatuses = ['confirmado', 'pendente'];
+        return bookings
             .filter(b => b.date === todayStr && relevantStatuses.includes(b.status))
-            .sort((a, b) => (a.startTime || a.timeSlotLabel || '00:00').localeCompare(b.startTime || b.timeSlotLabel || '00:00'));
-    }, [stay]);
+            .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
+    }, [bookings]);
+    // ++ FIM DA CORREÇÃO ++
 
     const handleLogout = () => {
-        deleteCookie('guest-token');
-        router.push('/portal');
+        logout(); // Usando a função de logout do provider
     };
 
     if (isGuestLoading || isPropertyLoading || loadingAncillaryData || !stay || !property) {

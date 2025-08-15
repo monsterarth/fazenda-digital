@@ -3,14 +3,19 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut, User } from 'firebase/auth';
 import { app, getFirebaseDb } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+// ++ IMPORTS ADICIONADOS PARA A SOLUÇÃO ++
+import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Stay, PreCheckIn, Property } from '@/types'; 
+// ++ TIPO BOOKING IMPORTADO ++
+import { Booking } from '@/types/scheduling'; 
 import { getCookie, deleteCookie } from 'cookies-next';
 import { usePathname, useRouter } from 'next/navigation';
 
 interface GuestContextType {
     user: User | null;
     stay: Stay | null;
+    // ++ ESTADO BOOKINGS ADICIONADO AO CONTEXTO ++
+    bookings: Booking[];
     preCheckIn: PreCheckIn | null;
     isAuthenticated: boolean;
     isLoading: boolean;
@@ -19,7 +24,7 @@ interface GuestContextType {
 
 const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
-// Função auxiliar para verificar se as políticas mais recentes foram aceitas
+// Função auxiliar para verificar as políticas (sem alterações)
 const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
     if (!stay.policiesAccepted || !property.policies) return false;
     
@@ -38,6 +43,8 @@ const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
 export const GuestProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [stay, setStay] = useState<Stay | null>(null);
+    // ++ NOVO ESTADO PARA AGENDAMENTOS ++
+    const [bookings, setBookings] = useState<Booking[]>([]);
     const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
@@ -49,13 +56,23 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         deleteCookie('guest-token');
         setUser(null);
         setStay(null);
+        // ++ LIMPAR BOOKINGS NO LOGOUT ++
+        setBookings([]);
         setPreCheckIn(null);
-    }, []);
+        // Adicionado para garantir que o redirecionamento aconteça após o logout
+        router.push('/portal');
+    }, [router]);
 
     useEffect(() => {
         const auth = getAuth(app);
         
+        // Função para cancelar a inscrição do listener de agendamentos
+        let unsubscribeBookings = () => {};
+        
         const handleUserSession = async (user: User | null) => {
+            // Cancela o listener anterior antes de iniciar um novo
+            unsubscribeBookings();
+
             if (user) {
                 try {
                     const idTokenResult = await user.getIdTokenResult(true);
@@ -70,7 +87,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
 
                     const db = await getFirebaseDb();
                     const stayRef = doc(db, 'stays', stayId);
-                    // ## CORREÇÃO CRÍTICA: Usando o ID da propriedade correto ##
+                    // ## CORREÇÃO CRÍTICA APLICADA: Usando 'main_property' como no seu código original ##
                     const propertyRef = doc(db, 'properties', 'main_property'); 
                     
                     const [staySnap, propertySnap] = await Promise.all([getDoc(stayRef), getDoc(propertyRef)]);
@@ -90,8 +107,19 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                             setPreCheckIn({ id: preCheckInSnap.id, ...preCheckInSnap.data() } as PreCheckIn);
                         }
                     }
+                    
+                    // ++ INÍCIO DA LÓGICA DE AGENDAMENTOS EM TEMPO REAL ++
+                    // Listener que observa a coleção 'bookings' em tempo real
+                    const bookingsQuery = query(collection(db, 'bookings'), where('stayId', '==', stayId));
+                    unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
+                        const fetchedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Booking);
+                        setBookings(fetchedBookings);
+                    }, (error) => {
+                        console.error("Erro ao escutar agendamentos:", error);
+                        setBookings([]); // Garante que o estado seja limpo em caso de erro
+                    });
+                    // ++ FIM DA LÓGICA DE AGENDAMENTOS EM TEMPO REAL ++
 
-                    // ## LÓGICA DE REDIRECIONAMENTO CENTRALIZADA ##
                     if (!hasAcceptedLatestPolicies(stayData, propertyData) && pathname !== '/portal/termos') {
                         router.push('/portal/termos');
                     }
@@ -105,19 +133,28 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
             } else {
                 const token = getCookie('guest-token');
                 if (token && typeof token === 'string') {
-                    signInWithCustomToken(auth, token).catch(() => deleteCookie('guest-token'));
+                    signInWithCustomToken(auth, token).catch(async () => {
+                         deleteCookie('guest-token')
+                         // Força a atualização da página se o token for inválido
+                         router.push('/portal');
+                    });
                 } else {
                     setIsLoading(false);
                 }
             }
         };
 
-        const unsubscribe = onAuthStateChanged(auth, handleUserSession);
-        return () => unsubscribe();
+        const unsubscribeAuth = onAuthStateChanged(auth, handleUserSession);
+        
+        // Função de limpeza que será chamada quando o componente for desmontado
+        return () => {
+            unsubscribeAuth();
+            unsubscribeBookings();
+        };
     }, [logout, pathname, router]);
 
     return (
-        <GuestContext.Provider value={{ user, stay, preCheckIn, isAuthenticated: !!user, isLoading, logout }}>
+        <GuestContext.Provider value={{ user, stay, bookings, preCheckIn, isAuthenticated: !!user, isLoading, logout }}>
             {children}
         </GuestContext.Provider>
     );

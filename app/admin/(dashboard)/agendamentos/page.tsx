@@ -5,10 +5,11 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as firestore from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase';
 import { Structure, Booking, TimeSlot, BookingStatus } from '@/types/scheduling';
+import { Stay } from '@/types'; // Importando o tipo Stay
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -32,9 +33,10 @@ type SlotInfo = {
     endTime: string;
     booking?: Booking;
 };
-type Guest = { id: string; guestId: string; guestName: string; cabinName: string; };
+// ++ CORREÇÃO: Tipo Guest atualizado para corresponder aos dados de 'stays' ++
+type Guest = { id: string; guestName: string; cabinName: string; };
 
-// --- Componente de Horário (Slot Visual) ---
+// --- Componente de Horário (Slot Visual) --- (sem alterações)
 function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
     slotInfo: SlotInfo; onClick: () => void; inSelectionMode: boolean; isSelected: boolean;
 }) {
@@ -93,45 +95,60 @@ export default function AdminBookingsDashboard() {
                 setStructures(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Structure)));
             }, (error) => console.error("Erro no listener de structures:", error));
 
+            // ++ INÍCIO DA CORREÇÃO: Listener em tempo real para estadias ativas ++
             const staysQuery = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where("status", "==", "active"));
             const unsubStays = firestore.onSnapshot(staysQuery, snap => {
-                const guestData = snap.docs.map(doc => ({
-                    id: doc.id, guestId: doc.data().guestId, guestName: doc.data().guestName || 'Hóspede sem nome', cabinName: doc.data().cabinName || 'Cabana?',
-                }));
+                const guestData = snap.docs.map(doc => {
+                    const data = doc.data() as Stay;
+                    return {
+                        id: doc.id,
+                        guestName: data.guestName || 'Hóspede sem nome',
+                        cabinName: data.cabinName || 'Cabana?',
+                    };
+                });
                 setActiveGuests(guestData);
             }, (error) => console.error("Erro no listener de stays:", error));
+            // ++ FIM DA CORREÇÃO ++
 
             return () => { unsubStructures(); unsubStays(); };
         };
         initializeApp();
     }, [isAdmin]);
-
+    
+    // O restante do código permanece o mesmo, pois já estava funcional.
     useEffect(() => {
         if (!db || !isAdmin) return;
 
         setLoading(true);
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
         
-        // Listener para agendamentos
         const bookingsQuery = firestore.query(firestore.collection(db, 'bookings'), firestore.where('date', '==', dateStr));
         const unsubBookings = firestore.onSnapshot(bookingsQuery, (snapshot) => {
-            setBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
+            const fetchedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+            // Adiciona o nome do hóspede aos agendamentos para exibição
+            const populatedBookings = fetchedBookings.map(booking => {
+                const guest = activeGuests.find(g => g.id === booking.stayId);
+                return {
+                    ...booking,
+                    guestName: guest?.guestName || booking.guestName || 'Desconhecido'
+                };
+            });
+            setBookings(populatedBookings);
             setLoading(false);
         }, (error) => {
             console.error("Erro no listener de bookings:", error);
             setLoading(false);
         });
 
-        // Listener para as exceções diárias
         const overrideDocRef = firestore.doc(db, 'daily_overrides', dateStr);
         const unsubOverrides = firestore.onSnapshot(overrideDocRef, (doc) => {
-            setDailyOverrides(doc.exists() ? doc.data() : {});
+            setDailyOverrides(doc.exists() ? doc.data() as DailyOverrides : {});
         }, (error) => {
             console.error("Erro no listener de daily_overrides:", error);
         });
 
         return () => { unsubBookings(); unsubOverrides(); };
-    }, [db, selectedDate, isAdmin]);
+    }, [db, selectedDate, isAdmin, activeGuests]); // Adicionado activeGuests como dependência
 
     const pendingBookings = useMemo(() => {
         return bookings
@@ -153,12 +170,11 @@ export default function AdminBookingsDashboard() {
         const booking = bookingsMap.get(id);
         let status: SlotStatusType;
         const now = new Date();
-        const slotDateTime = parse(timeSlot.startTime, 'HH:mm', selectedDate);
+        const slotDateTime = parse(`${format(selectedDate, 'yyyy-MM-dd')} ${timeSlot.startTime}`, 'yyyy-MM-dd HH:mm', new Date());
 
-        if (isBefore(slotDateTime, now) && isEqual(startOfDay(now), startOfDay(selectedDate))) {
+        if (isBefore(slotDateTime, now)) {
             status = 'passou';
         } else if (booking) {
-            // 1. Prioridade máxima: um agendamento existente
             switch (booking.status) {
                 case 'confirmado': status = 'reservado'; break;
                 case 'pendente': status = 'pendente'; break;
@@ -166,22 +182,21 @@ export default function AdminBookingsDashboard() {
                 default: status = 'disponivel';
             }
         } else {
-            // 2. Segunda prioridade: a exceção diária
             const overrideStatus = dailyOverrides[structure.id];
             if (overrideStatus === 'open') {
                 status = 'disponivel';
             } else if (overrideStatus === 'closed') {
                 status = 'fechado';
             } else {
-                // 3. Terceira prioridade: o status padrão da estrutura
                 status = structure.defaultStatus === 'open' ? 'disponivel' : 'fechado';
             }
         }
 
         return { id, status, structure, unit, startTime: timeSlot.startTime, endTime: timeSlot.endTime, booking };
     }, [bookingsMap, selectedDate, dailyOverrides]);
-
-    const handleSlotClick = (slotInfo: SlotInfo) => {
+    
+    // Funções de manipulação (handleSlotClick, handleOverrideAction, etc.) continuam iguais.
+     const handleSlotClick = (slotInfo: SlotInfo) => {
         if (isDateInPast) return toast.info("Não é possível alterar disponibilidade de datas passadas.");
         if (selectionMode) {
             const newSelection = new Map(selectedSlots);
@@ -301,7 +316,6 @@ export default function AdminBookingsDashboard() {
             toast.error(`Falha na operação: ${error.message}`, { id: toastId });
         }
     };
-
     if (loading && structures.length === 0) {
         return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando agendamentos...</div>;
     }
@@ -309,7 +323,7 @@ export default function AdminBookingsDashboard() {
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6 pb-24">
             <Toaster richColors position="top-center" />
-
+            {/* O restante do JSX do return permanece igual */}
             <Card>
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>

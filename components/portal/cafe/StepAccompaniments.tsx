@@ -93,7 +93,7 @@ export const StepAccompaniments: React.FC<StepAccompanimentsProps> = ({ categori
                                                             variant="outline" 
                                                             size="icon" 
                                                             className="h-8 w-8" 
-                                                            onClick={() => addCollectiveItem(item, category)} // addCollectiveItem já tem a lógica de limite
+                                                            onClick={() => addCollectiveItem(item, category)}
                                                             disabled={!canAddMore}
                                                         >
                                                             <Plus className="h-4 w-4" />
@@ -125,11 +125,13 @@ export const StepAccompaniments: React.FC<StepAccompanimentsProps> = ({ categori
                         <ArrowLeft className="w-4 h-4 mr-2" />
                         Voltar
                     </Button>
+                    {/* ++ BOTÃO ATUALIZADO ++ */}
                     <Button
                         size="lg"
                         onClick={() => setStep(4)}
+                        className="bg-brand-primary text-white hover:bg-brand-primary/90"
                     >
-                        Próximo: Revisar Pedido
+                        Próximo
                         <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                 </div>

@@ -15,7 +15,7 @@ interface StepIndividualChoicesProps {
   categories: BreakfastMenuCategory[];
 }
 
-// Sub-componente para seleção de sabores (sem alterações)
+// Sub-componente FlavorSelector (sem alterações)
 const FlavorSelector: React.FC<{
     personId: number,
     category: BreakfastMenuCategory,
@@ -51,7 +51,7 @@ const FlavorSelector: React.FC<{
 };
 
 
-// Componente para a seleção de um hóspede específico
+// Componente GuestChoice (sem alterações)
 const GuestChoice: React.FC<{
   personId: number;
   guestName: string;
@@ -128,34 +128,17 @@ const GuestChoice: React.FC<{
     );
 };
 
-
 export const StepIndividualChoices: React.FC<StepIndividualChoicesProps> = ({ categories }) => {
     const { stay, preCheckIn } = useGuest();
     const { setStep, isPersonComplete, individualItems } = useOrder();
     
     const numberOfGuests = stay?.numberOfGuests || 1;
 
-    // CORREÇÃO: Lógica para montar a lista de nomes refeita para ser mais robusta
     const guestNames = useMemo(() => {
         const names: string[] = [];
-        
-        // 1. Usa o nome do 'stay' como a primeira e mais confiável fonte para o hóspede principal.
-        if (stay?.guestName) {
-            names.push(stay.guestName);
-        }
-        
-        // 2. Adiciona os nomes dos acompanhantes vindos do 'preCheckIn'.
-        if (preCheckIn?.companions) {
-            names.push(...preCheckIn.companions.map(c => c.fullName));
-        }
-
-        // 3. Garante que a lista tenha o tamanho correto, usando fallbacks genéricos se necessário.
-        // Isso protege contra casos onde o preCheckIn ainda não carregou ou está incompleto.
-        while (names.length < numberOfGuests) {
-            names.push(`Hóspede ${names.length + 1}`);
-        }
-
-        // 4. Garante que a lista não exceda o número de hóspedes definido na estadia.
+        if (stay?.guestName) names.push(stay.guestName);
+        if (preCheckIn?.companions) names.push(...preCheckIn.companions.map(c => c.fullName));
+        while (names.length < numberOfGuests) names.push(`Hóspede ${names.length + 1}`);
         return names.slice(0, numberOfGuests);
     }, [preCheckIn, stay?.guestName, numberOfGuests]);
 
@@ -182,10 +165,12 @@ export const StepIndividualChoices: React.FC<StepIndividualChoicesProps> = ({ ca
                     })}
                 </Accordion>
                 <div className="mt-6 flex justify-end">
+                    {/* ++ BOTÃO ATUALIZADO ++ */}
                     <Button
                         size="lg"
                         onClick={() => setStep(3)}
                         disabled={!allGuestsComplete}
+                        className="bg-brand-primary text-white hover:bg-brand-primary/90 disabled:bg-brand-primary/50"
                     >
                         Próximo: Acompanhamentos
                         <ArrowRight className="w-4 h-4 ml-2" />

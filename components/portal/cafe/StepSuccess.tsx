@@ -3,7 +3,10 @@
 import React from 'react';
 import { useProperty } from '@/context/PropertyContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, Heart } from 'lucide-react';
+// ++ IMPORTS ADICIONADOS ++
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { CheckCircle, Heart, Home } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -11,7 +14,6 @@ export const StepSuccess: React.FC = () => {
     const { property } = useProperty();
     const deliveryDate = addDays(new Date(), 1);
 
-    // Mensagens personalizáveis com fallbacks
     const successTitle = property?.messages?.surveySuccessTitle || 'Pedido Confirmado!';
     const successSubtitle = property?.messages?.surveySuccessSubtitle || 'Sua cesta está sendo preparada com muito carinho.';
 
@@ -34,6 +36,16 @@ export const StepSuccess: React.FC = () => {
                     <Heart className="w-5 h-5 fill-current" />
                     <span>Desejamos um dia maravilhoso!</span>
                     <Heart className="w-5 h-5 fill-current" />
+                </div>
+                
+                {/* ++ BOTÃO ADICIONADO ++ */}
+                <div className="mt-8">
+                    <Link href="/portal/dashboard" passHref>
+                        <Button size="lg" className="w-full sm:w-auto shadow-md hover:shadow-lg transition-shadow">
+                            <Home className="w-5 h-5 mr-2" />
+                            Voltar para o Portal
+                        </Button>
+                    </Link>
                 </div>
             </CardContent>
         </Card>

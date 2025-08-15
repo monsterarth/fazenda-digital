@@ -3,17 +3,16 @@
 import React from 'react';
 import { useProperty } from '@/context/PropertyContext';
 import { useOrder } from '@/context/OrderContext';
-import { useGuest } from '@/context/GuestProvider'; // Importa o useGuest
+import { useGuest } from '@/context/GuestProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PartyPopper } from 'lucide-react';
 
 export const StepWelcome: React.FC = () => {
     const { property } = useProperty();
-    const { stay } = useGuest(); // Busca os dados do hóspede
+    const { stay } = useGuest();
     const { setStep } = useOrder();
 
-    // CORREÇÃO: Usa o nome do 'stay' como fonte principal e substitui a variável {guestName}
     const welcomeTitle = (property?.messages?.portalWelcomeTitle || 'Olá, {guestName}!')
         .replace('{guestName}', stay?.guestName || '');
 
@@ -29,10 +28,11 @@ export const StepWelcome: React.FC = () => {
                 </CardDescription>
             </CardHeader>
             <CardContent className="p-6 text-center">
+                {/* ++ BOTÃO ATUALIZADO ++ */}
                 <Button 
                     onClick={() => setStep(2)}
                     size="lg"
-                    className="w-full md:w-auto"
+                    className="w-full md:w-auto bg-brand-primary text-white hover:bg-brand-primary/90"
                 >
                     Começar a Montar a Cesta
                 </Button>

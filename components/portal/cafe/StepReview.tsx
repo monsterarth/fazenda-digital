@@ -9,12 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 
-// ++ INÍCIO DA CORREÇÃO ++
-// A assinatura da prop foi alterada para aceitar uma string (as notas)
 interface StepReviewProps {
   onConfirmOrder: (notes: string) => Promise<void>; 
 }
-// ++ FIM DA CORREÇÃO ++
 
 const OrderSummarySection: React.FC<{ title: string; children: React.ReactNode; hasItems: boolean; noItemsText: string }> = ({ title, children, hasItems, noItemsText }) => (
     <div className="border-t pt-4">
@@ -29,17 +26,11 @@ export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
     const [generalNotes, setGeneralNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // ++ INÍCIO DA CORREÇÃO ++
-    // A função de confirmação agora passa o estado 'generalNotes' para a prop.
     const handleConfirmOrder = async () => {
         setIsSubmitting(true);
         await onConfirmOrder(generalNotes);
-        // O estado de 'isSubmitting' será gerenciado pelo componente pai após o retorno da promise.
-        // Isso evita que o botão seja reativado prematuramente em caso de erro na API.
-        // No entanto, para uma melhor experiência em caso de erro, resetamos aqui também.
         setIsSubmitting(false);
     };
-    // ++ FIM DA CORREÇÃO ++
 
     return (
         <Card className="shadow-lg border-2 w-full">
@@ -99,17 +90,19 @@ export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
                         <ArrowLeft className="w-4 h-4 mr-2" />
                         Voltar
                     </Button>
+                    {/* ++ BOTÃO ATUALIZADO ++ */}
                     <Button
                         size="lg"
                         onClick={handleConfirmOrder}
                         disabled={isSubmitting}
+                        className="bg-brand-primary text-white hover:bg-brand-primary/90 disabled:bg-brand-primary/50"
                     >
                         {isSubmitting ? (
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         ) : (
                             <CheckCircle className="w-4 h-4 mr-2" />
                         )}
-                        Confirmar e Enviar Pedido
+                        Enviar Pedido
                     </Button>
                 </div>
             </CardContent>

@@ -1,14 +1,10 @@
-// app/layout.tsx
-
-import type { Metadata } from "next";
-import { Inter as FontSans } from "next/font/google";
-import "./globals.css";
-import { cn } from "@/lib/utils";
-import { AuthProvider } from "@/context/AuthContext";
-import { GuestProvider } from "@/context/GuestProvider";
-import { PropertyProvider } from "@/context/PropertyContext";
 import { Toaster } from "@/components/ui/sonner";
-import { PropertyThemeProvider } from "@/components/theme/PropertyThemeProvider"; // IMPORTADO
+import { cn } from "@/lib/utils";
+import "@/app/globals.css";
+import type { Metadata, Viewport } from "next";
+import { ThemeProvider } from "next-themes";
+import { Inter as FontSans } from "next/font/google";
+import { PropertyProvider } from "@/context/PropertyContext";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -16,8 +12,15 @@ const fontSans = FontSans({
 });
 
 export const metadata: Metadata = {
-  title: "Fazenda do Rosa",
-  description: "Portal do Hóspede",
+  title: "Synapse",
+  description: "A experiência digital para seus hóspedes",
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "white" },
+    { media: "(prefers-color-scheme: dark)", color: "black" },
+  ],
 };
 
 export default function RootLayout({
@@ -26,24 +29,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-br" suppressHydrationWarning>
+    <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={cn(
           "min-h-screen bg-background font-sans antialiased",
           fontSans.variable
         )}
       >
-        <AuthProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
           <PropertyProvider>
-            {/* O ThemeProvider agora envolve tudo que é do hóspede */}
-            <PropertyThemeProvider> 
-              <GuestProvider>
-                {children}
-                <Toaster />
-              </GuestProvider>
-            </PropertyThemeProvider>
+            {children}
+            {/* ESTE é o único <Toaster /> que deve existir no projeto */}
+            <Toaster richColors position="top-center" />
           </PropertyProvider>
-        </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -1,20 +1,19 @@
+// context/GuestProvider.tsx
+
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut, User } from 'firebase/auth';
 import { app, getFirebaseDb } from '@/lib/firebase';
-// ++ IMPORTS ADICIONADOS PARA A SOLUÇÃO ++
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
-import { Stay, PreCheckIn, Property } from '@/types'; 
-// ++ TIPO BOOKING IMPORTADO ++
-import { Booking } from '@/types/scheduling'; 
+import { Stay, PreCheckIn, Property } from '@/types';
+import { Booking } from '@/types/scheduling';
 import { getCookie, deleteCookie } from 'cookies-next';
 import { usePathname, useRouter } from 'next/navigation';
 
 interface GuestContextType {
     user: User | null;
     stay: Stay | null;
-    // ++ ESTADO BOOKINGS ADICIONADO AO CONTEXTO ++
     bookings: Booking[];
     preCheckIn: PreCheckIn | null;
     isAuthenticated: boolean;
@@ -24,7 +23,6 @@ interface GuestContextType {
 
 const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
-// Função auxiliar para verificar as políticas (sem alterações)
 const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
     if (!stay.policiesAccepted || !property.policies) return false;
     
@@ -43,12 +41,19 @@ const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
 export const GuestProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [stay, setStay] = useState<Stay | null>(null);
-    // ++ NOVO ESTADO PARA AGENDAMENTOS ++
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
     const pathname = usePathname();
+
+    // **INÍCIO DA CORREÇÃO 1: Ignorar rotas do Admin**
+    // Se o caminho atual pertence ao painel de administração, o provedor
+    // simplesmente renderiza os filhos sem executar nenhuma lógica de autenticação de hóspede.
+    if (pathname.startsWith('/admin')) {
+        return <>{children}</>;
+    }
+    // **FIM DA CORREÇÃO 1**
 
     const logout = useCallback(async () => {
         const auth = getAuth(app);
@@ -56,21 +61,17 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         deleteCookie('guest-token');
         setUser(null);
         setStay(null);
-        // ++ LIMPAR BOOKINGS NO LOGOUT ++
         setBookings([]);
         setPreCheckIn(null);
-        // Adicionado para garantir que o redirecionamento aconteça após o logout
-        router.push('/portal');
+        // AJUSTADO: Redireciona para a nova página de login na raiz.
+        router.push('/'); 
     }, [router]);
 
     useEffect(() => {
         const auth = getAuth(app);
-        
-        // Função para cancelar a inscrição do listener de agendamentos
         let unsubscribeBookings = () => {};
         
         const handleUserSession = async (user: User | null) => {
-            // Cancela o listener anterior antes de iniciar um novo
             unsubscribeBookings();
 
             if (user) {
@@ -87,8 +88,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
 
                     const db = await getFirebaseDb();
                     const stayRef = doc(db, 'stays', stayId);
-                    // ## CORREÇÃO CRÍTICA APLICADA: Usando 'main_property' como no seu código original ##
-                    const propertyRef = doc(db, 'properties', 'main_property'); 
+                    const propertyRef = doc(db, 'properties', 'main_property');
                     
                     const [staySnap, propertySnap] = await Promise.all([getDoc(stayRef), getDoc(propertyRef)]);
 
@@ -108,20 +108,18 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                         }
                     }
                     
-                    // ++ INÍCIO DA LÓGICA DE AGENDAMENTOS EM TEMPO REAL ++
-                    // Listener que observa a coleção 'bookings' em tempo real
                     const bookingsQuery = query(collection(db, 'bookings'), where('stayId', '==', stayId));
                     unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
                         const fetchedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Booking);
                         setBookings(fetchedBookings);
                     }, (error) => {
                         console.error("Erro ao escutar agendamentos:", error);
-                        setBookings([]); // Garante que o estado seja limpo em caso de erro
+                        setBookings([]);
                     });
-                    // ++ FIM DA LÓGICA DE AGENDAMENTOS EM TEMPO REAL ++
-
-                    if (!hasAcceptedLatestPolicies(stayData, propertyData) && pathname !== '/portal/termos') {
-                        router.push('/portal/termos');
+                    
+                    // AJUSTADO: Rotas atualizadas para a nova estrutura
+                    if (!hasAcceptedLatestPolicies(stayData, propertyData) && pathname !== '/termos') {
+                        router.push('/termos');
                     }
 
                 } catch (error) {
@@ -135,8 +133,8 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                 if (token && typeof token === 'string') {
                     signInWithCustomToken(auth, token).catch(async () => {
                          deleteCookie('guest-token')
-                         // Força a atualização da página se o token for inválido
-                         router.push('/portal');
+                         // AJUSTADO: Redireciona para a nova página de login na raiz.
+                         router.push('/'); 
                     });
                 } else {
                     setIsLoading(false);
@@ -146,7 +144,6 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
 
         const unsubscribeAuth = onAuthStateChanged(auth, handleUserSession);
         
-        // Função de limpeza que será chamada quando o componente for desmontado
         return () => {
             unsubscribeAuth();
             unsubscribeBookings();

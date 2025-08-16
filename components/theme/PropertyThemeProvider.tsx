@@ -1,3 +1,5 @@
+// components/theme/PropertyThemeProvider.tsx
+
 "use client";
 
 import { useProperty } from "@/context/PropertyContext";
@@ -5,10 +7,10 @@ import { useTheme } from "next-themes";
 import { useEffect } from "react";
 import { colord, extend } from "colord";
 import mixPlugin from "colord/plugins/mix";
+import { Loader2 } from "lucide-react"; // IMPORTADO
 
 extend([mixPlugin]);
 
-// Função para determinar se uma cor é "clara" ou "escura"
 const isColorLight = (hex: string) => colord(hex).isLight();
 
 export function PropertyThemeProvider({ children }: { children: React.ReactNode }) {
@@ -16,35 +18,44 @@ export function PropertyThemeProvider({ children }: { children: React.ReactNode 
   const { setTheme } = useTheme();
 
   useEffect(() => {
-    // Força o tema 'light' no portal para garantir consistência com o tema da propriedade
+    // Força o tema 'light' para consistência com o tema da propriedade.
+    // Isso é importante para que as cores base do tema (shadcn) não interfiram.
     setTheme('light');
   }, [setTheme]);
 
-  if (loading || !property?.colors) {
+  // **INÍCIO DA CORREÇÃO 2: Exibir um loader enquanto o tema carrega**
+  // Se os dados da propriedade ainda estão carregando, exibimos um loader em tela cheia.
+  // Isso impede que a página seja renderizada sem o tema correto, evitando a tela preta.
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+  // **FIM DA CORREÇÃO 2**
+
+  // Se não há dados de cores, renderiza o conteúdo com o tema padrão.
+  if (!property?.colors) {
     return <>{children}</>;
   }
 
-  // --- LÓGICA DE GERAÇÃO DE TEMA ---
-  // Pega as cores base que existem no seu Firestore
+  // --- LÓGICA DE GERAÇÃO DE TEMA (sem alterações) ---
   const baseColors = {
-    background: property.colors.background, // Ex: #F7FDF2 (bege claro)
-    primary: property.colors.primary,     // Ex: #97A25F (verde)
+    background: property.colors.background,
+    primary: property.colors.primary,
   };
 
-  // Determina as cores de texto e UI com base no fundo
   const isLight = isColorLight(baseColors.background);
   const derivedColors = {
     foreground: isLight ? colord(baseColors.primary).darken(0.35).toHex() : colord(baseColors.background).lighten(0.8).toHex(),
     card: isLight ? '#FFFFFF' : colord(baseColors.background).lighten(0.05).toHex(),
     border: isLight ? colord(baseColors.background).darken(0.08).toHex() : colord(baseColors.background).lighten(0.1).toHex(),
-    secondary: colord(baseColors.primary).saturate(0.1).lighten(0.3).toHex() // Cor secundária derivada da primária
+    secondary: colord(baseColors.primary).saturate(0.1).lighten(0.3).toHex()
   };
 
-  // Monta o objeto final de cores
   const themeColors = { ...baseColors, ...derivedColors };
 
-  // Gera as variáveis CSS sem usar oklch, o que simplifica e evita erros.
-  // O navegador aplicará o override sobre o :root do seu globals.css sem problemas.
   const cssVariables = `
     :root {
       --background: ${themeColors.background};

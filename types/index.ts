@@ -340,6 +340,7 @@ export interface OrderState {
 // ========================================================================
 
 export interface PropertyColors {
+    [key: string]: string; 
     primary: string;
     secondary: string;
     accent: string;

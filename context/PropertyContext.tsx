@@ -1,96 +1,81 @@
+// context/PropertyContext.tsx
+
 "use client";
 
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { getFirebaseDb, app } from '@/lib/firebase';
-import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
-import { Property, BreakfastMenuCategory, BreakfastMenuItem } from '@/types';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { getFirebaseDb } from '@/lib/firebase';
+// IMPORTAMOS OS TIPOS DIRETAMENTE, INCLUINDO O PropertyColors CORRIGIDO
+import { Property, PropertyColors } from '@/types';
 
 interface PropertyContextType {
-    property: Property | null;
-    breakfastMenu: BreakfastMenuCategory[];
-    loading: boolean;
+  property: Property | null;
+  loading: boolean;
+  themeColors: PropertyColors | null;
+  setThemeColors: React.Dispatch<React.SetStateAction<PropertyColors | null>>;
 }
 
 const PropertyContext = createContext<PropertyContextType | undefined>(undefined);
 
 export const PropertyProvider = ({ children }: { children: ReactNode }) => {
-    const [property, setProperty] = useState<Property | null>(null);
-    const [breakfastMenu, setBreakfastMenu] = useState<BreakfastMenuCategory[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [property, setProperty] = useState<Property | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [themeColors, setThemeColors] = useState<PropertyColors | null>(null);
 
-    useEffect(() => {
-        const auth = getAuth(app);
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            setCurrentUser(user);
+  useEffect(() => {
+    const fetchAndSubscribeProperty = async () => {
+      try {
+        const db = await getFirebaseDb();
+        const propertyRef = doc(db, 'properties', 'main_property');
+
+        const unsubscribe = onSnapshot(propertyRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const propertyData = { id: docSnap.id, ...docSnap.data() } as Property;
+            setProperty(propertyData);
+            if (propertyData.colors) {
+              // Agora os tipos são compatíveis e o erro some
+              setThemeColors(propertyData.colors);
+            }
+          } else {
+            console.error("Documento da propriedade 'main_property' não encontrado.");
+            setProperty(null);
+            setThemeColors(null);
+          }
+          setLoading(false);
+        }, (error) => {
+          console.error("Erro ao escutar as alterações da propriedade:", error);
+          setLoading(false);
         });
-        return () => unsubscribe();
-    }, []);
 
-    useEffect(() => {
-        const fetchAllData = async () => {
-            setLoading(true);
-            const db = await getFirebaseDb();
-            if (!db) { setLoading(false); return; }
+        return unsubscribe;
+      } catch (error) {
+        console.error("Erro ao configurar o listener da propriedade:", error);
+        setLoading(false);
+      }
+    };
 
-            // 1. Busca os dados públicos da propriedade (deve sempre funcionar).
-            try {
-                const propertyRef = doc(db, 'properties', 'default');
-                const propertyDoc = await getDoc(propertyRef);
-                if (propertyDoc.exists()) {
-                    setProperty(propertyDoc.data() as Property);
-                }
-            } catch (error) {
-                console.error("Failed to load public property data:", error);
-            }
+    const unsubscribePromise = fetchAndSubscribeProperty();
 
-            // 2. Busca dados privados somente se as condições forem atendidas.
-            if (currentUser) {
-                const idTokenResult = await currentUser.getIdTokenResult();
-                // Apenas tenta buscar o cardápio se o usuário for um hóspede.
-                if (idTokenResult.claims.isGuest === true) {
-                    try {
-                        const menuRef = doc(db, "breakfastMenus", "default_breakfast");
-                        const categoriesQuery = query(collection(menuRef, "categories"), orderBy("order", "asc"));
-                        const categoriesSnapshot = await getDocs(categoriesQuery);
-                        const categoriesData = await Promise.all(categoriesSnapshot.docs.map(async (categoryDoc) => {
-                            const itemsQuery = query(collection(categoryDoc.ref, "items"), orderBy("order", "asc"));
-                            const itemsSnapshot = await getDocs(itemsQuery);
-                            const items = itemsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as BreakfastMenuItem);
-                            return { id: categoryDoc.id, ...categoryDoc.data(), items } as BreakfastMenuCategory;
-                        }));
-                        setBreakfastMenu(categoriesData);
-                    } catch (error) {
-                        console.error("Failed to load breakfast menu for guest:", error);
-                        setBreakfastMenu([]);
-                    }
-                } else {
-                    // Garante que o menu esteja vazio para não-hóspedes (como admins).
-                    setBreakfastMenu([]);
-                }
-            } else {
-                // Garante que o menu esteja vazio para usuários deslogados.
-                setBreakfastMenu([]);
-            }
+    return () => {
+      unsubscribePromise.then(unsubscribe => {
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      });
+    };
+  }, []);
 
-            setLoading(false);
-        };
-        
-        fetchAllData();
-    }, [currentUser]);
-
-    return (
-        <PropertyContext.Provider value={{ property, loading, breakfastMenu }}>
-            {children}
-        </PropertyContext.Provider>
-    );
+  return (
+    <PropertyContext.Provider value={{ property, loading, themeColors, setThemeColors }}>
+      {children}
+    </PropertyContext.Provider>
+  );
 };
 
 export const useProperty = () => {
-    const context = useContext(PropertyContext);
-    if (context === undefined) {
-        throw new Error('useProperty must be used within a PropertyProvider');
-    }
-    return context;
+  const context = useContext(PropertyContext);
+  if (context === undefined) {
+    throw new Error('useProperty must be used within a PropertyProvider');
+  }
+  return context;
 };

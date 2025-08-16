@@ -25,15 +25,11 @@ const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
 const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
     if (!stay.policiesAccepted || !property.policies) return false;
-    
     const hasPets = (stay.pets?.length || 0) > 0;
     const { general, pet } = stay.policiesAccepted;
     const { general: generalPolicy, pet: petPolicy } = property.policies;
-
     const generalAccepted = general && generalPolicy?.lastUpdatedAt && general.toMillis() >= generalPolicy.lastUpdatedAt.toMillis();
-    
     if (!hasPets) return !!generalAccepted;
-    
     const petAccepted = pet && petPolicy?.lastUpdatedAt && pet.toMillis() >= petPolicy.lastUpdatedAt.toMillis();
     return !!generalAccepted && !!petAccepted;
 };
@@ -47,13 +43,9 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
     const router = useRouter();
     const pathname = usePathname();
 
-    // **INÍCIO DA CORREÇÃO 1: Ignorar rotas do Admin**
-    // Se o caminho atual pertence ao painel de administração, o provedor
-    // simplesmente renderiza os filhos sem executar nenhuma lógica de autenticação de hóspede.
     if (pathname.startsWith('/admin')) {
         return <>{children}</>;
     }
-    // **FIM DA CORREÇÃO 1**
 
     const logout = useCallback(async () => {
         const auth = getAuth(app);
@@ -63,8 +55,8 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         setStay(null);
         setBookings([]);
         setPreCheckIn(null);
-        // AJUSTADO: Redireciona para a nova página de login na raiz.
-        router.push('/'); 
+        // **CORREÇÃO DE ROTA**
+        router.push('/');
     }, [router]);
 
     useEffect(() => {
@@ -117,7 +109,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                         setBookings([]);
                     });
                     
-                    // AJUSTADO: Rotas atualizadas para a nova estrutura
+                    // **CORREÇÃO DE ROTA**
                     if (!hasAcceptedLatestPolicies(stayData, propertyData) && pathname !== '/termos') {
                         router.push('/termos');
                     }
@@ -133,8 +125,8 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                 if (token && typeof token === 'string') {
                     signInWithCustomToken(auth, token).catch(async () => {
                          deleteCookie('guest-token')
-                         // AJUSTADO: Redireciona para a nova página de login na raiz.
-                         router.push('/'); 
+                         // **CORREÇÃO DE ROTA**
+                         router.push('/');
                     });
                 } else {
                     setIsLoading(false);

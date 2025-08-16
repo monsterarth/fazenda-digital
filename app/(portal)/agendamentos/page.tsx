@@ -1,4 +1,4 @@
-// src/app/portal/agendamentos/page.tsx
+// src/app/(portal)/agendamentos/page.tsx
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';

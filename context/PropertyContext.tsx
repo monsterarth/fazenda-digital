@@ -5,14 +5,15 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase';
-// IMPORTAMOS OS TIPOS DIRETAMENTE, INCLUINDO O PropertyColors CORRIGIDO
-import { Property, PropertyColors } from '@/types';
+// IMPORTAMOS OS TIPOS DIRETAMENTE, INCLUINDO O PropertyColors E BreakfastMenuCategory
+import { Property, PropertyColors, BreakfastMenuCategory } from '@/types';
 
 interface PropertyContextType {
   property: Property | null;
   loading: boolean;
   themeColors: PropertyColors | null;
   setThemeColors: React.Dispatch<React.SetStateAction<PropertyColors | null>>;
+  breakfastMenu: BreakfastMenuCategory[]; // ADICIONADO
 }
 
 const PropertyContext = createContext<PropertyContextType | undefined>(undefined);
@@ -21,25 +22,33 @@ export const PropertyProvider = ({ children }: { children: ReactNode }) => {
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [themeColors, setThemeColors] = useState<PropertyColors | null>(null);
+  const [breakfastMenu, setBreakfastMenu] = useState<BreakfastMenuCategory[]>([]); // ADICIONADO
 
   useEffect(() => {
     const fetchAndSubscribeProperty = async () => {
       try {
         const db = await getFirebaseDb();
-        const propertyRef = doc(db, 'properties', 'main_property');
+        // CORREÇÃO: O ID do documento principal da propriedade foi ajustado.
+        const propertyRef = doc(db, 'properties', 'default'); 
 
         const unsubscribe = onSnapshot(propertyRef, (docSnap) => {
           if (docSnap.exists()) {
             const propertyData = { id: docSnap.id, ...docSnap.data() } as Property;
             setProperty(propertyData);
             if (propertyData.colors) {
-              // Agora os tipos são compatíveis e o erro some
               setThemeColors(propertyData.colors);
             }
+            // ADICIONADO: Extrai o menu do café para o contexto
+            if (propertyData.breakfast?.menu) {
+              setBreakfastMenu(propertyData.breakfast.menu);
+            } else {
+              setBreakfastMenu([]);
+            }
           } else {
-            console.error("Documento da propriedade 'main_property' não encontrado.");
+            console.error("Documento da propriedade 'default' não encontrado.");
             setProperty(null);
             setThemeColors(null);
+            setBreakfastMenu([]); // ADICIONADO: Reseta o menu se a propriedade não for encontrada
           }
           setLoading(false);
         }, (error) => {
@@ -66,7 +75,8 @@ export const PropertyProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <PropertyContext.Provider value={{ property, loading, themeColors, setThemeColors }}>
+    // ADICIONADO: breakfastMenu agora faz parte do valor do contexto
+    <PropertyContext.Provider value={{ property, loading, themeColors, setThemeColors, breakfastMenu }}>
       {children}
     </PropertyContext.Provider>
   );

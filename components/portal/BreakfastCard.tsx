@@ -86,7 +86,7 @@ export function BreakfastCard() {
             cardState = {
                 icon: <CheckCircle className="h-10 w-10" />, title: "Pedido Recebido!",
                 description: `Sua cesta para amanhã está registrada. Você pode editá-la até as ${breakfastConfig.orderingEndTime}.`,
-                action: <Button asChild variant="secondary" className="w-full"><Link href="/portal/cafe"><Edit className="mr-2 h-4 w-4"/> Editar Cesta</Link></Button>,
+                action: <Button asChild variant="secondary" className="w-full"><Link href="/cafe"><Edit className="mr-2 h-4 w-4"/> Editar Cesta</Link></Button>,
                 colorClass: "text-green-600"
             };
         } else {
@@ -101,7 +101,7 @@ export function BreakfastCard() {
             cardState = {
                 icon: <AlertTriangle className="h-10 w-10" />, title: "Não esqueça sua cesta!",
                 description: `Você tem até as ${breakfastConfig.orderingEndTime} para montar sua cesta para amanhã.`,
-                action: <Button asChild className="w-full"><Link href="/portal/cafe">Montar minha cesta <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>,
+                action: <Button asChild className="w-full"><Link href="/cafe">Montar minha cesta <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>,
                 colorClass: "text-amber-700"
             };
         } else {

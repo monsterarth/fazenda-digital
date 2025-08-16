@@ -141,28 +141,28 @@ export default function GuestDashboardPage() {
                     <h2 className="text-2xl font-bold text-brand-dark-green">O que deseja fazer?</h2>
                     <div className="grid grid-cols-1 gap-4"> 
                         <ActionCard
-                            href="/portal/agendamentos"
+                            href="/agendamentos"
                             icon={<Sparkles size={24} className="text-brand-primary" />}
                             title="Agendamentos"
                             description="Agende seu horário."
                         />
                         <ActionCard
-                            href="/portal/cafe"
+                            href="/cafe"
                             icon={<Coffee size={24} className="text-brand-primary" />}
                             title="Café da Manhã"
                             description="Monte sua cesta."
                         />
                         <ActionCard
-                            href="/portal/pesquisas"
+                            href="/pesquisas"
                             icon={<Star size={24} className="text-brand-primary" />}
                             title="Avaliações"
-                            description="Nos conte como foi."
+                            description="Avalie sua experiência."
                         />
                         <ActionCard
-                            href="/portal/termos"
+                            href="/termos"
                             icon={<BookOpenCheck size={24} className="text-brand-primary" />}
                             title="Políticas"
-                            description="Consulte as regras."
+                            description="Consulte nossas regras."
                         />
                         <ActionCard
                             href={`https://wa.me/${property.contact?.whatsapp || '5531991096590'}`}
@@ -171,7 +171,7 @@ export default function GuestDashboardPage() {
                             description="Fale conosco."
                         />
                         <ActionCard
-                            href="/portal/cultura"
+                            href="/cultura"
                             icon={<HeartHandshake size={24} className="text-brand-primary" />}
                             title="Nossa Cultura"
                             description="Valores da Fazenda."

@@ -1,4 +1,4 @@
-// src/app/api/portal/bookings/route.ts
+// src/app/api/bookings/route.ts
 
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';

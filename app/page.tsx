@@ -61,7 +61,7 @@ export default function GuestLoginPage() {
             toast.success("Acesso liberado! Redirecionando...", { id: toastId });
             
             // 3. Redireciona para o painel do hóspede.
-            router.push('/portal/dashboard'); 
+            router.push('/dashboard'); 
 
         } catch (error: any) {
             // Este bloco agora captura erros de rede ou os erros que lançamos acima.

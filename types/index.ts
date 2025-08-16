@@ -340,6 +340,7 @@ export interface OrderState {
 // ========================================================================
 
 export interface PropertyColors {
+    [key: string]: string; 
     primary: string;
     secondary: string;
     accent: string;
@@ -350,6 +351,7 @@ export interface PropertyColors {
 }
 
 export interface PropertyMessages {
+    [key: string]: string;
     preCheckInWelcomeTitle: string;
     preCheckInWelcomeSubtitle: string;
     preCheckInSuccessTitle: string;

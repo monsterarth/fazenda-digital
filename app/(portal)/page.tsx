@@ -53,7 +53,7 @@ export default function GuestLoginPage() {
 
       toast.success("Acesso liberado! Redirecionando...", { id: toastId });
       
-      window.location.href = '/portal/dashboard';
+      window.location.href = '/dashboard';
 
     } catch (error: any) {
       console.error("Login error:", error);

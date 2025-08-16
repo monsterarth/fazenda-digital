@@ -40,7 +40,7 @@ export const StepSuccess: React.FC = () => {
                 
                 {/* ++ BOTÃO ADICIONADO ++ */}
                 <div className="mt-8">
-                    <Link href="/portal/dashboard" passHref>
+                    <Link href="/dashboard" passHref>
                         <Button size="lg" className="w-full sm:w-auto shadow-md hover:shadow-lg transition-shadow">
                             <Home className="w-5 h-5 mr-2" />
                             Voltar para o Portal

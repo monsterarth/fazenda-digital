@@ -1,10 +1,14 @@
-import { Toaster } from "@/components/ui/sonner";
-import { cn } from "@/lib/utils";
-import "@/app/globals.css";
-import type { Metadata, Viewport } from "next";
-import { ThemeProvider } from "next-themes";
+// app/layout.tsx
+
+import type { Metadata } from "next";
 import { Inter as FontSans } from "next/font/google";
+import "./globals.css";
+import { cn } from "@/lib/utils";
+import { AuthProvider } from "@/context/AuthContext";
+import { GuestProvider } from "@/context/GuestProvider";
 import { PropertyProvider } from "@/context/PropertyContext";
+import { Toaster } from "@/components/ui/sonner";
+import { PropertyThemeProvider } from "@/components/theme/PropertyThemeProvider"; // IMPORTADO
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -12,15 +16,8 @@ const fontSans = FontSans({
 });
 
 export const metadata: Metadata = {
-  title: "Synapse",
-  description: "A experiência digital para seus hóspedes",
-};
-
-export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "white" },
-    { media: "(prefers-color-scheme: dark)", color: "black" },
-  ],
+  title: "Fazenda do Rosa",
+  description: "Portal do Hóspede",
 };
 
 export default function RootLayout({
@@ -29,25 +26,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
+    <html lang="pt-br" suppressHydrationWarning>
       <body
         className={cn(
           "min-h-screen bg-background font-sans antialiased",
           fontSans.variable
         )}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <AuthProvider>
           <PropertyProvider>
-            {children}
-            {/* ESTE é o único <Toaster /> que deve existir no projeto */}
-            <Toaster richColors position="top-center" />
+            {/* O ThemeProvider agora envolve tudo que é do hóspede */}
+            <PropertyThemeProvider> 
+              <GuestProvider>
+                {children}
+                <Toaster />
+              </GuestProvider>
+            </PropertyThemeProvider>
           </PropertyProvider>
-        </ThemeProvider>
+        </AuthProvider>
       </body>
     </html>
   );

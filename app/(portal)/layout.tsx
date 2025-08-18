@@ -1,3 +1,5 @@
+// app/(portal)/layout.tsx
+
 "use client";
 
 import { GuestProvider, useGuest } from "@/context/GuestProvider";

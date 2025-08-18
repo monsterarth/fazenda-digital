@@ -26,12 +26,22 @@ export default function GuestLoginPage() {
   const { property, loading: propertyLoading } = useProperty();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
+  const { property, loading: propertyLoading } = useProperty();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { token: "" },
   });
+  const form = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { token: "" },
+  });
 
+  const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
+    setIsSubmitting(true);
+    const toastId = toast.loading("Verificando acesso...");
   const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
     setIsSubmitting(true);
     const toastId = toast.loading("Verificando acesso...");
@@ -42,9 +52,19 @@ export default function GuestLoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: data.token }),
       });
+    try {
+      const response = await fetch('/api/auth/guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: data.token }),
+      });
 
       const result = await response.json();
+      const result = await response.json();
 
+      if (!response.ok) {
+        throw new Error(result.error || 'Falha na autenticação. Verifique o código.');
+      }
       if (!response.ok) {
         throw new Error(result.error || 'Falha na autenticação. Verifique o código.');
       }
@@ -67,6 +87,13 @@ export default function GuestLoginPage() {
     }
   };
 
+  if (propertyLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-brand-light-green">
+        <Loader2 className="h-10 w-10 text-brand-dark-green animate-spin" />
+      </div>
+    );
+  }
   if (propertyLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-brand-light-green">

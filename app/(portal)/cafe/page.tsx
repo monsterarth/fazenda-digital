@@ -3,7 +3,7 @@
 import React, { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { OrderProvider, useOrder } from '@/context/OrderContext';
-import { BreakfastFlow } from '@/components/portal/cafe/BreakfastFlow';
+import { BreakfastFlow } from '@/components/guest/cafe/BreakfastFlow';
 import { Toaster } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';

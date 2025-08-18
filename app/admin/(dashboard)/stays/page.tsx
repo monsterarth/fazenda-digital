@@ -1,5 +1,3 @@
-// admin/(dashboard)/stays/page.tsx
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -14,11 +12,9 @@ import { CreateStayDialog } from '@/components/admin/stays/create-stay-dialog';
 import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
 import { StaysList } from '@/components/admin/stays/stays-list';
 import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog';
-// ++ INÍCIO DA CORREÇÃO: Importa o hook de autenticação ++
 import { useAuth } from '@/context/AuthContext';
 
 export default function ManageStaysPage() {
-    // ++ INÍCIO DA CORREÇÃO: Usa o hook para verificar o status de admin ++
     const { isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [pendingCheckIns, setPendingCheckIns] = useState<PreCheckIn[]>([]);
@@ -30,12 +26,9 @@ export default function ManageStaysPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
 
-    // ++ INÍCIO DA CORREÇÃO: O useEffect agora espera pela confirmação de admin ++
     useEffect(() => {
-        // Se a verificação de admin ainda não terminou, ou se o usuário não é um admin,
-        // não faz absolutamente nada. Isso previne a busca prematura de dados.
         if (!isAdmin) {
-            setLoading(false); // Garante que o loader pare se o usuário não for admin
+            setLoading(false);
             return;
         }
 
@@ -50,7 +43,6 @@ export default function ManageStaysPage() {
                 return;
             }
 
-            // Agora, estas chamadas só são feitas quando temos certeza de que o usuário é um admin.
             const qCheckIns = firestore.query(firestore.collection(firestoreDb, 'preCheckIns'), firestore.where('status', '==', 'pendente'));
             const unsubscribeCheckIns = firestore.onSnapshot(qCheckIns, (snapshot) => {
                 const checkInsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PreCheckIn));
@@ -61,7 +53,7 @@ export default function ManageStaysPage() {
             const unsubscribeStays = firestore.onSnapshot(qStays, (snapshot) => {
                 const staysData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay));
                 setActiveStays(staysData);
-                setLoading(false); // Para o loader apenas depois que os dados essenciais chegam
+                setLoading(false);
             }, console.error);
 
             const qCabins = firestore.query(firestore.collection(firestoreDb, 'cabins'), firestore.orderBy('posicao', 'asc'));
@@ -78,7 +70,7 @@ export default function ManageStaysPage() {
         };
 
         initializeApp();
-    }, [isAdmin]); // ++ A dependência do useEffect agora é o status de admin ++
+    }, [isAdmin]);
 
     const handleOpenEditModal = (stay: Stay) => {
         setSelectedStay(stay);
@@ -111,7 +103,7 @@ export default function ManageStaysPage() {
             {loading ? (
                 <div className="flex items-center justify-center h-64"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
             ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+                <div className="flex flex-col gap-8">
                     <Card className="shadow-md">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><FileCheck2 className="text-yellow-600"/> Pré-Check-ins Pendentes</CardTitle>

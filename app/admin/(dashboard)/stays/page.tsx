@@ -103,9 +103,7 @@ export default function ManageStaysPage() {
             {loading ? (
                 <div className="flex items-center justify-center h-64"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
             ) : (
-                // ++ INÍCIO DA ALTERAÇÃO ++
                 <div className="flex flex-col gap-8">
-                // ++ FIM DA ALTERAÇÃO ++
                     <Card className="shadow-md">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><FileCheck2 className="text-yellow-600"/> Pré-Check-ins Pendentes</CardTitle>

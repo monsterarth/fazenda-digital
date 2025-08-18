@@ -27,14 +27,14 @@ export default function GuestLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
 
-  const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { token: "" },
-  });
+    const form = useForm<LoginFormValues>({
+        resolver: zodResolver(loginSchema),
+        defaultValues: { token: "" },
+    });
 
-  const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
-    setIsSubmitting(true);
-    const toastId = toast.loading("Verificando acesso...");
+    const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
+        setIsSubmitting(true);
+        const toastId = toast.loading("Verificando acesso...");
 
     try {
       const response = await fetch('/api/auth/guest', {
@@ -43,7 +43,8 @@ export default function GuestLoginPage() {
         body: JSON.stringify({ token: data.token }),
       });
 
-      const result = await response.json();
+            // É crucial ler o corpo da resposta como JSON.
+            const result = await response.json();
 
       if (!response.ok) {
         throw new Error(result.error || 'Falha na autenticação. Verifique o código.');

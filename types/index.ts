@@ -1,3 +1,5 @@
+//types/index.ts
+
 import { Timestamp, DocumentReference } from "firebase/firestore";
 import { ReactNode } from "react";
 

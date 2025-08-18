@@ -1,3 +1,5 @@
+// lib/schemas/stay-schema.ts
+
 import { z } from 'zod';
 import { isValidCPF } from '@/lib/validators';
 
@@ -39,8 +41,6 @@ export const fullStaySchema = z.object({
     knowsVehiclePlate: z.boolean(),
     vehiclePlate: z.string().optional(),
     
-    // CORREÇÃO: Removido .default([]) para uma inferência mais limpa.
-    // O `defaultValues` no `useForm` cuidará de fornecer o array vazio.
     companions: z.array(companionSchema),
     pets: z.array(petSchema),
 
@@ -50,6 +50,13 @@ export const fullStaySchema = z.object({
         from: z.date({ message: "Data de check-in é obrigatória." }),
         to: z.date({ message: "Data de check-out é obrigatória." }),
     }),
+    
+    // ++ INÍCIO DA ADIÇÃO ++
+    token: z.string()
+        .length(6, "O token de acesso deve ter 6 dígitos.")
+        .regex(/^\d{6}$/, "O token deve conter apenas números."),
+    // ++ FIM DA ADIÇÃO ++
+
 }).superRefine((data, ctx) => {
     if (!data.isForeigner && !isValidCPF(data.leadGuestDocument)) {
         ctx.addIssue({
@@ -60,5 +67,4 @@ export const fullStaySchema = z.object({
     }
 });
 
-// Este tipo agora é a nossa fonte única da verdade.
 export type FullStayFormValues = z.infer<typeof fullStaySchema>;

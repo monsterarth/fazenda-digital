@@ -1,7 +1,6 @@
 "use client";
 
-// Adicionado useState para gerenciar o estado de carregamento
-import React, { useState } from 'react'; 
+import React, { useState } from 'react';
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
 import { FullStayFormValues } from '@/lib/schemas/stay-schema';
 import { Cabin } from '@/types';
@@ -14,10 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CalendarIcon, PlusCircle, Trash2, Loader2 } from 'lucide-react'; // Importado Loader2
+import { CalendarIcon, PlusCircle, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
+// ++ INÍCIO DA CORREÇÃO: Importa o componente ScrollArea ++
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface StayFormFieldsProps {
     form: UseFormReturn<FullStayFormValues>;
@@ -31,8 +32,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
     const isForeigner = form.watch('isForeigner');
     const { fields: companions, append: appendCompanion, remove: removeCompanion } = useFieldArray({ control: form.control, name: "companions" });
     const { fields: pets, append: appendPet, remove: removePet } = useFieldArray({ control: form.control, name: "pets" });
-
-    // ++ INÍCIO DA CORREÇÃO: LÓGICA DE BUSCA DE CEP ++
     const [isLoadingCep, setIsLoadingCep] = useState(false);
 
     const handleCepLookup = async (cep: string) => {
@@ -56,7 +55,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
             form.setValue('address.city', data.localidade, { shouldValidate: true });
             form.setValue('address.state', data.uf, { shouldValidate: true });
             
-            // Foca no campo de número para o próximo passo do usuário
             document.getElementById('address.number')?.focus();
             
         } catch (error) {
@@ -65,7 +63,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
             setIsLoadingCep(false);
         }
     };
-    // ++ FIM DA CORREÇÃO ++
 
     return (
         <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full space-y-4">
@@ -74,7 +71,30 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                 <AccordionTrigger className="text-lg font-semibold">1. Detalhes da Reserva</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField control={form.control} name="cabinId" render={({ field }) => (<FormItem><FormLabel>Cabana</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl><SelectContent>{cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                        <FormField 
+                            control={form.control} 
+                            name="cabinId" 
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Cabana</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecione..." />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        {/* ++ INÍCIO DA CORREÇÃO: Adiciona ScrollArea para a lista de cabanas ++ */}
+                                        <SelectContent>
+                                            <ScrollArea className="h-72">
+                                                {cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                            </ScrollArea>
+                                        </SelectContent>
+                                        {/* ++ FIM DA CORREÇÃO ++ */}
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )} 
+                        />
                         <FormField control={form.control} name="dates" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Período da Estadia</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("w-full justify-start text-left font-normal", !field.value?.from && "text-muted-foreground")}>{field.value?.from && field.value?.to ? (`${format(field.value.from, "dd/MM/yy")} até ${format(field.value.to, "dd/MM/yy")}`) : (<span>Selecione as datas</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="range" selected={field.value as DateRange} onSelect={field.onChange} numberOfMonths={2}/></PopoverContent></Popover><FormMessage /></FormItem>)} />
                     </div>
                 </AccordionContent>
@@ -106,7 +126,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                 <AccordionTrigger className="text-lg font-semibold">3. Endereço (para Nota Fiscal)</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">
                     <div className="grid grid-cols-3 gap-4 items-end">
-                         {/* ++ INÍCIO DA CORREÇÃO: ATIVANDO A BUSCA DE CEP ++ */}
                         <FormField name="address.cep" control={form.control} render={({ field }) => (
                             <FormItem className="col-span-3 md:col-span-1">
                                 <FormLabel>CEP</FormLabel>
@@ -119,13 +138,10 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                                 <FormMessage />
                             </FormItem>
                         )} />
-                        {/* ++ FIM DA CORREÇÃO ++ */}
                         <FormField name="address.street" control={form.control} render={({ field }) => (<FormItem className="col-span-3 md:col-span-2"><FormLabel>Logradouro</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                     <div className="grid grid-cols-3 gap-4">
-                        {/* ++ INÍCIO DA CORREÇÃO: ADICIONANDO ID PARA O FOCO ++ */}
                         <FormField name="address.number" control={form.control} render={({ field }) => (<FormItem><FormLabel>Número</FormLabel><FormControl><Input id="address.number" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        {/* ++ FIM DA CORREÇÃO ++ */}
                         <FormField name="address.complement" control={form.control} render={({ field }) => (<FormItem><FormLabel>Complemento</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                          <FormField name="address.neighborhood" control={form.control} render={({ field }) => (<FormItem><FormLabel>Bairro</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>

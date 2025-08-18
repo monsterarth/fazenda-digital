@@ -1,3 +1,5 @@
+// components/admin/stays/create-stay-dialog.tsx
+
 "use client";
 
 import React from 'react';

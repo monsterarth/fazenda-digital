@@ -1,3 +1,5 @@
+// components/admin/stays/edit-stay-dialog.tsx
+
 "use client";
 
 import React, { useEffect, useState } from 'react';

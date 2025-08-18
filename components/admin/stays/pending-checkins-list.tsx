@@ -1,3 +1,5 @@
+// components/admin/stays/pending-checkins-list.tsx
+
 "use client";
 
 import React, { useState } from 'react';
@@ -21,6 +23,7 @@ import { toast } from 'sonner';
 import { Loader2, CalendarIcon, Users, Edit, KeyRound, PawPrint, User, Home, Car } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
+import { ScrollArea } from '@radix-ui/react-scroll-area';
 
 const validationSchema = z.object({
     cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
@@ -151,7 +154,15 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                                 <Form {...form}>
                                     <form id="validation-form" onSubmit={form.handleSubmit(handleValidateStay)} className="space-y-4 p-4 border rounded-md bg-slate-50 sticky top-0">
                                         <h4 className="font-semibold">Aprovar e Criar Estadia</h4>
-                                        <FormField control={form.control} name="cabinId" render={({ field }) => (<FormItem><FormLabel>Cabana</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl><SelectContent>{cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                        <FormField control={form.control} name="cabinId" render={({ field }) => (<FormItem><FormLabel>Cabana</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." />
+                                        </SelectTrigger>
+                                        </FormControl>
+                                                        <SelectContent>
+                                                            <ScrollArea className="h-72">
+                                                                {cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                                            </ScrollArea>
+                                                        </SelectContent>
+                                                        </Select><FormMessage /></FormItem>)} />
                                         <FormField control={form.control} name="dates" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Período</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal bg-white", !field.value?.from && "text-muted-foreground")}>{field.value?.from && field.value?.to ? (`${format(field.value.from, "dd/MM/yy")} até ${format(field.value.to, "dd/MM/yy")}`) : (<span>Selecione</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="range" selected={field.value as DateRange} onSelect={field.onChange} defaultMonth={field.value?.from} numberOfMonths={2}/></PopoverContent></Popover><FormMessage /></FormItem>)} />
                                     </form>
                                 </Form>

@@ -1,4 +1,4 @@
-// src/app/portal/agendamentos/page.tsx
+// src/app/agendamentos/page.tsx
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -200,7 +200,7 @@ export default function GuestSchedulingPage() {
         const toastId = toast.loading(existingBookingForStructure ? "Alterando seu agendamento..." : "Processando agendamento...");
 
         try {
-            const res = await fetch('/api/portal/bookings', {
+            const res = await fetch('/api/bookings', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -239,7 +239,7 @@ export default function GuestSchedulingPage() {
 
         const toastId = toast.loading("Cancelando sua reserva...");
         try {
-            const res = await fetch('/api/portal/bookings', {
+            const res = await fetch('/api/bookings', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

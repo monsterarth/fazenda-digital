@@ -93,7 +93,7 @@ export const BreakfastFlow: React.FC = () => {
                 status: 'pending',
             };
 
-            const response = await fetch('/api/portal/cafe', {
+            const response = await fetch('/api/cafe', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

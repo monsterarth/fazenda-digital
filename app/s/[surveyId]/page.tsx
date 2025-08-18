@@ -140,7 +140,7 @@ export default function SurveyPage() {
                 answers: responseAnswers,
             };
 
-            const response = await fetch('/api/portal/surveys', {
+            const response = await fetch('/api/surveys', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -191,7 +191,7 @@ export default function TermsAndPoliciesPage() {
                     </div>
                     {alreadyAccepted ? (
                         <Button asChild className="w-full sm:w-auto bg-brand-dark-green text-white hover:bg-brand-mid-green transition-colors">
-                            <Link href="/portal/dashboard"><ArrowLeft className="mr-2 h-4 w-4" /> Voltar ao Início</Link>
+                            <Link href="/dashboard"><ArrowLeft className="mr-2 h-4 w-4" /> Voltar ao Início</Link>
                         </Button>
                     ) : (
                         <Button 

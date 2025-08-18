@@ -120,8 +120,8 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                     });
                     // ++ FIM DA LÓGICA DE AGENDAMENTOS EM TEMPO REAL ++
 
-                    if (!hasAcceptedLatestPolicies(stayData, propertyData) && pathname !== '/portal/termos') {
-                        router.push('/portal/termos');
+                    if (!hasAcceptedLatestPolicies(stayData, propertyData) && pathname !== '/termos') {
+                        router.push('/dashboard');
                     }
 
                 } catch (error) {

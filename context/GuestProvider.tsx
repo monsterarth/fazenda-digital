@@ -121,7 +121,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                     // ++ FIM DA LÓGICA DE AGENDAMENTOS EM TEMPO REAL ++
 
                     if (!hasAcceptedLatestPolicies(stayData, propertyData) && pathname !== '/termos') {
-                        router.push('/dashboard');
+                        router.push('/termos');
                     }
 
                 } catch (error) {

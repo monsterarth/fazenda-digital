@@ -1,11 +1,10 @@
-// src/app/admin/(dashboard)/agendamentos/page.tsx
 "use client"
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as firestore from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase';
-import { Structure, Booking, TimeSlot, BookingStatus } from '@/types/scheduling';
-import { Stay } from '@/types'; // Importando o tipo Stay
+import { Structure, Booking, TimeSlot } from '@/types/scheduling';
+import { Stay } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -15,11 +14,13 @@ import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast, Toaster } from 'sonner';
 import { Calendar as CalendarIcon, Loader2, Lock, Unlock, User, Trash2, XSquare, CheckSquare, AlertTriangle, PlusCircle, Sparkles, BedDouble, Check, X, Bell, RefreshCw } from 'lucide-react';
-import { format, startOfDay, isBefore, parse, isEqual } from 'date-fns';
+import { format, startOfDay, isBefore, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
+// ++ INÍCIO DA CORREÇÃO: Importa a função de log ++
+import { addActivityLogToBatch } from '@/lib/activity-logger';
 
 // --- Tipos e Interfaces ---
 type SlotStatusType = 'disponivel' | 'reservado' | 'pendente' | 'bloqueado' | 'fechado' | 'passou';
@@ -33,10 +34,9 @@ type SlotInfo = {
     endTime: string;
     booking?: Booking;
 };
-// ++ CORREÇÃO: Tipo Guest atualizado para corresponder aos dados de 'stays' ++
 type Guest = { id: string; guestName: string; cabinName: string; };
 
-// --- Componente de Horário (Slot Visual) --- (sem alterações)
+// --- Componente de Horário (Slot Visual) ---
 function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
     slotInfo: SlotInfo; onClick: () => void; inSelectionMode: boolean; isSelected: boolean;
 }) {
@@ -69,7 +69,8 @@ function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
 
 // --- Página Principal ---
 export default function AdminBookingsDashboard() {
-    const { isAdmin } = useAuth();
+    // ++ INÍCIO DA CORREÇÃO: Obtém o usuário logado para o log ++
+    const { user, isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [structures, setStructures] = useState<Structure[]>([]);
     const [bookings, setBookings] = useState<Booking[]>([]);
@@ -94,8 +95,7 @@ export default function AdminBookingsDashboard() {
             const unsubStructures = firestore.onSnapshot(firestore.collection(firestoreDb, 'structures'), snap => {
                 setStructures(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Structure)));
             }, (error) => console.error("Erro no listener de structures:", error));
-
-            // ++ INÍCIO DA CORREÇÃO: Listener em tempo real para estadias ativas ++
+            
             const staysQuery = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where("status", "==", "active"));
             const unsubStays = firestore.onSnapshot(staysQuery, snap => {
                 const guestData = snap.docs.map(doc => {
@@ -108,14 +108,12 @@ export default function AdminBookingsDashboard() {
                 });
                 setActiveGuests(guestData);
             }, (error) => console.error("Erro no listener de stays:", error));
-            // ++ FIM DA CORREÇÃO ++
-
+            
             return () => { unsubStructures(); unsubStays(); };
         };
         initializeApp();
     }, [isAdmin]);
     
-    // O restante do código permanece o mesmo, pois já estava funcional.
     useEffect(() => {
         if (!db || !isAdmin) return;
 
@@ -125,7 +123,6 @@ export default function AdminBookingsDashboard() {
         const bookingsQuery = firestore.query(firestore.collection(db, 'bookings'), firestore.where('date', '==', dateStr));
         const unsubBookings = firestore.onSnapshot(bookingsQuery, (snapshot) => {
             const fetchedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-            // Adiciona o nome do hóspede aos agendamentos para exibição
             const populatedBookings = fetchedBookings.map(booking => {
                 const guest = activeGuests.find(g => g.id === booking.stayId);
                 return {
@@ -148,7 +145,7 @@ export default function AdminBookingsDashboard() {
         });
 
         return () => { unsubBookings(); unsubOverrides(); };
-    }, [db, selectedDate, isAdmin, activeGuests]); // Adicionado activeGuests como dependência
+    }, [db, selectedDate, isAdmin, activeGuests]);
 
     const pendingBookings = useMemo(() => {
         return bookings
@@ -195,8 +192,7 @@ export default function AdminBookingsDashboard() {
         return { id, status, structure, unit, startTime: timeSlot.startTime, endTime: timeSlot.endTime, booking };
     }, [bookingsMap, selectedDate, dailyOverrides]);
     
-    // Funções de manipulação (handleSlotClick, handleOverrideAction, etc.) continuam iguais.
-     const handleSlotClick = (slotInfo: SlotInfo) => {
+    const handleSlotClick = (slotInfo: SlotInfo) => {
         if (isDateInPast) return toast.info("Não é possível alterar disponibilidade de datas passadas.");
         if (selectionMode) {
             const newSelection = new Map(selectedSlots);
@@ -229,42 +225,49 @@ export default function AdminBookingsDashboard() {
         const toastId = toast.loading("Processando...");
 
         try {
+            const batch = firestore.writeBatch(db);
             const existingDocRef = booking ? firestore.doc(db, 'bookings', booking.id) : null;
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const collectionRef = firestore.collection(db, 'bookings');
 
-            if (action === 'approve' && existingDocRef) {
-                await firestore.updateDoc(existingDocRef, { status: 'confirmado' });
+            if (action === 'approve' && existingDocRef && booking) {
+                batch.update(existingDocRef, { status: 'confirmado' });
+                addActivityLogToBatch(batch, { type: 'booking_confirmed', actor: { type: 'admin', identifier: user?.email || 'Admin' }, details: `Agendamento de ${structure.name} para ${booking.guestName} aprovado.`, link: '/admin/agendamentos' });
                 toast.success("Reserva aprovada!", { id: toastId });
             }
-            else if (action === 'decline' && existingDocRef) {
-                await firestore.deleteDoc(existingDocRef);
+            else if (action === 'decline' && existingDocRef && booking) {
+                batch.delete(existingDocRef);
+                addActivityLogToBatch(batch, { type: 'booking_declined', actor: { type: 'admin', identifier: user?.email || 'Admin' }, details: `Agendamento de ${structure.name} para ${booking.guestName} recusado.`, link: '/admin/agendamentos' });
                 toast.success("Solicitação recusada.", { id: toastId });
             }
-            else if ((action === 'cancel' || action === 'release')) {
-                if (existingDocRef) {
-                    await firestore.deleteDoc(existingDocRef);
-                }
-                toast.success("Horário liberado/cancelado!", { id: toastId });
+            else if (action === 'cancel' && existingDocRef && booking) {
+                batch.delete(existingDocRef);
+                addActivityLogToBatch(batch, { type: 'booking_cancelled_by_admin', actor: { type: 'admin', identifier: user?.email || 'Admin' }, details: `Agendamento de ${structure.name} para ${booking.guestName} cancelado.`, link: '/admin/agendamentos' });
+                toast.success("Reserva cancelada!", { id: toastId });
+            }
+            else if (action === 'release' && existingDocRef) {
+                batch.delete(existingDocRef);
+                toast.success("Horário liberado!", { id: toastId });
             }
             else if (action === 'block') {
-                const blockBooking: Omit<Booking, 'id' | 'createdAt'> = {
-                    structureId: structure.id, structureName: structure.name, unitId: unit, stayId: 'admin', date: dateStr, startTime, endTime, status: 'bloqueado', guestName: 'Admin', cabinName: 'N/A'
-                };
-                if (existingDocRef) await firestore.deleteDoc(existingDocRef);
-                await firestore.addDoc(collectionRef, { ...blockBooking, createdAt: firestore.serverTimestamp() });
+                const blockBooking: Omit<Booking, 'id' | 'createdAt'> = { structureId: structure.id, structureName: structure.name, unitId: unit, stayId: 'admin', date: dateStr, startTime, endTime, status: 'bloqueado', guestName: 'Admin', cabinName: 'N/A' };
+                if (existingDocRef) batch.delete(existingDocRef);
+                const newDocRef = firestore.doc(collectionRef);
+                batch.set(newDocRef, { ...blockBooking, createdAt: firestore.serverTimestamp() });
                 toast.success("Horário bloqueado!", { id: toastId });
             }
             else if (action === 'create') {
                 const guest = activeGuests.find(g => g.id === selectedStayId);
                 if (!guest) return toast.error("Hóspede inválido.");
-                const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
-                    structureId: structure.id, structureName: structure.name, unitId: unit, stayId: guest.id, date: dateStr, startTime, endTime, status: 'confirmado', guestName: guest.guestName, cabinName: guest.cabinName
-                };
-                if (existingDocRef) await firestore.deleteDoc(existingDocRef);
-                await firestore.addDoc(collectionRef, { ...newBooking, createdAt: firestore.serverTimestamp() });
+                const newBooking: Omit<Booking, 'id' | 'createdAt'> = { structureId: structure.id, structureName: structure.name, unitId: unit, stayId: guest.id, date: dateStr, startTime, endTime, status: 'confirmado', guestName: guest.guestName, cabinName: guest.cabinName };
+                if (existingDocRef) batch.delete(existingDocRef);
+                const newDocRef = firestore.doc(collectionRef);
+                batch.set(newDocRef, { ...newBooking, createdAt: firestore.serverTimestamp() });
+                addActivityLogToBatch(batch, { type: 'booking_created_by_admin', actor: { type: 'admin', identifier: user?.email || 'Admin' }, details: `Agendamento de ${structure.name} criado para ${guest.guestName}.`, link: '/admin/agendamentos' });
                 toast.success(`Reserva para ${guest.guestName} criada!`, { id: toastId });
             }
+            
+            await batch.commit();
             setModalState({ open: false, slotInfo: null });
         } catch (error: any) {
             toast.error(`Falha: ${error.message}`, { id: toastId });
@@ -275,14 +278,21 @@ export default function AdminBookingsDashboard() {
         if (!db) return;
         const toastId = toast.loading("Processando...");
         try {
+            const batch = firestore.writeBatch(db);
             const docRef = firestore.doc(db, 'bookings', bookingId);
+            const booking = bookings.find(b => b.id === bookingId);
+            if (!booking) throw new Error("Agendamento não encontrado para log.");
+
             if (action === 'approve') {
-                await firestore.updateDoc(docRef, { status: 'confirmado' });
+                batch.update(docRef, { status: 'confirmado' });
+                addActivityLogToBatch(batch, { type: 'booking_confirmed', actor: { type: 'admin', identifier: user?.email || 'Admin' }, details: `Agendamento de ${booking.structureName} para ${booking.guestName} aprovado.`, link: '/admin/agendamentos' });
                 toast.success("Reserva aprovada!", { id: toastId });
             } else {
-                await firestore.deleteDoc(docRef);
+                batch.delete(docRef);
+                addActivityLogToBatch(batch, { type: 'booking_declined', actor: { type: 'admin', identifier: user?.email || 'Admin' }, details: `Agendamento de ${booking.structureName} para ${booking.guestName} recusado.`, link: '/admin/agendamentos' });
                 toast.success("Solicitação recusada.", { id: toastId });
             }
+            await batch.commit();
         } catch (error: any) {
             toast.error(`Falha: ${error.message}`, { id: toastId });
         }
@@ -316,6 +326,7 @@ export default function AdminBookingsDashboard() {
             toast.error(`Falha na operação: ${error.message}`, { id: toastId });
         }
     };
+
     if (loading && structures.length === 0) {
         return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando agendamentos...</div>;
     }
@@ -323,7 +334,6 @@ export default function AdminBookingsDashboard() {
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6 pb-24">
             <Toaster richColors position="top-center" />
-            {/* O restante do JSX do return permanece igual */}
             <Card>
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
@@ -399,7 +409,7 @@ export default function AdminBookingsDashboard() {
                                         )
                                     )}
                                 </div>
-                             </CardHeader>
+                               </CardHeader>
                             <CardContent className="space-y-3">
                                 {
                                     (structure.managementType === 'by_structure' ? [null] : structure.units).map((unit) => (

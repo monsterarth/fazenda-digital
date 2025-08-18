@@ -20,6 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast, Toaster } from 'sonner';
 import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Home, Car, Phone, CheckCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+// ++ INÍCIO DA CORREÇÃO: Importa a nova função de log ++
+import { createActivityLog } from '@/lib/activity-logger';
 
 const preCheckInSchema = z.object({
     leadGuestName: z.string().min(3, "O nome completo é obrigatório."),
@@ -71,11 +73,7 @@ interface PreCheckinFormProps {
     property: Property;
 }
 
-// ## INÍCIO DA CORREÇÃO: Função de ID universalmente compatível ##
-// Esta função gera um ID simples e único para o contexto do formulário,
-// funcionando em todos os navegadores, incluindo celulares.
 const generateSimpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-// ## FIM DA CORREÇÃO ##
 
 export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
     const [currentStep, setCurrentStep] = useState(0);
@@ -166,6 +164,16 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                 createdAt: firestore.Timestamp.now(),
             };
             await firestore.addDoc(firestore.collection(db, 'preCheckIns'), preCheckInData);
+
+            // ++ INÍCIO DA CORREÇÃO: Cria o log de atividade ++
+            await createActivityLog({
+                type: 'checkin_submitted',
+                actor: { type: 'guest', identifier: data.leadGuestName },
+                details: `Novo pré-check-in de ${data.leadGuestName}.`,
+                link: '/admin/stays'
+            });
+            // ++ FIM DA CORREÇÃO ++
+
             toast.dismiss(toastId);
             setIsSubmitSuccessful(true);
         } catch (error) {
@@ -174,6 +182,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
         }
     };
     
+    // ... (resto do componente JSX sem alterações)
     if (isSubmitSuccessful) {
         return (
             <Card className="w-full max-w-2xl shadow-xl text-center">
@@ -258,46 +267,44 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                     <FormField name="knowsVehiclePlate" control={form.control} render={({ field }) => (<FormItem className="flex flex-row items-center space-x-2 space-y-0 pb-2"><FormControl><Checkbox checked={!field.value} onCheckedChange={(checked) => field.onChange(!checked)} /></FormControl><FormLabel className="font-normal text-sm">Não sei / Sem carro</FormLabel></FormItem>)} />
                                 </div>
                             </div>
-                           )}
+                             )}
                         {currentStep === 3 && (
-                             <div className="space-y-6 animate-in fade-in-0">
-                                 <div>
-                                    <h3 className="text-lg font-semibold border-b pb-2 mb-4">Acompanhantes</h3>
-                                    {companions.map((field, index) => (
-                                        <div key={field.id} className="grid grid-cols-12 gap-2 items-end mb-2">
-                                            <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (<FormItem className="col-span-6"><FormLabel className={cn(index !== 0 && "sr-only")}>Nome</FormLabel><FormControl><Input placeholder={`Acompanhante ${index + 1}`} {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                            <FormField control={form.control} name={`companions.${index}.age`} render={({ field }) => (<FormItem className="col-span-2"><FormLabel className={cn(index !== 0 && "sr-only")}>Idade</FormLabel><FormControl><Input type="number" placeholder="Idade" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                            <FormField control={form.control} name={`companions.${index}.cpf`} render={({ field }) => (<FormItem className="col-span-3"><FormLabel className={cn(index !== 0 && "sr-only")}>CPF</FormLabel><FormControl><Input placeholder="CPF (Opcional)" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                            <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                                        </div>
-                                    ))}
-                                    <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: '', cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
+                               <div className="space-y-6 animate-in fade-in-0">
+                                    <div>
+                                        <h3 className="text-lg font-semibold border-b pb-2 mb-4">Acompanhantes</h3>
+                                        {companions.map((field, index) => (
+                                            <div key={field.id} className="grid grid-cols-12 gap-2 items-end mb-2">
+                                                <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (<FormItem className="col-span-6"><FormLabel className={cn(index !== 0 && "sr-only")}>Nome</FormLabel><FormControl><Input placeholder={`Acompanhante ${index + 1}`} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                <FormField control={form.control} name={`companions.${index}.age`} render={({ field }) => (<FormItem className="col-span-2"><FormLabel className={cn(index !== 0 && "sr-only")}>Idade</FormLabel><FormControl><Input type="number" placeholder="Idade" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                <FormField control={form.control} name={`companions.${index}.cpf`} render={({ field }) => (<FormItem className="col-span-3"><FormLabel className={cn(index !== 0 && "sr-only")}>CPF</FormLabel><FormControl><Input placeholder="CPF (Opcional)" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                            </div>
+                                        ))}
+                                        <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: '', cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
+                                    </div>
+                                    <div>
+                                         <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2"><PawPrint />Pets</h3>
+                                         {pets.map((field, index) => (
+                                              <div key={field.id} className="p-4 border rounded-md mb-4 space-y-4 relative">
+                                                  <h4 className="font-medium">Pet {index + 1}</h4>
+                                                  <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => removePet(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                      <FormField name={`pets.${index}.name`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Nome do Pet</FormLabel><FormControl><Input placeholder="Nome" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                      <FormField name={`pets.${index}.species`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Espécie</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="cachorro">Cachorro</SelectItem><SelectItem value="gato">Gato</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                                                  </div>
+                                                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                      <FormField name={`pets.${index}.breed`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Raça</FormLabel><FormControl><Input placeholder="Ex: Vira-lata" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                      <FormField name={`pets.${index}.age`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Idade</FormLabel><FormControl><Input placeholder="Ex: 2 anos" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                      <FormField name={`pets.${index}.weight`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Peso (kg)</FormLabel><FormControl><Input type="number" placeholder="Ex: 10" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                  </div>
+                                              </div>
+                                         ))}
+                                         <Button type="button" variant="outline" size="sm" onClick={() => appendPet({ id: generateSimpleId(), name: '', species: 'cachorro', breed: '', weight: '', age: '', notes: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pet</Button>
+                                         {petPolicyViolations.count && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Limite de pets excedido</p><p>Nossa política permite apenas 1 pet por cabana. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
+                                         {petPolicyViolations.weight && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Peso acima do limite</p><p>Nosso limite é de 15kg por pet. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
+                                    </div>
                                  </div>
-                                 <div>
-                                      <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2"><PawPrint />Pets</h3>
-                                     {pets.map((field, index) => (
-                                         <div key={field.id} className="p-4 border rounded-md mb-4 space-y-4 relative">
-                                             <h4 className="font-medium">Pet {index + 1}</h4>
-                                             <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => removePet(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                 <FormField name={`pets.${index}.name`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Nome do Pet</FormLabel><FormControl><Input placeholder="Nome" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                 <FormField name={`pets.${index}.species`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Espécie</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="cachorro">Cachorro</SelectItem><SelectItem value="gato">Gato</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                                             </div>
-                                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                  <FormField name={`pets.${index}.breed`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Raça</FormLabel><FormControl><Input placeholder="Ex: Vira-lata" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                  <FormField name={`pets.${index}.age`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Idade</FormLabel><FormControl><Input placeholder="Ex: 2 anos" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                  <FormField name={`pets.${index}.weight`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Peso (kg)</FormLabel><FormControl><Input type="number" placeholder="Ex: 10" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                               </div>
-                                         </div>
-                                     ))}
-                                     {/* ## INÍCIO DA CORREÇÃO: Usando a nova função de ID compatível ## */}
-                                     <Button type="button" variant="outline" size="sm" onClick={() => appendPet({ id: generateSimpleId(), name: '', species: 'cachorro', breed: '', weight: '', age: '', notes: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pet</Button>
-                                     {/* ## FIM DA CORREÇÃO ## */}
-                                     {petPolicyViolations.count && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Limite de pets excedido</p><p>Nossa política permite apenas 1 pet por cabana. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
-                                     {petPolicyViolations.weight && (<div className="p-3 mt-4 text-sm text-red-800 bg-red-100 border-l-4 border-red-500 rounded-r-md"><p className="font-semibold">Atenção: Peso acima do limite</p><p>Nosso limite é de 15kg por pet. Por favor, <a href="#" className="font-bold underline">entre em contato</a>.</p></div>)}
-                                  </div>
-                               </div>
-                              )}
+                               )}
                         <div className="flex justify-between items-center pt-4">
                             {currentStep > 0 ? (<Button type="button" variant="ghost" onClick={handlePrevStep}><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button>) : <div />}
                             {currentStep < totalSteps - 1 ? (<Button type="button" onClick={handleNextStep}>Avançar <ArrowRight className="ml-2 h-4 w-4" /></Button>) : (<Button type="button" size="lg" disabled={form.formState.isSubmitting} onClick={form.handleSubmit(onSubmit)}>{form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4"/>} Enviar</Button>)}

@@ -1,10 +1,7 @@
-// src/app/api/bookings/route.ts
-
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import { firestore } from 'firebase-admin';
 import { Booking } from '@/types/scheduling';
-import { format } from 'date-fns';
 
 export async function POST(request: Request) {
     try {
@@ -34,11 +31,10 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error: "Estadia não encontrada." }, { status: 404 });
             }
 
-            // Realiza todas as operações dentro de uma transação para garantir atomicidade.
             return adminDb.runTransaction(async (transaction) => {
                 const normalizedUnitId = bookingData.unitId ?? null;
 
-                // 1. Verifica se o horário está realmente disponível.
+                // 1. Verifica disponibilidade
                 const slotQuery = adminDb.collection('bookings')
                     .where('date', '==', bookingData.date)
                     .where('structureId', '==', bookingData.structureId)
@@ -48,15 +44,12 @@ export async function POST(request: Request) {
 
                 if (!slotSnapshot.empty) {
                     const existingBooking = slotSnapshot.docs[0].data() as Booking;
-                    // Lançamos um erro se o slot já estiver ocupado por outra pessoa
-                    // ou por um bloqueio de admin (status 'bloqueado').
                     if (existingBooking.stayId !== stayId) {
                         throw new Error("Este horário já está reservado.");
                     }
                 }
                 
-                // 2. Procura e cancela qualquer agendamento existente do mesmo hóspede
-                // para a mesma estrutura na mesma data.
+                // 2. Cancela agendamentos existentes do mesmo hóspede para o mesmo serviço/data
                 const userExistingBookingQuery = adminDb.collection('bookings')
                     .where('stayId', '==', stayId)
                     .where('date', '==', bookingData.date)
@@ -67,18 +60,29 @@ export async function POST(request: Request) {
                     transaction.delete(doc.ref);
                 });
 
-                // 3. Cria a nova reserva.
+                // 3. Cria a nova reserva
                 const newBookingRef = adminDb.collection('bookings').doc();
                 const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
                     ...bookingData,
                     unitId: normalizedUnitId,
                     stayId: stayId,
-                    guestId: stayId, // Mantendo a consistência de ID do hóspede
+                    guestId: stayId,
                     guestName: stayInfo.guestName,
-                    cabinId: stayInfo.cabinName, // Corrigido para `cabinName`
+                    cabinId: stayInfo.cabinName,
                     createdAt: firestore.FieldValue.serverTimestamp(),
                 };
                 transaction.set(newBookingRef, newBooking);
+
+                // ++ INÍCIO DA CORREÇÃO: Cria o log de atividade na mesma transação ++
+                const logRef = adminDb.collection('activity_logs').doc();
+                transaction.set(logRef, {
+                    type: 'booking_requested',
+                    actor: { type: 'guest', identifier: stayInfo.guestName },
+                    details: `Agendamento de ${bookingData.structureName} solicitado por ${stayInfo.guestName}.`,
+                    link: '/admin/agendamentos',
+                    timestamp: firestore.FieldValue.serverTimestamp()
+                });
+                // ++ FIM DA CORREÇÃO ++
 
                 return NextResponse.json({ success: true, bookingId: newBookingRef.id });
             });
@@ -101,7 +105,16 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error: "Você não tem permissão para cancelar este agendamento." }, { status: 403 });
             }
 
-            // Apenas deleta o agendamento se for do hóspede.
+            // ++ INÍCIO DA CORREÇÃO: Cria o log antes de deletar ++
+            await adminDb.collection('activity_logs').add({
+                type: 'booking_cancelled_by_guest',
+                actor: { type: 'guest', identifier: booking.guestName },
+                details: `Agendamento de ${booking.structureName} foi cancelado pelo hóspede.`,
+                link: '/admin/agendamentos',
+                timestamp: firestore.FieldValue.serverTimestamp()
+            });
+            // ++ FIM DA CORREÇÃO ++
+
             await bookingRef.delete();
             return NextResponse.json({ success: true, message: "Agendamento cancelado com sucesso." });
 

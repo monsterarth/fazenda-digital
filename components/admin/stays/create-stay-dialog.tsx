@@ -1,5 +1,3 @@
-// components/admin/stays/create-stay-dialog.tsx
-
 "use client";
 
 import React from 'react';
@@ -15,6 +13,9 @@ import { toast } from 'sonner';
 import { Loader2, UserPlus } from 'lucide-react';
 import { addDays } from 'date-fns';
 import { StayFormFields } from './stay-form-fields';
+// ++ INÍCIO DA CORREÇÃO: Importa a função de log e o hook de autenticação ++
+import { addActivityLogToBatch } from '@/lib/activity-logger';
+import { useAuth } from '@/context/AuthContext';
 
 interface CreateStayDialogProps {
     isOpen: boolean;
@@ -26,6 +27,9 @@ interface CreateStayDialogProps {
 const generateToken = (): string => Math.floor(100000 + Math.random() * 900000).toString();
 
 export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ isOpen, onClose, cabins, db }) => {
+    // ++ INÍCIO DA CORREÇÃO: Pega o usuário admin logado ++
+    const { user } = useAuth();
+
     const form = useForm<FullStayFormValues>({
         resolver: zodResolver(fullStaySchema),
         defaultValues: {
@@ -78,9 +82,6 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ isOpen, onCl
             };
             batch.set(preCheckInRef, preCheckInData);
 
-            // ++ INÍCIO DA CORREÇÃO ++
-            // O campo `pets` agora recebe os dados do formulário, garantindo que
-            // não seja `undefined`.
             const newStay: Omit<Stay, 'id'> = {
                 guestName: data.leadGuestName,
                 cabinId: selectedCabin.id,
@@ -92,12 +93,19 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ isOpen, onCl
                 status: 'active',
                 preCheckInId: preCheckInRef.id,
                 createdAt: new Date().toISOString(),
-                pets: data.pets.map(p => ({...p, weight: Number(p.weight), age: p.age.toString()})) || [], // Corrigido aqui
+                pets: data.pets.map(p => ({...p, weight: Number(p.weight), age: p.age.toString()})) || [],
             };
-            // ++ FIM DA CORREÇÃO ++
-
             batch.set(stayRef, newStay);
             batch.update(preCheckInRef, { stayId: stayRef.id });
+
+            // ++ INÍCIO DA CORREÇÃO: Adiciona o log de atividade ao batch ++
+            addActivityLogToBatch(batch, {
+                type: 'stay_created_manually',
+                actor: { type: 'admin', identifier: user?.email || 'Admin' },
+                details: `Estadia para ${data.leadGuestName} na ${selectedCabin.name}.`,
+                link: '/admin/stays'
+            });
+            // ++ FIM DA CORREÇÃO ++
 
             await batch.commit();
             toast.success("Estadia criada com sucesso!", { id: toastId, description: `Token: ${newStay.token}` });

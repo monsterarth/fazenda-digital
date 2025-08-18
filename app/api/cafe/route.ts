@@ -37,6 +37,16 @@ export async function POST(request: Request) {
 
         const newOrderRef = await ordersRef.add(newOrder);
 
+        // ++ INÍCIO DA CORREÇÃO: Adiciona o log de atividade no backend ++
+        await adminDb.collection('activity_logs').add({
+            type: 'cafe_ordered',
+            actor: { type: 'guest', identifier: orderData.guestName || 'Hóspede' },
+            details: `Novo pedido de café de ${orderData.guestName || 'Hóspede'}.`,
+            link: '/admin/pedidos/cafe',
+            timestamp: firestore.FieldValue.serverTimestamp()
+        });
+        // ++ FIM DA CORREÇÃO ++
+
         return NextResponse.json({ success: true, orderId: newOrderRef.id });
 
     } catch (error: any) {

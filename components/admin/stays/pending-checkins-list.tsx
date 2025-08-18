@@ -7,7 +7,6 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, addDays } from 'date-fns';
-
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -16,11 +15,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { toast } from 'sonner';
-import { Loader2, CalendarIcon, Users, Edit, KeyRound, PawPrint, User, Home, Car, Trash2, ShieldX } from 'lucide-react';
+import { Loader2, CalendarIcon, Users, Edit, KeyRound, PawPrint, User, Home, Car, ShieldX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 import { ScrollArea } from '@/components/ui/scroll-area';
-// ++ INÍCIO DA CORREÇÃO: Importa componentes do Alert Dialog ++
+// ++ INÍCIO DA CORREÇÃO: `AlertDialogTrigger` foi re-adicionado à importação ++
 import {
     AlertDialog,
     AlertDialogAction,
@@ -33,7 +32,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 // ++ FIM DA CORREÇÃO ++
-
+import { useAuth } from '@/context/AuthContext';
 
 const validationSchema = z.object({
     cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
@@ -58,6 +57,7 @@ interface PendingCheckInsListProps {
 }
 
 export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pendingCheckIns, cabins }) => {
+    const { user } = useAuth(); 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCheckIn, setSelectedCheckIn] = useState<PreCheckIn | null>(null);
 
@@ -97,12 +97,20 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                 createdAt: new Date().toISOString(),
                 pets: selectedCheckIn.pets || [],
             };
-
             batch.set(stayRef, newStay);
             
             const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);
             batch.update(preCheckInRef, { status: 'validado', stayId: stayRef.id });
-            
+
+            const logRef = firestore.doc(firestore.collection(db, 'activity_logs'));
+            batch.set(logRef, {
+                timestamp: firestore.serverTimestamp(),
+                type: 'checkin_validated',
+                actor: { type: 'admin', identifier: user?.email || 'Admin' },
+                details: `Pré-check-in de ${selectedCheckIn.leadGuestName} validado.`,
+                link: '/admin/stays'
+            });
+
             await batch.commit();
             
             toast.success("Estadia validada com sucesso!", { id: toastId, description: `Token: ${newStay.token}` });
@@ -113,14 +121,25 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
         }
     };
     
-    // ++ INÍCIO DA CORREÇÃO: Função para recusar o pré-check-in ++
     const handleRejectStay = async () => {
         if (!db || !selectedCheckIn) return;
         const toastId = toast.loading("Recusando pré-check-in...");
         try {
-            const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);
-            await firestore.updateDoc(preCheckInRef, { status: 'recusado' });
+            const batch = firestore.writeBatch(db);
 
+            const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);
+            batch.update(preCheckInRef, { status: 'recusado' });
+
+            const logRef = firestore.doc(firestore.collection(db, 'activity_logs'));
+            batch.set(logRef, {
+                timestamp: firestore.serverTimestamp(),
+                type: 'checkin_rejected',
+                actor: { type: 'admin', identifier: user?.email || 'Admin' },
+                details: `Pré-check-in de ${selectedCheckIn.leadGuestName} foi recusado.`,
+                link: '/admin/stays'
+            });
+
+            await batch.commit();
             toast.success("Pré-check-in recusado e arquivado.", { id: toastId });
             setIsModalOpen(false);
             setSelectedCheckIn(null);
@@ -128,7 +147,6 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
             toast.error("Falha ao recusar o pré-check-in.", { id: toastId, description: error.message });
         }
     };
-    // ++ FIM DA CORREÇÃO ++
 
     return (
         <>
@@ -183,7 +201,6 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                                 </Form>
                             </div>
                         </div>
-                        {/* ++ INÍCIO DA CORREÇÃO: Adiciona botões de Ação no Footer ++ */}
                         <DialogFooter className="sm:justify-between items-center pt-4">
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>
@@ -212,7 +229,6 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                                 Validar e Gerar Token
                             </Button>
                         </DialogFooter>
-                        {/* ++ FIM DA CORREÇÃO ++ */}
                     </DialogContent>
                 </Dialog>
             )}

@@ -60,9 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
     return (
-        // ++ INÍCIO DA ALTERAÇÃO ++
         <AuthContext.Provider value={{ user, isAdmin, loading, getIdToken }}>
-        // ++ FIM DA ALTERAÇÃO ++
             {children}
         </AuthContext.Provider>
     );

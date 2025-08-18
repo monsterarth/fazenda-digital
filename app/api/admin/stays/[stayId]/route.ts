@@ -22,8 +22,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { stayId
         const idToken = authHeader.split('Bearer ')[1];
         const decodedToken = await adminAuth.verifyIdToken(idToken);
 
-        // Verificação crucial: o usuário é um administrador?
-        if (!decodedToken.isAdmin) {
+        // ++ INÍCIO DA CORREÇÃO: Verificando a propriedade correta 'admin' ++
+        if (!decodedToken.admin) {
+        // ++ FIM DA CORREÇÃO ++
             return NextResponse.json({ error: "Acesso negado. Requer privilégios de administrador." }, { status: 403 });
         }
 
@@ -45,17 +46,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { stayId
             const stayData = stayDoc.data();
             const guestName = stayData?.guestName || 'Hóspede desconhecido';
 
-            // Usando um batch para garantir a atomicidade da operação
             const batch = adminDb.batch();
 
-            // 1. Atualiza o status da estadia para 'checked_out'
             batch.update(stayRef, { 
                 status: 'checked_out',
-                endedAt: firestore.FieldValue.serverTimestamp(), // Opcional: registrar quando foi encerrada
-                endedBy: adminUser.email // Opcional: registrar quem encerrou
+                endedAt: firestore.FieldValue.serverTimestamp(),
+                endedBy: adminUser.email
             });
 
-            // 2. Cria o log da atividade
             const logRef = adminDb.collection('activity_logs').doc();
             batch.set(logRef, {
                 type: 'stay_ended',

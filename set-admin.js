@@ -10,7 +10,7 @@ admin.initializeApp({
 });
 
 // O e-mail do usuário que você quer tornar administrador
-const email = 'reservas@fazendadorosa.com.br';
+const email = 'comercial@fazendadorosa.com.br';
 
 async function setAdminClaim() {
   try {

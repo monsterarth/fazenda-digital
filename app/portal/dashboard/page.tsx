@@ -76,7 +76,7 @@ export default function GuestDashboardPage() {
         <div className="min-h-screen bg-brand-light-green text-brand-dark-green">
             <header className="relative h-48 sm:h-64 md:h-80 w-full overflow-hidden">
                 <Image
-                    src="/images/dashboard-header.jpg"
+                    src="https://od6apn3gvpg0jwyr.public.blob.vercel-storage.com/Kenn%20Robert%C2%A9-2105.jpg"
                     alt="Paisagem da Fazenda do Rosa"
                     layout="fill"
                     objectFit="cover"

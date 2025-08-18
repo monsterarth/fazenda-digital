@@ -10,13 +10,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    // Se não está carregando e não está autenticado, redireciona para o login
+    // ATUALIZADO: Redireciona para a raiz se não estiver autenticado.
     if (!isLoading && !isAuthenticated) {
-      router.replace("/portal");
+      router.replace("/");
     }
   }, [isLoading, isAuthenticated, router]);
 
-  // Enquanto carrega, mostra uma tela de loading
   if (isLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -25,11 +24,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Se estiver autenticado, mostra o conteúdo da página protegida
   if (isAuthenticated) {
     return <>{children}</>;
   }
 
-  // Se não estiver autenticado (e esperando o redirect), não mostra nada
   return null;
 }

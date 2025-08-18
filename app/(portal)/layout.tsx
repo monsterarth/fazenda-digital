@@ -1,27 +1,25 @@
 "use client";
 
 import { GuestProvider, useGuest } from "@/context/GuestProvider";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Loader2, LogOut } from "lucide-react";
 import Image from "next/image";
 import { useProperty } from "@/context/PropertyContext";
 import { PropertyThemeProvider } from "@/components/theme/PropertyThemeProvider";
 
-// Este componente representa o layout visual para um hóspede JÁ AUTENTICADO.
 function AuthLayout({ children }: { children: React.ReactNode }) {
     const { isAuthenticated, isLoading, logout, stay } = useGuest();
     const { property } = useProperty();
     const router = useRouter();
 
     useEffect(() => {
-        // Se o carregamento terminou e o usuário NÃO está autenticado, redireciona.
+        // ATUALIZADO: Se não estiver autenticado, redireciona para a raiz.
         if (!isLoading && !isAuthenticated) {
-            router.replace("/portal");
+            router.replace("/");
         }
     }, [isLoading, isAuthenticated, router]);
 
-    // Mostra um loader enquanto o estado de autenticação está sendo verificado.
     if (isLoading) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -30,7 +28,6 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // Se o usuário está autenticado, renderiza o layout do portal.
     if (isAuthenticated) {
         return (
             <PropertyThemeProvider>
@@ -57,22 +54,11 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // Se não estiver carregando e não estiver autenticado, retorna nulo enquanto o redirect acontece.
-    return null;
+    return null; // Retorna nulo enquanto o redirecionamento ocorre
 }
 
-// Este é o componente de layout principal para a seção /portal
+// SIMPLIFICADO: Este layout agora só envolve rotas protegidas.
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  
-  // Se a rota for a página de login pública, renderiza o conteúdo diretamente, SEM o GuestProvider.
-  // Isso evita que o GuestProvider tente autenticar desnecessariamente na página de login.
-  if (pathname === '/portal') {
-    return <>{children}</>;
-  }
-
-  // Para TODAS as outras rotas dentro do portal, envolve com o GuestProvider para ativar a autenticação.
-  // O AuthLayout interno cuidará do redirecionamento se o usuário não estiver logado.
   return (
     <GuestProvider>
         <AuthLayout>{children}</AuthLayout>

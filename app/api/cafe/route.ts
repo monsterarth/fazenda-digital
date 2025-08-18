@@ -25,15 +25,13 @@ export async function POST(request: Request) {
         
         const ordersRef = adminDb.collection('breakfastOrders');
         
-        // Se for uma edição, deleta o pedido antigo
         if (existingOrderId) {
             await ordersRef.doc(existingOrderId).delete();
         }
 
-        // Cria o novo pedido
         const newOrder = {
             ...orderData,
-            stayId: stayId, // Garante que o stayId é o do usuário autenticado
+            stayId: stayId,
             createdAt: firestore.FieldValue.serverTimestamp(),
         };
 

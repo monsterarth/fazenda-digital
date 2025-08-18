@@ -1,5 +1,3 @@
-// components/admin/stays/pending-checkins-list.tsx
-
 "use client";
 
 import React, { useState } from 'react';
@@ -9,7 +7,6 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, addDays } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -18,12 +15,25 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, CalendarIcon, Users, Edit, KeyRound, PawPrint, User, Home, Car } from 'lucide-react';
+import { Loader2, CalendarIcon, Users, Edit, KeyRound, PawPrint, User, Home, Car, Trash2, ShieldX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
-import { ScrollArea } from '@radix-ui/react-scroll-area';
+import { ScrollArea } from '@/components/ui/scroll-area';
+// ++ INÍCIO DA CORREÇÃO: Importa componentes do Alert Dialog ++
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+// ++ FIM DA CORREÇÃO ++
+
 
 const validationSchema = z.object({
     cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
@@ -74,9 +84,6 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
             const batch = firestore.writeBatch(db);
             const stayRef = firestore.doc(firestore.collection(db, 'stays'));
             
-            // ++ INÍCIO DA CORREÇÃO ++
-            // O campo `pets` agora recebe os dados do pré-check-in ou um array vazio.
-            // Isso evita que o valor `undefined` seja enviado ao Firestore.
             const newStay: Omit<Stay, 'id'> = {
                 guestName: selectedCheckIn.leadGuestName,
                 cabinId: selectedCabin.id,
@@ -88,9 +95,8 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                 status: 'active',
                 preCheckInId: selectedCheckIn.id,
                 createdAt: new Date().toISOString(),
-                pets: selectedCheckIn.pets || [], // Corrigido aqui
+                pets: selectedCheckIn.pets || [],
             };
-            // ++ FIM DA CORREÇÃO ++
 
             batch.set(stayRef, newStay);
             
@@ -106,6 +112,23 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
             toast.error("Falha ao validar.", { id: toastId, description: error.message });
         }
     };
+    
+    // ++ INÍCIO DA CORREÇÃO: Função para recusar o pré-check-in ++
+    const handleRejectStay = async () => {
+        if (!db || !selectedCheckIn) return;
+        const toastId = toast.loading("Recusando pré-check-in...");
+        try {
+            const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);
+            await firestore.updateDoc(preCheckInRef, { status: 'recusado' });
+
+            toast.success("Pré-check-in recusado e arquivado.", { id: toastId });
+            setIsModalOpen(false);
+            setSelectedCheckIn(null);
+        } catch (error: any) {
+            toast.error("Falha ao recusar o pré-check-in.", { id: toastId, description: error.message });
+        }
+    };
+    // ++ FIM DA CORREÇÃO ++
 
     return (
         <>
@@ -140,7 +163,7 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                     <DialogContent className="max-w-4xl">
                         <DialogHeader>
                             <DialogTitle>Validar Pré-Check-in de: {selectedCheckIn.leadGuestName}</DialogTitle>
-                            <DialogDescription>Confirme os detalhes para criar a estadia e gerar o token de acesso.</DialogDescription>
+                            <DialogDescription>Confirme os detalhes para criar a estadia ou recuse para arquivar o registro.</DialogDescription>
                         </DialogHeader>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
                             <div className="space-y-6">
@@ -154,21 +177,42 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                                 <Form {...form}>
                                     <form id="validation-form" onSubmit={form.handleSubmit(handleValidateStay)} className="space-y-4 p-4 border rounded-md bg-slate-50 sticky top-0">
                                         <h4 className="font-semibold">Aprovar e Criar Estadia</h4>
-                                        <FormField control={form.control} name="cabinId" render={({ field }) => (<FormItem><FormLabel>Cabana</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." />
-                                        </SelectTrigger>
-                                        </FormControl>
-                                                        <SelectContent>
-                                                            <ScrollArea className="h-72">
-                                                                {cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                                            </ScrollArea>
-                                                        </SelectContent>
-                                                        </Select><FormMessage /></FormItem>)} />
+                                        <FormField control={form.control} name="cabinId" render={({ field }) => (<FormItem><FormLabel>Cabana</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl><SelectContent><ScrollArea className="h-72">{cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</ScrollArea></SelectContent></Select><FormMessage /></FormItem>)} />
                                         <FormField control={form.control} name="dates" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Período</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal bg-white", !field.value?.from && "text-muted-foreground")}>{field.value?.from && field.value?.to ? (`${format(field.value.from, "dd/MM/yy")} até ${format(field.value.to, "dd/MM/yy")}`) : (<span>Selecione</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="range" selected={field.value as DateRange} onSelect={field.onChange} defaultMonth={field.value?.from} numberOfMonths={2}/></PopoverContent></Popover><FormMessage /></FormItem>)} />
                                     </form>
                                 </Form>
                             </div>
                         </div>
-                        <DialogFooter><Button type="submit" form="validation-form" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <KeyRound className="mr-2 h-4 w-4"/>}Validar e Gerar Token</Button></DialogFooter>
+                        {/* ++ INÍCIO DA CORREÇÃO: Adiciona botões de Ação no Footer ++ */}
+                        <DialogFooter className="sm:justify-between items-center pt-4">
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" type="button">
+                                        <ShieldX className="mr-2 h-4 w-4" />
+                                        Recusar
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            Esta ação irá recusar o pré-check-in de <span className="font-semibold">{selectedCheckIn.leadGuestName}</span>. O registro será arquivado e a ação não poderá ser desfeita.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                        <AlertDialogAction onClick={handleRejectStay} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                            Sim, recusar
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                            <Button type="submit" form="validation-form" disabled={form.formState.isSubmitting}>
+                                {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <KeyRound className="mr-2 h-4 w-4"/>}
+                                Validar e Gerar Token
+                            </Button>
+                        </DialogFooter>
+                        {/* ++ FIM DA CORREÇÃO ++ */}
                     </DialogContent>
                 </Dialog>
             )}

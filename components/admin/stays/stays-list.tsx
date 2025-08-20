@@ -1,15 +1,13 @@
-// components/admin/stays/stays-list.tsx
+// fazenda-digital/components/admin/stays/stays-list.tsx
 
 "use client";
 
 import React, { useState } from 'react';
-import ReactDOM from 'react-dom/client';
 import { Stay } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Edit, Printer, MoreHorizontal, LogOut } from 'lucide-react';
-import { ThermalCoupon } from './thermal-coupon';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,14 +29,16 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 
-
+// INÍCIO DA CORREÇÃO: Adicionando a prop 'onPrintStay' à interface
 interface StaysListProps {
     activeStays: Stay[];
     onEditStay: (stay: Stay) => void;
+    onPrintStay: (stay: Stay) => void; // Prop para receber a função de impressão
 }
+// FIM DA CORREÇÃO
 
-export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay }) => {
-    // ++ INÍCIO DA ADIÇÃO ++
+// Adicionando 'onPrintStay' aos props do componente
+export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay, onPrintStay }) => {
     const { user, getIdToken } = useAuth();
     const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [stayToEnd, setStayToEnd] = useState<Stay | null>(null);
@@ -97,36 +97,8 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
             setIsAlertOpen(false);
         }
     };
-    // ++ FIM DA ADIÇÃO ++
 
-    const handlePrintCoupon = (stay: Stay) => {
-        const qrUrl = `${window.location.origin}/?stayId=${stay.id}&token=${stay.token}`;
-        
-        const printWindow = window.open('', '_blank', 'width=400,height=600');
-        
-        if (printWindow) {
-            printWindow.document.write('<html><head><title>Cupom de Acesso</title></head><body><div id="print-root"></div></body></html>');
-            printWindow.document.close();
-
-            const printRootElement = printWindow.document.getElementById('print-root');
-            if(printRootElement) {
-                const root = ReactDOM.createRoot(printRootElement);
-                root.render(
-                    <React.StrictMode>
-                        <ThermalCoupon stay={stay} qrUrl={qrUrl} />
-                    </React.StrictMode>
-                );
-
-                setTimeout(() => {
-                    printWindow.focus();
-                    printWindow.print();
-                    printWindow.close();
-                }, 500);
-            }
-        } else {
-            alert("Por favor, habilite pop-ups para imprimir o cupom.");
-        }
-    };
+    // A função local 'handlePrintCoupon' foi removida, pois a lógica agora está no componente pai.
 
     return (
         <>
@@ -149,7 +121,6 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                                     {format(new Date(stay.checkInDate), "dd/MM")} a {format(new Date(stay.checkOutDate), "dd/MM/yy")}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    {/* ++ INÍCIO DA ALTERAÇÃO: Botões agora em um DropdownMenu ++ */}
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <Button variant="ghost" className="h-8 w-8 p-0">
@@ -163,10 +134,12 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                                                 <Edit className="mr-2 h-4 w-4" />
                                                 <span>Detalhes / Editar</span>
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handlePrintCoupon(stay)}>
+                                            {/* INÍCIO DA CORREÇÃO: O onClick agora chama a prop 'onPrintStay' */}
+                                            <DropdownMenuItem onClick={() => onPrintStay(stay)}>
                                                 <Printer className="mr-2 h-4 w-4" />
                                                 <span>Imprimir Cupom</span>
                                             </DropdownMenuItem>
+                                            {/* FIM DA CORREÇÃO */}
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem 
                                                 className="text-red-600 focus:text-red-600 focus:bg-red-50"
@@ -177,7 +150,6 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
-                                    {/* ++ FIM DA ALTERAÇÃO ++ */}
                                 </TableCell>
                             </TableRow>
                         ))
@@ -191,7 +163,6 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                 </TableBody>
             </Table>
 
-            {/* ++ INÍCIO DA ADIÇÃO: Diálogo de confirmação para encerrar estadia ++ */}
             <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -208,7 +179,6 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-            {/* ++ FIM DA ADIÇÃO ++ */}
         </>
     );
 };

@@ -1,9 +1,10 @@
-import { Toaster } from "@/components/ui/sonner";
-import { cn } from "@/lib/utils";
-import "@/app/globals.css";
-import type { Metadata, Viewport } from "next";
-import { ThemeProvider } from "next-themes";
+// fazenda-digital/app/layout.tsx
+
+import type { Metadata } from "next";
 import { Inter as FontSans } from "next/font/google";
+import "./globals.css";
+import { cn } from "@/lib/utils";
+import { AuthProvider } from "@/context/AuthContext";
 import { PropertyProvider } from "@/context/PropertyContext";
 
 const fontSans = FontSans({
@@ -12,15 +13,8 @@ const fontSans = FontSans({
 });
 
 export const metadata: Metadata = {
-  title: "Synapse",
-  description: "A experiência digital para seus hóspedes",
-};
-
-export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "white" },
-    { media: "(prefers-color-scheme: dark)", color: "black" },
-  ],
+  title: "Fazenda Digital",
+  description: "Portal do Hóspede e Painel de Gestão",
 };
 
 export default function RootLayout({
@@ -36,18 +30,29 @@ export default function RootLayout({
           fontSans.variable
         )}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <AuthProvider>
           <PropertyProvider>
-            {children}
-            {/* ESTE é o único <Toaster /> que deve existir no projeto */}
-            <Toaster richColors position="top-center" />
+            {/* INÍCIO DA ALTERAÇÃO */}
+            <div className="flex flex-col min-h-screen">
+              <main className="flex-grow">{children}</main>
+              <footer className="w-full py-4 px-4 text-center">
+                <p className="text-xs text-muted-foreground">
+                  Fazenda Digital 2025 © Synapse Beta V2.2 — Desenvolvido por{" "}
+                  <a
+                    href="https://instagram.com/petrytech"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium underline underline-offset-4 hover:text-primary"
+                  >
+                    Petry Tech
+                  </a>
+                  . Todos os direitos reservados.
+                </p>
+              </footer>
+            </div>
+            {/* FIM DA ALTERAÇÃO */}
           </PropertyProvider>
-        </ThemeProvider>
+        </AuthProvider>
       </body>
     </html>
   );

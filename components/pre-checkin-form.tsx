@@ -1,3 +1,5 @@
+//components/pre-checkin-form.tsx
+
 "use client";
 
 import React, { useState } from 'react';

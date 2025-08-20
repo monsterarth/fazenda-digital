@@ -100,7 +100,7 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
     // ++ FIM DA ADIÇÃO ++
 
     const handlePrintCoupon = (stay: Stay) => {
-        const qrUrl = `${window.location.origin}/acesso?stayId=${stay.id}&token=${stay.token}`;
+        const qrUrl = `${window.location.origin}/?stayId=${stay.id}&token=${stay.token}`;
         
         const printWindow = window.open('', '_blank', 'width=400,height=600');
         

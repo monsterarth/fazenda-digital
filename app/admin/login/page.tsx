@@ -1,15 +1,19 @@
+// fazenda-digital/app/admin/login/page.tsx
+
 "use client";
 
 import React, { useState } from 'react';
 import { getAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast, Toaster } from 'sonner';
 import { Loader2 } from 'lucide-react';
-import { app } from '@/lib/firebase'; // Garanta que o 'app' do firebase seja exportado
+import { app } from '@/lib/firebase';
+import Link from 'next/link'; // IMPORTADO
+import { Separator } from '@/components/ui/separator'; // IMPORTADO
 
 export default function AdminLoginPage() {
     const [email, setEmail] = useState('');
@@ -27,19 +31,13 @@ export default function AdminLoginPage() {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            // ++ A MUDANÇA CRÍTICA E CRIATIVA ++
-            // Forçamos a atualização do token de ID para obter os custom claims IMEDIATAMENTE.
-            // O 'true' garante que estamos pegando a versão mais recente do servidor.
             toast.loading("Verificando permissões de administrador...", { id: toastId });
             const idTokenResult = await user.getIdTokenResult(true);
 
-            // Verificamos o claim de admin AQUI, na página de login, antes de redirecionar.
             if (idTokenResult.claims.admin === true) {
                 toast.success("Login realizado com sucesso!", { id: toastId });
-                // Só redirecionamos DEPOIS de ter 100% de certeza que o usuário é admin.
                 router.push('/admin/stays');
             } else {
-                // Se o usuário é válido mas não é admin, nós o deslogamos e mostramos um erro.
                 await signOut(auth);
                 throw new Error("Você não tem permissão para acessar esta área.");
             }
@@ -52,7 +50,6 @@ export default function AdminLoginPage() {
             toast.error("Falha no login", { id: toastId, description });
             setLoading(false);
         }
-        // O setLoading só é desativado em caso de falha, pois o sucesso causa um redirecionamento.
     };
 
     return (
@@ -91,6 +88,16 @@ export default function AdminLoginPage() {
                         </Button>
                     </form>
                 </CardContent>
+                {/* INÍCIO DA ALTERAÇÃO */}
+                <CardFooter className="flex-col gap-4">
+                    <Separator />
+                    <Link href="/" className="w-full">
+                        <Button variant="outline" className="w-full">
+                            Acessar como Hóspede
+                        </Button>
+                    </Link>
+                </CardFooter>
+                {/* FIM DA ALTERAÇÃO */}
             </Card>
         </main>
     );

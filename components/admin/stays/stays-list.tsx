@@ -31,7 +31,6 @@ import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { ThermalCoupon } from './thermal-coupon';
 
-// A prop onPrintStay foi removida, a lógica agora é interna.
 interface StaysListProps {
     activeStays: Stay[];
     onEditStay: (stay: Stay) => void;
@@ -72,7 +71,7 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
     // ++ INÍCIO DA CORREÇÃO DA IMPRESSÃO ++
     const handlePrintCoupon = (stay: Stay) => {
         const qrUrl = `${window.location.origin}/?token=${stay.token}`;
-        const printWindow = window.open('', '_blank', 'width=302,height=500'); // 80mm ~ 302px
+        const printWindow = window.open('', '_blank', 'width=302,height=500'); // 80mm ~ 302px de largura
 
         if (printWindow) {
             printWindow.document.write(`
@@ -80,9 +79,19 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                     <head>
                         <title>Cupom de Acesso</title>
                         <style>
-                            /* Força o tamanho da página a ser do tamanho do conteúdo */
-                            @page { size: auto; margin: 0; }
-                            body { margin: 0; background-color: #fff; }
+                            /* Define um tamanho máximo e força o corte do papel */
+                            @page {
+                                size: 80mm 150mm; /* Largura x Altura MÁXIMA */
+                                margin: 0;
+                            }
+                            body, html {
+                                margin: 0;
+                                padding: 0;
+                                width: 80mm;
+                                /* Garante que o corpo não tente se esticar para preencher uma página maior */
+                                height: auto;
+                                overflow: hidden;
+                            }
                         </style>
                     </head>
                     <body>
@@ -95,19 +104,17 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
             const printRootElement = printWindow.document.getElementById('print-root');
             if(printRootElement) {
                 const root = ReactDOM.createRoot(printRootElement);
-                // Renderiza o cupom na nova janela
                 root.render(
                     <React.StrictMode>
                         <ThermalCoupon stay={stay} qrUrl={qrUrl} propertyName="Fazenda do Rosa" />
                     </React.StrictMode>
                 );
 
-                // Espera o conteúdo renderizar e então imprime
                 setTimeout(() => {
                     printWindow.focus();
                     printWindow.print();
                     printWindow.close();
-                }, 250); // Um pequeno delay para garantir a renderização
+                }, 250);
             }
         } else {
             toast.error("Habilite pop-ups para imprimir o cupom.");
@@ -137,13 +144,10 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                                        </DropdownMenuTrigger>
+                                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
                                             <DropdownMenuItem onClick={() => onEditStay(stay)}><Edit className="mr-2 h-4 w-4" /><span>Detalhes / Editar</span></DropdownMenuItem>
-                                            {/* O botão agora chama a função de impressão interna */}
                                             <DropdownMenuItem onClick={() => handlePrintCoupon(stay)}><Printer className="mr-2 h-4 w-4" /><span>Imprimir Cupom</span></DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50" onClick={() => handleOpenEndStayDialog(stay)}><LogOut className="mr-2 h-4 w-4" /><span>Encerrar Estadia</span></DropdownMenuItem>

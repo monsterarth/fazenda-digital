@@ -9,18 +9,20 @@ type ActivityActor = {
 
 export type ActivityLogData = {
   type: 
-    | 'checkin_submitted' 
-    | 'stay_created_manually' 
-    | 'checkin_validated' 
-    | 'checkin_rejected'
-    | 'cafe_ordered' 
-    | 'booking_requested'
-    | 'booking_confirmed'
-    | 'booking_declined'
-    | 'booking_created_by_admin'
-    | 'booking_cancelled_by_admin'
-    | 'booking_cancelled_by_guest'
-    | 'survey_submitted';
+  | "checkin_submitted"
+  | "stay_created_manually"
+  | "checkin_validated"
+  | "checkin_rejected"
+  | "cafe_ordered"
+  | "booking_requested"
+  | "booking_confirmed"
+  | "booking_declined"
+  | "booking_created_by_admin"
+  | "booking_cancelled_by_admin"
+  | "booking_cancelled_by_guest"
+  | "survey_submitted"
+  | "stay_token_updated";
+    
   actor: ActivityActor;
   details: string; 
   link: string;

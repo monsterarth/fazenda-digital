@@ -14,87 +14,98 @@ interface ThermalCouponProps {
 }
 
 export const ThermalCoupon = forwardRef<HTMLDivElement, ThermalCouponProps>((
-  { stay, qrUrl, propertyLogoUrl, propertyName },
+  { stay, qrUrl, propertyName },
   ref
 ) => {
   return (
-    <div ref={ref} style={styles.container}>
-      
-      {propertyName && (
-        <h1 style={styles.headerTitle}>{propertyName}</h1>
-      )}
+    <>
+      {/* Estilos específicos para impressão que corrigem o tamanho do papel */}
+      <style type="text/css" media="print">
+        {`
+          @page {
+            size: 80mm 115mm; /* Largura x Altura - Ajuste a altura conforme necessário */
+            margin: 0;
+          }
+          body {
+            margin: 0;
+          }
+        `}
+      </style>
+      <div ref={ref} style={styles.container}>
+        {propertyName && (
+          <h1 style={styles.headerTitle}>{propertyName}</h1>
+        )}
 
-      <p style={styles.text}>Hóspede: <strong>{stay.guestName}</strong></p>
-      <p style={styles.text}>Cabana: <strong>{stay.cabinName}</strong></p>
-      
-      <p style={styles.label}>Seu Código de Acesso:</p>
-      <p style={styles.accessCode}>{stay.token}</p>
-      
-      <div style={styles.qrSection}>
-        <QRCodeSVG value={qrUrl} size={128} />
-        <p style={styles.qrLabel}>Aponte a câmera para acessar</p>
+        <p style={styles.text}>Hóspede: <strong>{stay.guestName}</strong></p>
+        <p style={styles.text}>Cabana: <strong>{stay.cabinName}</strong></p>
+        
+        <p style={styles.label}>Seu Código de Acesso:</p>
+        <p style={styles.accessCode}>{stay.token}</p>
+        
+        <div style={styles.qrSection}>
+          <QRCodeSVG value={qrUrl} size={140} />
+          <p style={styles.qrLabel}>Aponte a câmera para acessar</p>
+        </div>
+        
+        <p style={styles.footer}>Tenha uma ótima estadia!</p>
       </div>
-      
-      <p style={styles.footer}>Tenha uma ótima estadia!</p>
-    </div>
+    </>
   );
 });
 
 ThermalCoupon.displayName = 'ThermalCoupon';
 
-// Estilos ajustados para melhor legibilidade na impressão
+// Estilos com fontes maiores e mais legíveis
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
     fontFamily: "'Courier New', Courier, monospace",
-    width: '280px', // Aproximadamente 75mm, bom para papel de 80mm
-    padding: '10px 0px', // Reduzido padding lateral
+    width: '283px', // ~80mm
+    padding: '15px 12px',
     color: '#000',
     backgroundColor: '#fff',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
-    boxSizing: 'content-box'
+    boxSizing: 'border-box'
   },
   headerTitle: {
-    fontSize: '14pt', // Tamanho aumentado
+    fontSize: '1.4rem', // Aumentado
     fontWeight: 'bold',
-    margin: '0 0 10px 0',
+    margin: '0 0 12px 0',
   },
   text: {
-    fontSize: '11pt', // Tamanho aumentado
+    fontSize: '1rem', // Aumentado
     margin: '2px 0',
-    alignSelf: 'flex-start',
-    paddingLeft: '12px'
+    alignSelf: 'flex-start'
   },
   label: {
-    fontSize: '11pt', // Tamanho aumentado
+    fontSize: '1rem', // Aumentado
     margin: '12px 0 4px 0',
   },
   accessCode: {
-    fontSize: '24pt', // Tamanho aumentado
+    fontSize: '2.5rem', // Aumentado
     fontWeight: 'bold',
-    letterSpacing: '0.2rem',
-    margin: '0 0 12px 0',
+    letterSpacing: '0.4rem',
+    margin: '0 0 15px 0',
     padding: '5px',
     backgroundColor: '#f0f0f0',
     borderRadius: '4px',
-    width: 'calc(100% - 24px)', // Ajustado para padding
+    width: '100%',
     boxSizing: 'border-box'
   },
   qrSection: {
     margin: '5px 0',
   },
   qrLabel: {
-    marginTop: '4px',
-    fontSize: '10pt', // Tamanho aumentado
+    marginTop: '5px',
+    fontSize: '0.9rem', // Aumentado
   },
   footer: {
-    marginTop: '12px',
-    fontSize: '10pt', // Tamanho aumentado
+    marginTop: '15px',
+    fontSize: '1rem', // Aumentado
     borderTop: '1px dashed #ccc',
     paddingTop: '8px',
-    width: 'calc(100% - 24px)', // Ajustado para padding
-    boxSizing: 'content-box'
+    width: '100%',
   }
 };

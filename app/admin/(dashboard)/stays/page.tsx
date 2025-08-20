@@ -2,10 +2,10 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from 'firebase/firestore';
-import { PreCheckIn, Stay, Cabin, Property } from '@/types';
+import { PreCheckIn, Stay, Cabin } from '@/types';
 import { toast, Toaster } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,8 +15,6 @@ import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-l
 import { StaysList } from '@/components/admin/stays/stays-list';
 import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog';
 import { useAuth } from '@/context/AuthContext';
-import { useReactToPrint } from 'react-to-print';
-import { ThermalCoupon } from '@/components/admin/stays/thermal-coupon';
 
 export default function ManageStaysPage() {
     const { isAdmin } = useAuth();
@@ -24,30 +22,11 @@ export default function ManageStaysPage() {
     const [pendingCheckIns, setPendingCheckIns] = useState<PreCheckIn[]>([]);
     const [activeStays, setActiveStays] = useState<Stay[]>([]);
     const [cabins, setCabins] = useState<Cabin[]>([]);
-    const [properties, setProperties] = useState<Property[]>([]); // Estado para propriedade
     const [loading, setLoading] = useState(true);
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [selectedStayForModal, setSelectedStayForModal] = useState<Stay | null>(null);
-
-    // --- LÓGICA DE IMPRESSÃO REINTEGRADA ---
-    const [selectedStayForPrint, setSelectedStayForPrint] = useState<Stay | null>(null);
-    const [qrCodeUrl, setQrCodeUrl] = useState('');
-    const componentRef = useRef<HTMLDivElement>(null);
-
-    const print = useReactToPrint({
-        content: () => componentRef.current,
-        documentTitle: `Cupom-${selectedStayForPrint?.guestName || 'Hospede'}`,
-    });
-
-    const handlePrint = (stayToPrint: Stay) => {
-        setSelectedStayForPrint(stayToPrint);
-        const url = `${window.location.origin}/?token=${stayToPrint.token}`;
-        setQrCodeUrl(url);
-        setTimeout(() => print(), 100);
-    };
-    // --- FIM DA LÓGICA DE IMPRESSÃO ---
+    const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
 
     useEffect(() => {
         if (!isAdmin) {
@@ -66,32 +45,21 @@ export default function ManageStaysPage() {
                 return;
             }
 
-            // Unsubscribe listeners
             const unsubscribers: firestore.Unsubscribe[] = [];
 
-            // Fetch Properties
-            const qProperties = firestore.query(firestore.collection(firestoreDb, 'properties'));
-            unsubscribers.push(firestore.onSnapshot(qProperties, (snapshot) => {
-                const propsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Property));
-                setProperties(propsData);
-            }));
-            
-            // Fetch Pending Check-ins
             const qCheckIns = firestore.query(firestore.collection(firestoreDb, 'preCheckIns'), firestore.where('status', '==', 'pendente'));
             unsubscribers.push(firestore.onSnapshot(qCheckIns, (snapshot) => {
                 const checkInsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PreCheckIn));
                 setPendingCheckIns(checkInsData);
             }));
 
-            // Fetch Active Stays
             const qStays = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where('status', '==', 'active'), firestore.orderBy('checkInDate', 'asc'));
             unsubscribers.push(firestore.onSnapshot(qStays, (snapshot) => {
                 const staysData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay));
                 setActiveStays(staysData);
-                setLoading(false); // Apenas o principal loader
+                setLoading(false);
             }));
 
-            // Fetch Cabins
             const qCabins = firestore.query(firestore.collection(firestoreDb, 'cabins'), firestore.orderBy('posicao', 'asc'));
             unsubscribers.push(firestore.onSnapshot(qCabins, (snapshot) => {
                 const cabinsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabin));
@@ -105,12 +73,17 @@ export default function ManageStaysPage() {
     }, [isAdmin]);
 
     const handleOpenEditModal = (stay: Stay) => {
-        setSelectedStayForModal(stay);
+        setSelectedStay(stay);
         setIsEditModalOpen(true);
     };
 
+    const handleCloseEditModal = () => {
+        setIsEditModalOpen(false);
+        setSelectedStay(null);
+    };
+
     const memoizedActiveStays = useMemo(() => activeStays, [activeStays]);
-    
+
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-8">
             <Toaster richColors position="top-center" />
@@ -148,7 +121,6 @@ export default function ManageStaysPage() {
                             <StaysList 
                                 activeStays={memoizedActiveStays}
                                 onEditStay={handleOpenEditModal}
-                                onPrintStay={handlePrint} // Passando a função de impressão para a lista
                             />
                         </CardContent>
                     </Card>
@@ -157,22 +129,9 @@ export default function ManageStaysPage() {
 
             <CreateStayDialog isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} cabins={cabins} db={db} />
 
-            {selectedStayForModal && db && (
-                <EditStayDialog isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} stay={selectedStayForModal} cabins={cabins} db={db} />
+            {selectedStay && db && (
+                <EditStayDialog isOpen={isEditModalOpen} onClose={handleCloseEditModal} stay={selectedStay} cabins={cabins} db={db} />
             )}
-
-            {/* Componente de impressão oculto */}
-            <div style={{ display: 'none' }}>
-                {selectedStayForPrint && (
-                    <ThermalCoupon
-                        ref={componentRef}
-                        stay={selectedStayForPrint}
-                        qrUrl={qrCodeUrl}
-                        propertyName={properties.length > 0 ? properties[0].name : "Synapse"}
-                        propertyLogoUrl={properties.length > 0 ? properties[0].logoUrl : undefined}
-                    />
-                )}
-            </div>
         </div>
     );
 }

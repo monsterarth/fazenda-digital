@@ -3,6 +3,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom/client';
 import { Stay } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
@@ -28,17 +29,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
+import { ThermalCoupon } from './thermal-coupon';
 
-// INÍCIO DA CORREÇÃO: Adicionando a prop 'onPrintStay' à interface
+// A prop onPrintStay foi removida, a lógica agora é interna.
 interface StaysListProps {
     activeStays: Stay[];
     onEditStay: (stay: Stay) => void;
-    onPrintStay: (stay: Stay) => void; // Prop para receber a função de impressão
 }
-// FIM DA CORREÇÃO
 
-// Adicionando 'onPrintStay' aos props do componente
-export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay, onPrintStay }) => {
+export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay }) => {
     const { user, getIdToken } = useAuth();
     const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [stayToEnd, setStayToEnd] = useState<Stay | null>(null);
@@ -50,55 +49,71 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay, o
     };
 
     const handleEndStay = async () => {
-        if (!stayToEnd || !user) {
-            toast.error("Não foi possível identificar a estadia ou o usuário para encerrar.");
-            return;
-        }
-
+        if (!stayToEnd || !user) return;
         setIsEnding(true);
-        const toastId = toast.loading(`Encerrando estadia de ${stayToEnd.guestName}...`);
-
+        const toastId = toast.loading(`Encerrando estadia...`);
         try {
             const token = await getIdToken();
-            if (!token) {
-                throw new Error("Usuário não autenticado.");
-            }
-
             const response = await fetch(`/api/admin/stays/${stayToEnd.id}`, {
                 method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    action: 'end_stay',
-                    adminUser: {
-                        email: user.email,
-                        name: user.displayName,
-                    }
-                }),
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ action: 'end_stay', adminUser: { email: user.email, name: user.displayName } }),
             });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || "Falha ao encerrar estadia.");
-            }
-
-            toast.success(`Estadia de ${stayToEnd.guestName} encerrada com sucesso.`, { id: toastId });
+            if (!response.ok) throw new Error((await response.json()).error || "Falha ao encerrar.");
+            toast.success(`Estadia encerrada.`, { id: toastId });
         } catch (error: any) {
-            toast.error("Erro ao encerrar estadia.", {
-                id: toastId,
-                description: error.message,
-            });
+            toast.error("Erro ao encerrar.", { id: toastId, description: error.message });
         } finally {
             setIsEnding(false);
-            setStayToEnd(null);
             setIsAlertOpen(false);
         }
     };
 
-    // A função local 'handlePrintCoupon' foi removida, pois a lógica agora está no componente pai.
+    // ++ INÍCIO DA CORREÇÃO DA IMPRESSÃO ++
+    const handlePrintCoupon = (stay: Stay) => {
+        const qrUrl = `${window.location.origin}/?token=${stay.token}`;
+        const printWindow = window.open('', '_blank', 'width=302,height=500'); // 80mm ~ 302px
+
+        if (printWindow) {
+            printWindow.document.write(`
+                <html>
+                    <head>
+                        <title>Cupom de Acesso</title>
+                        <style>
+                            /* Força o tamanho da página a ser do tamanho do conteúdo */
+                            @page { size: auto; margin: 0; }
+                            body { margin: 0; background-color: #fff; }
+                        </style>
+                    </head>
+                    <body>
+                        <div id="print-root"></div>
+                    </body>
+                </html>
+            `);
+            printWindow.document.close();
+
+            const printRootElement = printWindow.document.getElementById('print-root');
+            if(printRootElement) {
+                const root = ReactDOM.createRoot(printRootElement);
+                // Renderiza o cupom na nova janela
+                root.render(
+                    <React.StrictMode>
+                        <ThermalCoupon stay={stay} qrUrl={qrUrl} propertyName="Fazenda do Rosa" />
+                    </React.StrictMode>
+                );
+
+                // Espera o conteúdo renderizar e então imprime
+                setTimeout(() => {
+                    printWindow.focus();
+                    printWindow.print();
+                    printWindow.close();
+                }, 250); // Um pequeno delay para garantir a renderização
+            }
+        } else {
+            toast.error("Habilite pop-ups para imprimir o cupom.");
+        }
+    };
+    // ++ FIM DA CORREÇÃO DA IMPRESSÃO ++
 
     return (
         <>
@@ -123,60 +138,30 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay, o
                                 <TableCell className="text-right">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                                <span className="sr-only">Abrir menu</span>
-                                                <MoreHorizontal className="h-4 w-4" />
-                                            </Button>
+                                            <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                            <DropdownMenuItem onClick={() => onEditStay(stay)}>
-                                                <Edit className="mr-2 h-4 w-4" />
-                                                <span>Detalhes / Editar</span>
-                                            </DropdownMenuItem>
-                                            {/* INÍCIO DA CORREÇÃO: O onClick agora chama a prop 'onPrintStay' */}
-                                            <DropdownMenuItem onClick={() => onPrintStay(stay)}>
-                                                <Printer className="mr-2 h-4 w-4" />
-                                                <span>Imprimir Cupom</span>
-                                            </DropdownMenuItem>
-                                            {/* FIM DA CORREÇÃO */}
+                                            <DropdownMenuItem onClick={() => onEditStay(stay)}><Edit className="mr-2 h-4 w-4" /><span>Detalhes / Editar</span></DropdownMenuItem>
+                                            {/* O botão agora chama a função de impressão interna */}
+                                            <DropdownMenuItem onClick={() => handlePrintCoupon(stay)}><Printer className="mr-2 h-4 w-4" /><span>Imprimir Cupom</span></DropdownMenuItem>
                                             <DropdownMenuSeparator />
-                                            <DropdownMenuItem 
-                                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                                                onClick={() => handleOpenEndStayDialog(stay)}
-                                            >
-                                                <LogOut className="mr-2 h-4 w-4" />
-                                                <span>Encerrar Estadia</span>
-                                            </DropdownMenuItem>
+                                            <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50" onClick={() => handleOpenEndStayDialog(stay)}><LogOut className="mr-2 h-4 w-4" /><span>Encerrar Estadia</span></DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
                             </TableRow>
                         ))
                     ) : (
-                        <TableRow>
-                            <TableCell colSpan={4} className="h-24 text-center">
-                                Nenhuma estadia ativa no momento.
-                            </TableCell>
-                        </TableRow>
+                        <TableRow><TableCell colSpan={4} className="h-24 text-center">Nenhuma estadia ativa no momento.</TableCell></TableRow>
                     )}
                 </TableBody>
             </Table>
 
             <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
                 <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Confirmar Encerramento</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Tem certeza que deseja encerrar a estadia de <span className="font-bold">{stayToEnd?.guestName}</span>? Esta ação não pode ser desfeita e a estadia será movida para o histórico.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isEnding}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleEndStay} disabled={isEnding} className="bg-red-600 hover:bg-red-700">
-                            {isEnding ? "Encerrando..." : "Sim, Encerrar"}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
+                    <AlertDialogHeader><AlertDialogTitle>Confirmar Encerramento</AlertDialogTitle><AlertDialogDescription>Tem certeza que deseja encerrar a estadia de <span className="font-bold">{stayToEnd?.guestName}</span>? Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel disabled={isEnding}>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleEndStay} disabled={isEnding} className="bg-red-600 hover:bg-red-700">{isEnding ? "Encerrando..." : "Sim, Encerrar"}</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
         </>

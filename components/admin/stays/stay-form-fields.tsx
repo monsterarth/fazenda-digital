@@ -1,3 +1,5 @@
+// components/admin/stays/stay-form-fields.tsx
+
 "use client";
 
 import React, { useState } from 'react';
@@ -13,12 +15,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { CalendarIcon, PlusCircle, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
-// ++ INÍCIO DA CORREÇÃO: Importa o componente ScrollArea ++
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface StayFormFieldsProps {
     form: UseFormReturn<FullStayFormValues>;
@@ -50,7 +51,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                 return;
             }
             
-            form.setValue('address.street', data.logradouro, { shouldValidate: true });
+            form.setValue('address.street', data.logouro, { shouldValidate: true });
             form.setValue('address.neighborhood', data.bairro, { shouldValidate: true });
             form.setValue('address.city', data.localidade, { shouldValidate: true });
             form.setValue('address.state', data.uf, { shouldValidate: true });
@@ -83,7 +84,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                                                 <SelectValue placeholder="Selecione..." />
                                             </SelectTrigger>
                                         </FormControl>
-                                        {/* ++ INÍCIO DA CORREÇÃO: Adiciona ScrollArea para a lista de cabanas ++ */}
+                                        {/* ++ INÍCIO DA CORREÇÃO: ScrollArea restaurado ++ */}
                                         <SelectContent>
                                             <ScrollArea className="h-72">
                                                 {cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -108,16 +109,59 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {isForeigner ? (
                             <>
-                                <FormField name="country" control={form.control} render={({ field }) => (<FormItem><FormLabel>País</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl><SelectContent>{countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                <FormField name="country" control={form.control} render={({ field }) => (<FormItem><FormLabel>País</FormLabel><Select onValuechange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl><SelectContent>{countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                                 <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>Passaporte / Documento</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             </>
                         ) : (
-                            <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>CPF</FormLabel><FormControl><Input placeholder="000.000.000-00" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            // ++ INÍCIO DA CORREÇÃO: Campo de CPF com formatação automática ++
+                            <FormField 
+                                name="leadGuestDocument" 
+                                control={form.control} 
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>CPF</FormLabel>
+                                        <FormControl>
+                                            <Input 
+                                                placeholder="000.000.000-00" 
+                                                {...field}
+                                                onChange={(e) => {
+                                                    const numericValue = e.target.value.replace(/\D/g, '');
+                                                    field.onChange(numericValue);
+                                                }}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} 
+                            />
+                            // ++ FIM DA CORREÇÃO ++
                         )}
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField name="leadGuestEmail" control={form.control} render={({ field }) => (<FormItem><FormLabel>E-mail</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="leadGuestPhone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Telefone / WhatsApp</FormLabel><FormControl><Input type="tel" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        {/* ++ INÍCIO DA CORREÇÃO: Campo de Telefone com formatação automática ++ */}
+                        <FormField 
+                            name="leadGuestPhone" 
+                            control={form.control} 
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Telefone / WhatsApp</FormLabel>
+                                    <FormControl>
+                                        <Input 
+                                            type="tel" 
+                                            placeholder="+55 (31) 99999-9999"
+                                            {...field}
+                                            onChange={(e) => {
+                                                const numericValue = e.target.value.replace(/\D/g, '');
+                                                field.onChange(numericValue);
+                                            }}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                         {/* ++ FIM DA CORREÇÃO ++ */}
                     </div>
                 </AccordionContent>
             </AccordionItem>

@@ -47,15 +47,18 @@ export const fullStaySchema = z.object({
     // Stay
     cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
     dates: z.object({
-        from: z.date({ message: "Data de check-in é obrigatória." }),
-        to: z.date({ message: "Data de check-out é obrigatória." }),
+        from: z.date({ required_error: "Data de check-in é obrigatória." }),
+        to: z.date({ required_error: "Data de check-out é obrigatória." }),
     }),
     
-    // ++ INÍCIO DA ADIÇÃO ++
+    // ++ INÍCIO DA CORREÇÃO ++
+    // O token é opcional no schema para permitir a criação da estadia,
+    // pois ele é gerado no backend e não está presente no formulário de criação.
     token: z.string()
         .length(6, "O token de acesso deve ter 6 dígitos.")
-        .regex(/^\d{6}$/, "O token deve conter apenas números."),
-    // ++ FIM DA ADIÇÃO ++
+        .regex(/^\d{6}$/, "O token deve conter apenas números.")
+        .optional(),
+    // ++ FIM DA CORREÇÃO ++
 
 }).superRefine((data, ctx) => {
     if (!data.isForeigner && !isValidCPF(data.leadGuestDocument)) {

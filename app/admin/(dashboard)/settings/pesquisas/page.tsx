@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { GripVertical, Plus, Edit, Trash2, Loader2, List, Settings, Star, CheckSquare, MessageSquare, Divide, Minus, Type, ArrowLeft, Save, Gift, X, AlertTriangle } from "lucide-react";
+import { GripVertical, Plus, Edit, Trash2, Loader2, List, Settings, Star, CheckSquare, MessageSquare, Divide, Type, ArrowLeft, Save, Gift, X, AlertTriangle, Minus } from "lucide-react";
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -141,7 +141,7 @@ function SortableQuestionCard({ id, question, updateQuestion, removeQuestion, ca
 }
 
 function SurveyBuilder({ survey, categories, onBack, onSave }: {
-    survey: Survey; categories: SurveyCategory[]; onBack: () => void; onSave: (surveyData: Omit<Survey, 'id'>) => Promise<void>;
+    survey: Survey; categories: SurveyCategory[]; onBack: () => void; onSave: (surveyData: Omit<Survey, 'id'>, surveyId: string) => Promise<void>;
 }) {
     const [title, setTitle] = useState(survey.title);
     const [description, setDescription] = useState(survey.description);
@@ -177,7 +177,7 @@ function SurveyBuilder({ survey, categories, onBack, onSave }: {
         if (!title) { toast.error("O título da pesquisa é obrigatório."); return; }
         setIsSaving(true);
         const surveyDataToSave = { title, description, isDefault, questions, reward };
-        await onSave(surveyDataToSave);
+        await onSave(surveyDataToSave, survey.id);
         setIsSaving(false);
     };
 
@@ -192,7 +192,7 @@ function SurveyBuilder({ survey, categories, onBack, onSave }: {
                             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border">
                                 <div>
                                     <Label htmlFor="survey-default" className="font-semibold">Pesquisa Padrão de Check-out</Label>
-                                    <p className="text-sm text-muted-foreground">Será liberada 12h antes do check-out.</p>
+                                    <p className="text-sm text-muted-foreground">Será usada para gerar o link de feedback.</p>
                                 </div>
                                 <Switch id="survey-default" checked={isDefault} onCheckedChange={setIsDefault} />
                             </div>
@@ -298,70 +298,95 @@ export default function ManageSurveysPage() {
         }
     };
     
-    const handleSaveSurvey = async (surveyData: Omit<Survey, 'id'>) => {
-        if (!db || !selectedSurvey) return;
+    // ++ INÍCIO DA CORREÇÃO ++
+    const handleSaveSurvey = async (surveyData: Omit<Survey, 'id'>, currentSurveyId: string) => {
+        if (!db) return;
         const { questions, ...surveyDetails } = surveyData;
-        const isNew = selectedSurvey.id.startsWith('new_');
+        const isNew = currentSurveyId.startsWith('new_');
         const toastId = toast.loading(isNew ? 'Criando...' : 'Atualizando...');
         try {
-            let surveyId = selectedSurvey.id;
+            const batch = firestore.writeBatch(db);
+            const propertyRef = firestore.doc(db, 'properties', 'default');
+            let surveyId = currentSurveyId;
+
+            // 1. Salva a pesquisa (cria ou atualiza)
             if (isNew) {
-                const newSurveyRef = await firestore.addDoc(firestore.collection(db, 'surveys'), surveyDetails);
+                const newSurveyRef = firestore.doc(firestore.collection(db, 'surveys'));
+                batch.set(newSurveyRef, surveyDetails);
                 surveyId = newSurveyRef.id;
             } else {
-                await firestore.updateDoc(firestore.doc(db, 'surveys', surveyId), surveyDetails);
+                batch.update(firestore.doc(db, 'surveys', surveyId), surveyDetails);
             }
+
+            // 2. Lógica para garantir que apenas uma pesquisa seja a padrão E ATUALIZAR A PROPRIEDADE
             if (surveyDetails.isDefault) {
+                // Remove 'isDefault' de outras pesquisas
                 const otherSurveys = surveys.filter(s => s.id !== surveyId && s.isDefault);
-                const batch = firestore.writeBatch(db);
-                otherSurveys.forEach(s => { batch.update(firestore.doc(db, 'surveys', s.id), { isDefault: false }); });
-                await batch.commit();
+                otherSurveys.forEach(s => {
+                    batch.update(firestore.doc(db, 'surveys', s.id), { isDefault: false });
+                });
+                // ATUALIZA o documento da propriedade com o ID da pesquisa padrão
+                batch.update(propertyRef, { defaultSurveyId: surveyId });
+            } else {
+                // Se esta pesquisa ERA a padrão e deixou de ser, limpa o campo na propriedade
+                const thisSurveyBeforeSave = surveys.find(s => s.id === surveyId);
+                if (thisSurveyBeforeSave?.isDefault) {
+                    batch.update(propertyRef, { defaultSurveyId: firestore.deleteField() });
+                }
             }
+            
+            // 3. Salva as perguntas (exclui as antigas, adiciona/atualiza as novas)
             const questionsCollection = firestore.collection(db, `surveys/${surveyId}/questions`);
             const existingQuestionsSnapshot = await firestore.getDocs(questionsCollection);
             const existingQuestionIds = existingQuestionsSnapshot.docs.map(d => d.id);
             const currentQuestionIds = questions.map(q => q.id).filter(id => !id.startsWith('q_'));
-            const batch = firestore.writeBatch(db);
-            existingQuestionIds.filter(id => !currentQuestionIds.includes(id)).forEach(idToDelete => { batch.delete(firestore.doc(questionsCollection, idToDelete)); });
+            
+            existingQuestionIds
+                .filter(id => !currentQuestionIds.includes(id))
+                .forEach(idToDelete => {
+                    batch.delete(firestore.doc(questionsCollection, idToDelete));
+                });
+            
             questions.forEach((question) => {
                 const { id, ...data } = question;
                 const docRef = id.startsWith('q_') ? firestore.doc(questionsCollection) : firestore.doc(questionsCollection, id);
                 batch.set(docRef, data);
             });
+
+            // 4. Commita todas as operações atômicas
             await batch.commit();
+            
             toast.success('Pesquisa salva!', { id: toastId });
             setSelectedSurvey(null);
-        } catch (error) { console.error(error); toast.error('Falha ao salvar.', { id: toastId }); }
+        } catch (error) {
+            console.error(error);
+            toast.error('Falha ao salvar.', { id: toastId });
+        }
     };
+    // ++ FIM DA CORREÇÃO ++
     
     const handleSaveCategory = async () => {
-        if (!db) { toast.error("Conexão com o banco falhou."); return; }
-        if (!newCategoryName.trim()) { toast.error("O nome da categoria não pode ser vazio."); return; }
-        
+        if (!db || !newCategoryName.trim()) return;
         const toastId = toast.loading("Salvando categoria...");
-        
         try {
-            const categoriesCollection = firestore.collection(db, 'surveyCategories');
-            await firestore.addDoc(categoriesCollection, { name: newCategoryName });
+            await firestore.addDoc(firestore.collection(db, 'surveyCategories'), { name: newCategoryName });
             setNewCategoryName('');
             setCategoryModalOpen(false);
-            toast.success("Categoria salva com sucesso!", { id: toastId });
+            toast.success("Categoria salva!", { id: toastId });
         } catch (error: any) {
-            console.error(error);
-            toast.error("Falha ao salvar a categoria.", { id: toastId, description: error.message });
+            toast.error("Falha ao salvar.", { id: toastId, description: error.message });
         }
     };
     
     const handleDeleteCategory = async () => {
         if (!db || !confirmDeleteCat.categoryId) return;
-        const toastId = toast.loading("Excluindo categoria...");
+        const toastId = toast.loading("Excluindo...");
         try {
             await firestore.deleteDoc(firestore.doc(db, 'surveyCategories', confirmDeleteCat.categoryId));
             setConfirmDeleteCat({ open: false, categoryId: null, categoryName: null });
             toast.success("Categoria excluída!", { id: toastId });
         } catch (error: any) {
-            console.error(error);
-            toast.error("Falha ao excluir a categoria.", { id: toastId, description: error.message });
+            toast.error("Falha ao excluir.", { id: toastId, description: error.message });
         }
     };
 

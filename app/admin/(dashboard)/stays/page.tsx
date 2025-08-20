@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from 'firebase/firestore';
-import { PreCheckIn, Stay, Cabin } from '@/types';
+import { PreCheckIn, Stay, Cabin, Property, BreakfastOrder } from '@/types';
 import { toast, Toaster } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,15 +15,23 @@ import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-l
 import { StaysList } from '@/components/admin/stays/stays-list';
 import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog';
 import { useAuth } from '@/context/AuthContext';
+import { CommunicationsCenter } from '@/components/admin/stays/communications-center'; // IMPORTADO
+import { subDays } from 'date-fns';
 
 export default function ManageStaysPage() {
     const { isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
+    
+    // Estados para os dados
     const [pendingCheckIns, setPendingCheckIns] = useState<PreCheckIn[]>([]);
     const [activeStays, setActiveStays] = useState<Stay[]>([]);
+    const [checkedOutStays, setCheckedOutStays] = useState<Stay[]>([]);
+    const [breakfastOrders, setBreakfastOrders] = useState<BreakfastOrder[]>([]);
     const [cabins, setCabins] = useState<Cabin[]>([]);
+    const [property, setProperty] = useState<Property | undefined>(undefined);
     const [loading, setLoading] = useState(true);
 
+    // Estados para os modais
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
@@ -47,23 +55,49 @@ export default function ManageStaysPage() {
 
             const unsubscribers: firestore.Unsubscribe[] = [];
 
+            // Fetch Property
+            unsubscribers.push(firestore.onSnapshot(firestore.collection(firestoreDb, 'properties'), (snapshot) => {
+                if (!snapshot.empty) {
+                    setProperty({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Property);
+                }
+            }));
+            
+            // Fetch Pending Check-ins
             const qCheckIns = firestore.query(firestore.collection(firestoreDb, 'preCheckIns'), firestore.where('status', '==', 'pendente'));
             unsubscribers.push(firestore.onSnapshot(qCheckIns, (snapshot) => {
-                const checkInsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PreCheckIn));
-                setPendingCheckIns(checkInsData);
+                setPendingCheckIns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PreCheckIn)));
             }));
 
+            // Fetch Active Stays
             const qStays = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where('status', '==', 'active'), firestore.orderBy('checkInDate', 'asc'));
             unsubscribers.push(firestore.onSnapshot(qStays, (snapshot) => {
-                const staysData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay));
-                setActiveStays(staysData);
+                setActiveStays(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay)));
                 setLoading(false);
             }));
 
+            // Fetch Recently Checked-out Stays (for feedback)
+            const sevenDaysAgo = subDays(new Date(), 7);
+            const qCheckedOut = firestore.query(
+                firestore.collection(firestoreDb, 'stays'), 
+                firestore.where('status', '==', 'checked_out'),
+                firestore.where('checkOutDate', '>=', sevenDaysAgo.toISOString().split('T')[0]),
+                firestore.orderBy('checkOutDate', 'desc')
+            );
+            unsubscribers.push(firestore.onSnapshot(qCheckedOut, (snapshot) => {
+                setCheckedOutStays(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay)));
+            }));
+
+            // Fetch today's breakfast orders
+            const todayStr = new Date().toISOString().split('T')[0];
+            const qBreakfast = firestore.query(firestore.collection(firestoreDb, 'breakfastOrders'), firestore.where('deliveryDate', '==', todayStr));
+            unsubscribers.push(firestore.onSnapshot(qBreakfast, (snapshot) => {
+                setBreakfastOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BreakfastOrder)));
+            }));
+            
+            // Fetch Cabins
             const qCabins = firestore.query(firestore.collection(firestoreDb, 'cabins'), firestore.orderBy('posicao', 'asc'));
             unsubscribers.push(firestore.onSnapshot(qCabins, (snapshot) => {
-                const cabinsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabin));
-                setCabins(cabinsData);
+                setCabins(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabin)));
             }));
 
             return () => unsubscribers.forEach(unsub => unsub());
@@ -81,8 +115,6 @@ export default function ManageStaysPage() {
         setIsEditModalOpen(false);
         setSelectedStay(null);
     };
-
-    const memoizedActiveStays = useMemo(() => activeStays, [activeStays]);
 
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-8">
@@ -102,6 +134,17 @@ export default function ManageStaysPage() {
                 <div className="flex items-center justify-center h-64"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
             ) : (
                 <div className="flex flex-col gap-8">
+
+                    {/* NOVO COMPONENTE INTEGRADO */}
+                    <CommunicationsCenter 
+                        db={db}
+                        activeStays={activeStays}
+                        checkedOutStays={checkedOutStays}
+                        breakfastOrders={breakfastOrders}
+                        cabins={cabins}
+                        property={property}
+                    />
+
                     <Card className="shadow-md">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><FileCheck2 className="text-yellow-600"/> Pré-Check-ins Pendentes</CardTitle>
@@ -119,7 +162,7 @@ export default function ManageStaysPage() {
                         </CardHeader>
                         <CardContent>
                             <StaysList 
-                                activeStays={memoizedActiveStays}
+                                activeStays={activeStays}
                                 onEditStay={handleOpenEditModal}
                             />
                         </CardContent>
@@ -130,7 +173,14 @@ export default function ManageStaysPage() {
             <CreateStayDialog isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} cabins={cabins} db={db} />
 
             {selectedStay && db && (
-                <EditStayDialog isOpen={isEditModalOpen} onClose={handleCloseEditModal} stay={selectedStay} cabins={cabins} db={db} />
+                <EditStayDialog 
+                    isOpen={isEditModalOpen} 
+                    onClose={handleCloseEditModal} 
+                    stay={selectedStay} 
+                    cabins={cabins} 
+                    db={db}
+                    property={property}
+                />
             )}
         </div>
     );

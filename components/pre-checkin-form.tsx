@@ -199,7 +199,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                 <CardContent>
                     <p className="text-muted-foreground">Caso tenha qualquer dúvida, não hesite em nos contatar.</p>
                     <Button asChild size="lg" className="mt-6">
-                        <a href="https://wa.me/5531991096590" target="_blank" rel="noopener noreferrer">
+                        <a href="https://wa.me/554899632985" target="_blank" rel="noopener noreferrer">
                             <Phone className="mr-2 h-4 w-4" /> Entrar em contato
                         </a>
                     </Button>

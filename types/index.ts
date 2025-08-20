@@ -25,6 +25,10 @@ export interface Stay {
     general?: Timestamp;
     pet?: Timestamp;
   }
+    communicationStatus?: {
+    welcomeMessageSentAt?: Timestamp | null;
+    feedbackMessageSentAt?: Timestamp | null;
+  };
 }
 
 
@@ -363,6 +367,10 @@ export interface PropertyMessages {
     surveySuccessSubtitle: string;
     breakfastBasketClosed: string;
     breakfastBasketDefaultMessage: string;
+    whatsappPreCheckIn: string;
+    whatsappWelcome: string;
+    whatsappBreakfastReminder: string;
+    whatsappFeedbackRequest: string;
 }
 
 export interface Property {
@@ -398,3 +406,16 @@ policies?: {
 export type OrderWithStay = BreakfastOrder & {
   stayInfo?: Stay;
 };
+
+// ========================================================================
+// NOVO TIPO: Log de Mensagens Enviadas
+// ========================================================================
+export interface MessageLog {
+    id: string;
+    stayId: string;
+    guestName: string;
+    type: 'pre-check-in' | 'welcome' | 'breakfast' | 'feedback';
+    content: string;
+    copiedAt: Timestamp;
+    actor: string; // E-mail do admin que copiou a mensagem
+}

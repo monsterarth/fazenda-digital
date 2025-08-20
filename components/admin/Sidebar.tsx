@@ -1,3 +1,4 @@
+//components/admin/Sidebar.tsx
 "use client";
 
 import React from 'react';

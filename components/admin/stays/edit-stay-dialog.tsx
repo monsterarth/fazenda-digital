@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as firestore from 'firebase/firestore';
-import { Cabin, PreCheckIn, Stay } from '@/types';
+import { Cabin, PreCheckIn, Property, Stay } from '@/types';
 import { fullStaySchema, FullStayFormValues } from '@/lib/schemas/stay-schema';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -25,6 +25,8 @@ interface EditStayDialogProps {
     stay: Stay;
     cabins: Cabin[];
     db: firestore.Firestore;
+    property?: Property; // Propriedade adicionada aqui
+
 }
 
 export const EditStayDialog: React.FC<EditStayDialogProps> = ({ isOpen, onClose, stay, cabins, db }) => {

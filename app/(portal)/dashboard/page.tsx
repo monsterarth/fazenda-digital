@@ -165,7 +165,7 @@ export default function GuestDashboardPage() {
                             description="Consulte as regras."
                         />
                         <ActionCard
-                            href={`https://wa.me/${property.contact?.whatsapp || '5531991096590'}`}
+                            href={`https://wa.me/${property.contact?.whatsapp || '554899632985'}`}
                             icon={<MessageSquareHeart size={24} className="text-brand-primary" />}
                             title="Recepção"
                             description="Fale conosco."

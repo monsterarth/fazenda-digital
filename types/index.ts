@@ -393,10 +393,11 @@ policies?: {
         lastUpdatedAt: Timestamp;
       };
       pet: {
-        content: string;
-        lastUpdatedAt: Timestamp;
-      }
+          content: string;
+          lastUpdatedAt: Timestamp;
+        }
     };
+    defaultSurveyId?: string; // ID da pesquisa padrão para feedback
 }
 
 // ========================================================================

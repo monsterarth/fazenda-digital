@@ -25,13 +25,17 @@ export function CommunicationsCenter({ db, activeStays, checkedOutStays, breakfa
 
     const handleCopyToClipboard = async (message: string, logData?: Omit<MessageLog, 'id' | 'copiedAt' | 'actor' | 'content'>) => {
         if (!message) {
-            toast.error("O modelo desta mensagem está vazio. Edite-o nas configurações de 'Aparência e Textos'.");
+            toast.error("O modelo desta mensagem está vazio. Edite-o nas configurações.");
+            return;
+        }
+        if (message.includes('[Configure uma pesquisa padrão]')) {
+            toast.error("Configure uma pesquisa padrão em 'Configurações > Pesquisas' para gerar o link de avaliação.");
             return;
         }
 
         try {
             await navigator.clipboard.writeText(message);
-            toast.success("Mensagem copiada para a área de transferência!");
+            toast.success("Mensagem copiada!");
 
             if (logData && db && user?.email) {
                 await addDoc(collection(db, "messageLogs"), {
@@ -43,15 +47,11 @@ export function CommunicationsCenter({ db, activeStays, checkedOutStays, breakfa
             }
         } catch (error) {
             toast.error("Erro ao interagir com a área de transferência ou salvar histórico.");
-            console.error("Clipboard/Firestore Error:", error);
         }
     };
 
     const handleMarkAsSent = async (stayId: string, messageType: 'welcome' | 'feedback') => {
-        if (!db) {
-            toast.error("Conexão com o banco de dados perdida.");
-            return;
-        }
+        if (!db) return;
         const stayRef = doc(db, 'stays', stayId);
         const fieldToUpdate = messageType === 'welcome' 
             ? 'communicationStatus.welcomeMessageSentAt' 
@@ -107,7 +107,11 @@ export function CommunicationsCenter({ db, activeStays, checkedOutStays, breakfa
             '{portalLink}': stay ? `${window.location.origin}/?token=${stay.token}` : '',
             '{preCheckInLink}': stay ? `${window.location.origin}/pre-check-in?stayId=${stay.id}` : '[Link]',
             '{deadline}': property?.breakfast?.orderingEndTime || '20:00',
-            '{feedbackLink}': property?.contact?.googleMapsLink || '[Link de Avaliação]',
+            // INÍCIO DA ALTERAÇÃO: Geração do link mágico
+            '{feedbackLink}': property?.defaultSurveyId && stay
+                ? `${window.location.origin}/s/${property.defaultSurveyId}?token=${stay.token}`
+                : '[Configure uma pesquisa padrão]',
+            // FIM DA ALTERAÇÃO
         };
         const cabin = cabins.find(c => c.id === stay?.cabinId);
         replacements['{wifiSsid}'] = cabin?.wifiSsid || '';

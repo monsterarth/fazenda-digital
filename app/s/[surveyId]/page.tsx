@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import * as firestore from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
-import { getAuth } from "firebase/auth"; // ++ Importa o getAuth
+import { getAuth, signInWithCustomToken } from "firebase/auth";
 import { Survey, SurveyQuestion, SurveyResponse, SurveyResponseAnswer } from "@/types/survey";
 
 import { Button } from '@/components/ui/button';
@@ -14,10 +14,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from '@/components/ui/label';
 import { toast, Toaster } from 'sonner';
-import { Loader2, Send, Star, CheckCircle, Gift } from 'lucide-react';
+import { Loader2, Send, Star, CheckCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
-// (Componentes Rating5Stars e Nps0To10 não precisam de alterações)
 const Rating5Stars = ({ onChange, value }: { value: number; onChange: (value: number) => void; }) => {
     const [hover, setHover] = useState(0);
     return (
@@ -33,6 +32,7 @@ const Rating5Stars = ({ onChange, value }: { value: number; onChange: (value: nu
         </div>
     );
 };
+
 const Nps0To10 = ({ onChange, value }: { value: number; onChange: (value: number) => void; }) => {
     return (
         <div className="flex flex-wrap items-center justify-center gap-2">
@@ -45,14 +45,14 @@ const Nps0To10 = ({ onChange, value }: { value: number; onChange: (value: number
     );
 };
 
-
-export default function SurveyPage() {
+function SurveyComponent() {
     const params = useParams();
     const searchParams = useSearchParams();
     const surveyId = params.surveyId as string;
-    const stayId = searchParams.get('stayId');
+    const token = searchParams.get('token');
 
     const [db, setDb] = useState<firestore.Firestore | null>(null);
+    const [stayId, setStayId] = useState<string | null>(null);
     const [survey, setSurvey] = useState<Survey | null>(null);
     const [loading, setLoading] = useState(true);
     const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -60,26 +60,55 @@ export default function SurveyPage() {
     const [isSubmitSuccessful, setIsSubmitSuccessful] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-
     useEffect(() => {
-        const initializeDb = async () => {
-            const firestoreDb = await getFirebaseDb();
-            setDb(firestoreDb);
+        const initializeAndAuth = async () => {
+            setLoading(true);
+            try {
+                const firestoreDb = await getFirebaseDb();
+                setDb(firestoreDb);
+
+                if (!token) {
+                    setError("Link de pesquisa inválido. O token de acesso não foi encontrado.");
+                    return;
+                }
+
+                // 1. Chamar a nova API para obter o custom token
+                const authResponse = await fetch('/api/auth/survey', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token }),
+                });
+
+                if (!authResponse.ok) {
+                    const errorResult = await authResponse.json();
+                    throw new Error(errorResult.error || "Falha na autenticação para a pesquisa.");
+                }
+                
+                const { customToken, stayId: fetchedStayId } = await authResponse.json();
+                
+                // 2. Fazer login silencioso com o custom token
+                const auth = getAuth();
+                await signInWithCustomToken(auth, customToken);
+                setStayId(fetchedStayId);
+
+            } catch (authError: any) {
+                setError(authError.message || "Não foi possível validar seu acesso à pesquisa.");
+            } finally {
+                // setLoading(false) será chamado após o fetch da pesquisa
+            }
         };
-        initializeDb();
-    }, []);
+
+        initializeAndAuth();
+    }, [token]);
 
     useEffect(() => {
-        if (!db || !surveyId) return;
-
-        if (!stayId) {
-            setError("Link de pesquisa inválido. O identificador da estadia não foi encontrado. Por favor, verifique o link que você recebeu.");
-            setLoading(false);
+        if (!db || !surveyId || !stayId) {
+            // Se não há stayId após a tentativa de auth, não prosseguir
+            if(!loading && !stayId) setError("Acesso não autorizado ou link inválido.");
             return;
-        }
+        };
 
         const fetchSurvey = async () => {
-            setLoading(true);
             try {
                 const surveyRef = firestore.doc(db, 'surveys', surveyId);
                 const surveySnap = await firestore.getDoc(surveyRef);
@@ -95,8 +124,7 @@ export default function SurveyPage() {
                 const questionsData = questionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SurveyQuestion));
 
                 setSurvey({ ...surveyData, questions: questionsData });
-
-            } catch (error) {
+            } catch (fetchError) {
                 toast.error("Falha ao carregar a pesquisa.");
                 setError("Ocorreu um erro ao carregar os dados da pesquisa.");
             } finally {
@@ -105,13 +133,12 @@ export default function SurveyPage() {
         };
 
         fetchSurvey();
-    }, [db, surveyId, stayId]);
+    }, [db, surveyId, stayId, loading]);
     
     const handleAnswerChange = (questionId: string, answer: any) => {
         setAnswers(prev => ({ ...prev, [questionId]: answer }));
     };
 
-    // ++ INÍCIO DA CORREÇÃO: Lógica de envio via API ++
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const auth = getAuth();
@@ -127,7 +154,6 @@ export default function SurveyPage() {
 
         try {
             const idToken = await user.getIdToken();
-
             const responseAnswers: SurveyResponseAnswer[] = Object.entries(answers).map(([questionId, answer]) => ({
                 questionId,
                 questionText: survey.questions.find(q => q.id === questionId)?.text || 'N/A',
@@ -142,32 +168,26 @@ export default function SurveyPage() {
 
             const response = await fetch('/api/surveys', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ responseData })
             });
 
-            const result = await response.json();
             if (!response.ok) {
+                const result = await response.json();
                 throw new Error(result.error || "Não foi possível registrar suas respostas.");
             }
             
             toast.success("Obrigado pelo seu feedback!", { id: toastId });
             setIsSubmitSuccessful(true);
-
         } catch (error: any) {
-            console.error("Submission Error:", error);
             toast.error("Ocorreu um erro ao enviar suas respostas.", { id: toastId, description: error.message });
         } finally {
             setIsSubmitting(false);
         }
     };
-    // ++ FIM DA CORREÇÃO ++
 
     if (loading) {
-        return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Carregando...</div>;
+        return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /> Validando acesso e carregando...</div>;
     }
 
     if (error) {
@@ -175,7 +195,7 @@ export default function SurveyPage() {
     }
 
     if (!survey) {
-        return <div className="flex h-screen w-full items-center justify-center text-red-500">Pesquisa não encontrada ou inválida.</div>;
+        return <div className="flex h-screen w-full items-center justify-center text-red-500">Pesquisa não encontrada.</div>;
     }
     
     if (isSubmitSuccessful) {
@@ -188,17 +208,9 @@ export default function SurveyPage() {
                         </div>
                         <CardTitle className="text-3xl mt-4">Agradecemos sua contribuição!</CardTitle>
                         <CardDescription>
-                            Sua opinião é muito valiosa para nós e nos ajudará a melhorar continuamente nossos serviços.
+                            Sua opinião é muito valiosa para nós e nos ajudará a melhorar continuamente.
                         </CardDescription>
                     </CardHeader>
-                    {survey.reward?.hasReward && (
-                         <CardContent>
-                             <div className="mt-4 p-4 bg-green-50 text-green-800 rounded-md">
-                                 <p className="font-bold text-lg">{survey.reward.type}</p>
-                                 <p>{survey.reward.description}</p>
-                             </div>
-                         </CardContent>
-                    )}
                 </Card>
             </div>
         )
@@ -238,17 +250,20 @@ export default function SurveyPage() {
                                                             {question.allowMultiple ? (
                                                                 <>
                                                                     <Checkbox id={`${question.id}-${option}`} checked={answers[question.id]?.includes(option) || false} onCheckedChange={(checked) => {
-                                                                            const current = answers[question.id] || [];
-                                                                            const newAnswers = checked ? [...current, option] : current.filter((item: string) => item !== option);
-                                                                            handleAnswerChange(question.id, newAnswers);
-                                                                        }}
-                                                                    />
+                                                                        const current = answers[question.id] || [];
+                                                                        const newAnswers = checked ? [...current, option] : current.filter((item: string) => item !== option);
+                                                                        handleAnswerChange(question.id, newAnswers);
+                                                                    }} />
                                                                     <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
                                                                 </>
                                                             ) : (
                                                                 <div className="flex items-center space-x-2">
-                                                                    <RadioGroupItem value={option} id={`${question.id}-${option}`} checked={answers[question.id] === option} onClick={() => handleAnswerChange(question.id, option)} />
-                                                                    <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+                                                                    <RadioGroup value={answers[question.id]} onValueChange={(val) => handleAnswerChange(question.id, val)}>
+                                                                       <div className="flex items-center space-x-2">
+                                                                            <RadioGroupItem value={option} id={`${question.id}-${option}`} />
+                                                                            <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+                                                                        </div>
+                                                                    </RadioGroup>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -268,5 +283,14 @@ export default function SurveyPage() {
                 </Card>
             </div>
         </div>
+    );
+}
+
+// O componente principal agora usa Suspense para lidar com useSearchParams
+export default function SurveyPageWrapper() {
+    return (
+        <Suspense fallback={<div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>}>
+            <SurveyComponent />
+        </Suspense>
     );
 }

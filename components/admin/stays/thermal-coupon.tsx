@@ -4,11 +4,10 @@
 
 import React, { forwardRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Stay } from '@/types'; // Usando o tipo 'Stay' existente
+import { Stay } from '@/types';
 
 interface ThermalCouponProps {
   stay: Stay;
-  // A URL do QR Code e informações da propriedade são passadas como props separadas
   qrUrl: string; 
   propertyLogoUrl?: string;
   propertyName?: string;
@@ -25,16 +24,13 @@ export const ThermalCoupon = forwardRef<HTMLDivElement, ThermalCouponProps>((
         <h1 style={styles.headerTitle}>{propertyName}</h1>
       )}
 
-      {/* Usando os campos corretos do tipo 'Stay' */}
       <p style={styles.text}>Hóspede: <strong>{stay.guestName}</strong></p>
       <p style={styles.text}>Cabana: <strong>{stay.cabinName}</strong></p>
       
       <p style={styles.label}>Seu Código de Acesso:</p>
-      {/* Usando o campo 'token' do tipo 'Stay' */}
       <p style={styles.accessCode}>{stay.token}</p>
       
       <div style={styles.qrSection}>
-        {/* A qrUrl agora é recebida via props, garantindo que a lógica da página principal a controle */}
         <QRCodeSVG value={qrUrl} size={128} />
         <p style={styles.qrLabel}>Aponte a câmera para acessar</p>
       </div>
@@ -46,43 +42,44 @@ export const ThermalCoupon = forwardRef<HTMLDivElement, ThermalCouponProps>((
 
 ThermalCoupon.displayName = 'ThermalCoupon';
 
-// Estilos otimizados para um cupom compacto
+// Estilos ajustados para melhor legibilidade na impressão
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
     fontFamily: "'Courier New', Courier, monospace",
-    width: '280px',
-    padding: '10px 12px',
+    width: '280px', // Aproximadamente 75mm, bom para papel de 80mm
+    padding: '10px 0px', // Reduzido padding lateral
     color: '#000',
     backgroundColor: '#fff',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
-    boxSizing: 'border-box'
+    boxSizing: 'content-box'
   },
   headerTitle: {
-    fontSize: '1.1rem',
+    fontSize: '14pt', // Tamanho aumentado
     fontWeight: 'bold',
-    margin: '0 0 8px 0',
+    margin: '0 0 10px 0',
   },
   text: {
-    fontSize: '0.8rem',
-    margin: '1px 0',
-    alignSelf: 'flex-start'
+    fontSize: '11pt', // Tamanho aumentado
+    margin: '2px 0',
+    alignSelf: 'flex-start',
+    paddingLeft: '12px'
   },
   label: {
-    fontSize: '0.8rem',
-    margin: '10px 0 2px 0',
+    fontSize: '11pt', // Tamanho aumentado
+    margin: '12px 0 4px 0',
   },
   accessCode: {
-    fontSize: '2rem',
+    fontSize: '24pt', // Tamanho aumentado
     fontWeight: 'bold',
-    letterSpacing: '0.3rem',
-    margin: '0 0 10px 0',
-    padding: '4px',
+    letterSpacing: '0.2rem',
+    margin: '0 0 12px 0',
+    padding: '5px',
     backgroundColor: '#f0f0f0',
     borderRadius: '4px',
-    width: '100%',
+    width: 'calc(100% - 24px)', // Ajustado para padding
     boxSizing: 'border-box'
   },
   qrSection: {
@@ -90,13 +87,14 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   qrLabel: {
     marginTop: '4px',
-    fontSize: '0.75rem',
+    fontSize: '10pt', // Tamanho aumentado
   },
   footer: {
-    marginTop: '10px',
-    fontSize: '0.8rem',
+    marginTop: '12px',
+    fontSize: '10pt', // Tamanho aumentado
     borderTop: '1px dashed #ccc',
-    paddingTop: '5px',
-    width: '100%',
+    paddingTop: '8px',
+    width: 'calc(100% - 24px)', // Ajustado para padding
+    boxSizing: 'content-box'
   }
 };

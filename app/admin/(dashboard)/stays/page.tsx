@@ -14,6 +14,20 @@ import { StaysList } from '@/components/admin/stays/stays-list';
 import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog';
 import { useAuth } from '@/context/AuthContext';
 
+const pageStyle = `
+  @page {
+    size: auto;
+    margin: 0mm;
+  }
+  @media print {
+    html, body {
+      height: initial !important;
+      overflow: initial !important;
+      -webkit-print-color-adjust: exact;
+    }
+  }
+`;
+
 export default function ManageStaysPage() {
     const { isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);

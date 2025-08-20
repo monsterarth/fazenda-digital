@@ -1,5 +1,3 @@
-// lib/activity-logger.ts
-
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, WriteBatch, doc } from 'firebase/firestore';
 
@@ -9,11 +7,12 @@ type ActivityActor = {
   identifier: string; // Nome do Hóspede ou Email do Admin
 };
 
-// ++ INÍCIO DA ALTERAÇÃO ++
 export type ActivityLogData = {
   type: 
     | 'checkin_submitted' 
     | 'stay_created_manually' 
+    | 'checkin_validated' 
+    | 'checkin_rejected'
     | 'cafe_ordered' 
     | 'booking_requested'
     | 'booking_confirmed'
@@ -21,15 +20,11 @@ export type ActivityLogData = {
     | 'booking_created_by_admin'
     | 'booking_cancelled_by_admin'
     | 'booking_cancelled_by_guest'
-    | 'survey_submitted'
-    | 'stay_ended' // <-- NOVO TIPO ADICIONADO
-    | 'stay_token_updated'; // <-- NOVO TIPO ADICIONADO
+    | 'survey_submitted';
   actor: ActivityActor;
-  details: string; // Ex: "Pré-check-in de João da Silva"
-  link: string;   // Ex: "/admin/stays"
+  details: string; 
+  link: string;
 };
-// ++ FIM DA ALTERAÇÃO ++
-
 /**
  * Adiciona uma operação de criação de log a um batch do Firestore.
  * @param batch O batch de escrita do Firestore ao qual a operação será adicionada.

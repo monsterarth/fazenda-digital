@@ -14,10 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast, Toaster } from 'sonner';
-import { Utensils, CalendarCheck, UserPlus, Info, Loader2, Settings, ShieldX, UserCheck } from 'lucide-react';
+import { Utensils, CalendarCheck, UserPlus, Info, Loader2, Settings, ShieldX, UserCheck, Star, Trash2, CalendarX, KeyRound, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 const breakfastSettingsSchema = z.object({
     type: z.enum(['on-site', 'delivery']),
@@ -26,18 +27,31 @@ const breakfastSettingsSchema = z.object({
 });
 type BreakfastSettingsFormValues = z.infer<typeof breakfastSettingsSchema>;
 
-// ++ INÍCIO DA CORREÇÃO: Tipo de log expandido ++
+// ++ INÍCIO DA CORREÇÃO: Adiciona os novos tipos de log ao tipo principal ++
 type ActivityLog = {
     id: string;
     timestamp: Timestamp;
-    type: 'cafe_ordered' | 'booking_requested' | 'checkin_submitted' | 'checkin_validated' | 'checkin_rejected';
+    type: 
+      | 'cafe_ordered' 
+      | 'booking_requested' 
+      | 'checkin_submitted' 
+      | 'checkin_validated' 
+      | 'checkin_rejected' 
+      | 'booking_confirmed' 
+      | 'booking_declined' 
+      | 'booking_created_by_admin' 
+      | 'booking_cancelled_by_admin' 
+      | 'booking_cancelled_by_guest' 
+      | 'survey_submitted' 
+      | 'stay_created_manually'
+      | 'stay_ended'
+      | 'stay_token_updated';
     actor: { type: 'guest' | 'admin'; identifier: string; };
     details: string;
     link: string;
 };
 // ++ FIM DA CORREÇÃO ++
 
-// O componente BreakfastSettingsModal não precisa de alterações.
 const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boolean, onClose: () => void, propertyInfo: Property | null }) => {
     if (!propertyInfo?.breakfast) return null;
     const form = useForm<BreakfastSettingsFormValues>({
@@ -68,19 +82,36 @@ const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boo
     );
 };
 
-
 const DashboardStatCard = ({ title, value, icon, link, description }: { title: string, value: number, icon: React.ReactNode, link: string, description: string }) => (
     <Link href={link} className="block"><Card className="hover:border-primary transition-colors h-full"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">{title}</CardTitle>{icon}</CardHeader><CardContent><div className="text-2xl font-bold">{value}</div><p className="text-xs text-muted-foreground">{description}</p></CardContent></Card></Link>
 );
 
-// ++ INÍCIO DA CORREÇÃO: Mapeamento de tipos de log para ícones e títulos ++
-const activityTypeMap = {
-    cafe_ordered: { icon: <Utensils className="h-5 w-5" />, title: "Novo Pedido de Café" },
-    booking_requested: { icon: <CalendarCheck className="h-5 w-5" />, title: "Novo Agendamento" },
-    checkin_submitted: { icon: <UserPlus className="h-5 w-5" />, title: "Pré-Check-in Recebido" },
-    checkin_validated: { icon: <UserCheck className="h-5 w-5 text-green-600" />, title: "Check-in Validado" },
-    checkin_rejected: { icon: <ShieldX className="h-5 w-5 text-red-600" />, title: "Check-in Recusado" },
-    default: { icon: <Info className="h-5 w-5" />, title: "Nova Atividade" }
+// ++ INÍCIO DA CORREÇÃO: Mapa visual completo para os logs, incluindo os novos tipos ++
+const activityTypeMap: Record<ActivityLog['type'] | 'default', { icon: React.ReactNode; title: string; color: string; }> = {
+    // Ações de Hóspedes (Azul/Amarelo)
+    checkin_submitted: { icon: <UserPlus className="h-5 w-5" />, title: "Pré-Check-in Recebido", color: "bg-blue-100 text-blue-800" },
+    cafe_ordered: { icon: <Utensils className="h-5 w-5" />, title: "Novo Pedido de Café", color: "bg-blue-100 text-blue-800" },
+    booking_requested: { icon: <CalendarCheck className="h-5 w-5" />, title: "Novo Agendamento", color: "bg-blue-100 text-blue-800" },
+    survey_submitted: { icon: <Star className="h-5 w-5" />, title: "Nova Avaliação", color: "bg-blue-100 text-blue-800" },
+    booking_cancelled_by_guest: { icon: <CalendarX className="h-5 w-5" />, title: "Agend. Cancelado (Hósp.)", color: "bg-yellow-100 text-yellow-800" },
+    
+    // Ações de Admin - Positivas (Verde)
+    checkin_validated: { icon: <UserCheck className="h-5 w-5" />, title: "Check-in Validado", color: "bg-green-100 text-green-800" },
+    stay_created_manually: { icon: <UserPlus className="h-5 w-5" />, title: "Estadia Criada", color: "bg-green-100 text-green-800" },
+    booking_confirmed: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Confirmado", color: "bg-green-100 text-green-800" },
+    booking_created_by_admin: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Criado", color: "bg-green-100 text-green-800" },
+
+    // Ações de Admin - Negativas (Vermelho)
+    checkin_rejected: { icon: <ShieldX className="h-5 w-5" />, title: "Check-in Recusado", color: "bg-red-100 text-red-800" },
+    booking_declined: { icon: <CalendarX className="h-5 w-5" />, title: "Agendamento Recusado", color: "bg-red-100 text-red-800" },
+    booking_cancelled_by_admin: { icon: <Trash2 className="h-5 w-5" />, title: "Agend. Cancelado (Admin)", color: "bg-red-100 text-red-800" },
+    stay_ended: { icon: <LogOut className="h-5 w-5" />, title: "Estadia Encerrada", color: "bg-red-100 text-red-800" },
+
+    // Ações de Admin - Informativas (Roxo)
+    stay_token_updated: { icon: <KeyRound className="h-5 w-5" />, title: "Token Alterado", color: "bg-purple-100 text-purple-800" },
+
+    // Padrão
+    default: { icon: <Info className="h-5 w-5" />, title: "Nova Atividade", color: "bg-muted text-muted-foreground" }
 };
 // ++ FIM DA CORREÇÃO ++
 
@@ -92,7 +123,6 @@ export default function DashboardPage() {
     const [isBreakfastModalOpen, setIsBreakfastModalOpen] = useState(false);
 
     useEffect(() => {
-        // Listeners para as estatísticas (cards do topo)
         const qOrders = query(collection(db, "breakfastOrders"), where("status", "==", "pending"));
         const qBookings = query(collection(db, "bookings"), where("status", "==", "solicitado"));
         const qCheckIns = query(collection(db, "preCheckIns"), where("status", "==", "pendente"));
@@ -101,28 +131,23 @@ export default function DashboardPage() {
         const unsubBookingsStats = onSnapshot(qBookings, (snapshot) => setStats(prev => ({ ...prev, pendingBookings: snapshot.size })));
         const unsubCheckInsStats = onSnapshot(qCheckIns, (snapshot) => setStats(prev => ({ ...prev, pendingCheckIns: snapshot.size })));
 
-        // ++ INÍCIO DA CORREÇÃO: Listener único para o feed de atividades ++
         const qLogs = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"), limit(20));
         const unsubLogs = onSnapshot(qLogs, (snapshot) => {
             const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog));
             setActivityFeed(logs);
             if(loading) setLoading(false);
         });
-        // ++ FIM DA CORREÇÃO ++
         
-        // Listener para as informações da propriedade
         const unsubProp = onSnapshot(doc(db, 'properties', 'default'), (doc) => {
             if (doc.exists()) setPropertyInfo(doc.data() as Property);
         });
         
         return () => {
-            unsubOrdersStats(); 
-            unsubBookingsStats(); 
-            unsubCheckInsStats();
+            unsubOrdersStats(); unsubBookingsStats(); unsubCheckInsStats();
             unsubLogs();
             unsubProp();
         };
-    }, []);
+    }, []); 
     
     if (loading) {
         return <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin"/></div>
@@ -171,16 +196,15 @@ export default function DashboardPage() {
                             <CardContent>
                                 {activityFeed.length > 0 ? (
                                     <div className="space-y-4">
-                                        {/* ++ INÍCIO DA CORREÇÃO: Renderização dinâmica do feed de logs ++ */}
                                         {activityFeed.map(log => {
-                                            const activityInfo = activityTypeMap[log.type as keyof typeof activityTypeMap] || activityTypeMap.default;
+                                            const activityInfo = activityTypeMap[log.type] || activityTypeMap.default;
                                             const description = log.actor.type === 'admin' 
                                                 ? `${log.details} por ${log.actor.identifier}`
                                                 : log.details;
 
                                             return (
                                                 <Link href={log.link} key={log.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-muted/50 transition-colors">
-                                                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                                                    <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", activityInfo.color)}>
                                                         {activityInfo.icon}
                                                     </div>
                                                     <div className="ml-4 space-y-1">
@@ -193,7 +217,6 @@ export default function DashboardPage() {
                                                 </Link>
                                             )
                                         })}
-                                        {/* ++ FIM DA CORREÇÃO ++ */}
                                     </div>
                                 ) : (
                                     <p className="text-sm text-center text-muted-foreground py-8">Nenhuma atividade recente para exibir.</p>

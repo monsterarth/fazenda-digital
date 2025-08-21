@@ -1,6 +1,6 @@
 // types/guest.ts
 
-import { Address } from '.'; // Importando o tipo Address já existente
+import { Address, Timestamp } from '.'; // Importando o tipo Address já existente
 
 export interface Guest {
   id: string; // ID do documento no Firestore
@@ -11,7 +11,7 @@ export interface Guest {
   address: Address;
   isForeigner: boolean;
   country?: string;
-  createdAt: number; // Timestamp da primeira estadia
-  updatedAt: number; // Timestamp da última atualização
+  createdAt: Timestamp; // Timestamp da primeira estadia
+  updatedAt: Timestamp; // Timestamp da última atualização
   stayHistory: string[]; // Array com os IDs das estadias
 }

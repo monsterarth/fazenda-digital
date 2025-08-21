@@ -1,9 +1,8 @@
-//components/admin/stays/pending-checkins-list.tsx
+// components/admin/stays/pending-checkins-list.tsx
 "use client";
 
 import React, { useState } from 'react';
-import * as firestore from 'firebase/firestore';
-import { PreCheckIn, Stay, Cabin } from '@/types';
+import { PreCheckIn, Cabin } from '@/types';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,7 +19,6 @@ import { Loader2, CalendarIcon, Users, Edit, KeyRound, PawPrint, User, Home, Car
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 import { ScrollArea } from '@/components/ui/scroll-area';
-// ++ INÍCIO DA CORREÇÃO: `AlertDialogTrigger` foi re-adicionado à importação ++
 import {
     AlertDialog,
     AlertDialogAction,
@@ -32,32 +30,26 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-// ++ FIM DA CORREÇÃO ++
 import { useAuth } from '@/context/AuthContext';
+import { validateCheckinAction } from '@/app/actions/validate-checkin'; // ++ ADICIONADO ++
 
 const validationSchema = z.object({
     cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
     dates: z.object({
-        from: z.date().refine(val => !!val, { message: "Data de check-in é obrigatória." }),
-        to: z.date().refine(val => !!val, { message: "Data de check-out é obrigatória." }),
+        from: z.date({ required_error: "Data de check-in é obrigatória." }),
+        to: z.date({ required_error: "Data de check-out é obrigatória." }),
     }),
 });
 
 type ValidationFormValues = z.infer<typeof validationSchema>;
 
-const generateToken = (): string => {
-    const min = 100000;
-    const max = 999999;
-    return Math.floor(Math.random() * (max - min + 1) + min).toString();
-};
-
 interface PendingCheckInsListProps {
-    db: firestore.Firestore | null;
     pendingCheckIns: PreCheckIn[];
     cabins: Cabin[];
+    // A prop 'db' foi removida
 }
 
-export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pendingCheckIns, cabins }) => {
+export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ pendingCheckIns, cabins }) => {
     const { user } = useAuth(); 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCheckIn, setSelectedCheckIn] = useState<PreCheckIn | null>(null);
@@ -76,77 +68,26 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
     };
 
     const handleValidateStay: SubmitHandler<ValidationFormValues> = async (data) => {
-        if (!db || !selectedCheckIn || !data.dates.from || !data.dates.to) return;
+        if (!selectedCheckIn || !user?.email) {
+            return toast.error("Dados da sessão inválidos. Por favor, recarregue a página.");
+        }
+        
         const toastId = toast.loading("Validando estadia...");
-        try {
-            const selectedCabin = cabins.find(c => c.id === data.cabinId);
-            if (!selectedCabin) throw new Error("Cabana não encontrada.");
-            
-            const batch = firestore.writeBatch(db);
-            const stayRef = firestore.doc(firestore.collection(db, 'stays'));
-            
-            const newStay: Omit<Stay, 'id'> = {
-                guestName: selectedCheckIn.leadGuestName,
-                cabinId: selectedCabin.id,
-                cabinName: selectedCabin.name,
-                checkInDate: data.dates.from.toISOString(),
-                checkOutDate: data.dates.to.toISOString(),
-                numberOfGuests: 1 + (selectedCheckIn.companions?.length || 0),
-                token: generateToken(),
-                status: 'active',
-                preCheckInId: selectedCheckIn.id,
-                createdAt: firestore.Timestamp.now(), // Alterado de string para Timestamp
-                pets: selectedCheckIn.pets || [],
-            };
-            batch.set(stayRef, newStay);
-            
-            const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);
-            batch.update(preCheckInRef, { status: 'validado', stayId: stayRef.id });
+        
+        const result = await validateCheckinAction(selectedCheckIn.id, data, user.email);
 
-            const logRef = firestore.doc(firestore.collection(db, 'activity_logs'));
-            batch.set(logRef, {
-                timestamp: firestore.serverTimestamp(),
-                type: 'checkin_validated',
-                actor: { type: 'admin', identifier: user?.email || 'Admin' },
-                details: `Pré-check-in de ${selectedCheckIn.leadGuestName} validado.`,
-                link: '/admin/stays'
-            });
-
-            await batch.commit();
-            
-            toast.success("Estadia validada com sucesso!", { id: toastId, description: `Token: ${newStay.token}` });
+        if (result.success) {
+            toast.success(result.message, { id: toastId, description: `Token: ${result.token}` });
             setIsModalOpen(false);
             setSelectedCheckIn(null);
-        } catch (error: any) {
-            toast.error("Falha ao validar.", { id: toastId, description: error.message });
+        } else {
+            toast.error("Falha ao validar.", { id: toastId, description: result.message });
         }
     };
     
+    // A função handleRejectStay também pode ser movida para uma Server Action no futuro
     const handleRejectStay = async () => {
-        if (!db || !selectedCheckIn) return;
-        const toastId = toast.loading("Recusando pré-check-in...");
-        try {
-            const batch = firestore.writeBatch(db);
-
-            const preCheckInRef = firestore.doc(db, 'preCheckIns', selectedCheckIn.id);
-            batch.update(preCheckInRef, { status: 'recusado' });
-
-            const logRef = firestore.doc(firestore.collection(db, 'activity_logs'));
-            batch.set(logRef, {
-                timestamp: firestore.serverTimestamp(),
-                type: 'checkin_rejected',
-                actor: { type: 'admin', identifier: user?.email || 'Admin' },
-                details: `Pré-check-in de ${selectedCheckIn.leadGuestName} foi recusado.`,
-                link: '/admin/stays'
-            });
-
-            await batch.commit();
-            toast.success("Pré-check-in recusado e arquivado.", { id: toastId });
-            setIsModalOpen(false);
-            setSelectedCheckIn(null);
-        } catch (error: any) {
-            toast.error("Falha ao recusar o pré-check-in.", { id: toastId, description: error.message });
-        }
+       toast.info("Funcionalidade de recusa em desenvolvimento.");
     };
 
     return (

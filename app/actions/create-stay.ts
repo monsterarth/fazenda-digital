@@ -87,8 +87,8 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
             address: { ...data.address, country: data.address.country ?? (data.isForeigner ? (data.country || 'N/A') : 'Brasil') },
             isForeigner: data.isForeigner,
             country: data.country,
-            createdAt: checkInTimestamp.toMillis(),
-            updatedAt: checkInTimestamp.toMillis(),
+            createdAt: checkInTimestamp, // ++ CORREÇÃO: Salva o objeto Timestamp
+            updatedAt: checkInTimestamp, // ++ CORREÇÃO: Salva o objeto Timestamp
             stayHistory: [stayRef.id],
         };
         batch.set(guestRef, newGuest);

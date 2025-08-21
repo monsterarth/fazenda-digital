@@ -243,12 +243,18 @@ export interface Cabin {
 // ========================================================================
 // 6. TIPOS DE APOIO E LEGADOS
 // ========================================================================
-export type Timestamp = {
+// ++ INÍCIO DA CORREÇÃO ++
+// Esta interface representa o objeto Timestamp COMPLETO do Firebase
+interface FirestoreTimestamp {
   seconds: number;
   nanoseconds: number;
   toDate(): Date;
   toMillis(): number;
-} | number;
+}
+
+// Nosso tipo 'Timestamp' agora pode ser o objeto completo OU um número (para o cliente)
+export type Timestamp = FirestoreTimestamp | number;
+// ++ FIM DA CORREÇÃO ++
 
 export interface HotDish {
   id: string;

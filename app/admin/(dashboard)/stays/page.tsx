@@ -60,7 +60,7 @@ export default async function ManageStaysPage() {
                             <CardDescription>Hóspedes que preencheram o formulário e aguardam validação.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <PendingCheckInsList pendingCheckIns={pendingCheckIns} cabins={cabins} db={null} />
+                            <PendingCheckInsList pendingCheckIns={pendingCheckIns} cabins={cabins} />
                         </CardContent>
                     </Card>
                 </TabsContent>

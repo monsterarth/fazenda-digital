@@ -29,7 +29,11 @@ import {
   PlusCircle 
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { useModal } from '@/hooks/use-modal-store'; // ++ ADICIONADO: Import do nosso hook
+import { useModal } from '@/hooks/use-modal-store';
+// ++ INÍCIO DA CORREÇÃO ++
+import { getMillisFromTimestamp } from '@/lib/utils'; // Importa a nossa função auxiliar
+// ++ FIM DA CORREÇÃO ++
+
 
 interface GuestsListProps {
   initialGuests: Guest[];
@@ -38,7 +42,7 @@ interface GuestsListProps {
 export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
   const [guests, setGuests] = useState<Guest[]>(initialGuests);
   const [searchTerm, setSearchTerm] = useState('');
-  const { onOpen } = useModal(); // ++ ADICIONADO: Hook para abrir o modal
+  const { onOpen } = useModal();
 
   const filteredGuests = useMemo(() => {
     const lowercasedFilter = searchTerm.toLowerCase();
@@ -50,8 +54,6 @@ export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
       guest.email.toLowerCase().includes(lowercasedFilter)
     );
   }, [guests, searchTerm]);
-
-  // A função 'handleCreateStayForGuest' foi removida, pois agora chamamos 'onOpen' diretamente.
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
@@ -95,7 +97,9 @@ export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
                   </TableCell>
                   <TableCell className="text-center">{guest.stayHistory?.length || 0}</TableCell>
                   <TableCell>
-                    {guest.updatedAt ? format(new Date(guest.updatedAt), 'dd/MM/yyyy') : '-'}
+                    {/* ++ INÍCIO DA CORREÇÃO: Usando a função getMillisFromTimestamp ++ */}
+                    {guest.updatedAt ? format(new Date(getMillisFromTimestamp(guest.updatedAt)), 'dd/MM/yyyy') : '-'}
+                    {/* ++ FIM DA CORREÇÃO ++ */}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -106,12 +110,10 @@ export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        {/* ++ INÍCIO DA ALTERAÇÃO: Chamando onOpen com os dados do hóspede ++ */}
                         <DropdownMenuItem onClick={() => onOpen('createStay', { guest })}>
                           <PlusCircle className="mr-2 h-4 w-4" />
                           Criar Nova Estadia
                         </DropdownMenuItem>
-                        {/* ++ FIM DA ALTERAÇÃO ++ */}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

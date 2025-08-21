@@ -109,7 +109,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {isForeigner ? (
                             <>
-                                <FormField name="country" control={form.control} render={({ field }) => (<FormItem><FormLabel>País</FormLabel><Select onValuechange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl><SelectContent>{countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                <FormField name="country" control={form.control} render={({ field }) => (<FormItem><FormLabel>País</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl><SelectContent>{countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                                 <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>Passaporte / Documento</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             </>
                         ) : (

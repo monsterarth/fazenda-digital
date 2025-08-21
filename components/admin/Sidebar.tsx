@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, BedDouble, Coffee, Calendar, BarChart2, Settings, LogOut,
-    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield
+    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield, Users, Cog 
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getAuth, signOut } from 'firebase/auth';
@@ -25,6 +25,7 @@ import { useProperty } from '@/context/PropertyContext'; // ++ Importa o hook do
 const mainNavItems = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/stays', label: 'Estadias', icon: BedDouble },
+    { href: "/admin/hospedes", label: "Hóspedes", icon: Users },
     { href: '/admin/pedidos/cafe', label: 'Pedidos Café', icon: Coffee },
     { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
     { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },

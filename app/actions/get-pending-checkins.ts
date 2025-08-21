@@ -3,19 +3,20 @@
 
 import { adminDb } from '@/lib/firebase-admin';
 import { PreCheckIn } from '@/types';
-import { serializeFirestoreTimestamps } from '@/lib/utils'; // ++ ADICIONADO ++
 
 export async function getPendingCheckIns(): Promise<PreCheckIn[]> {
   try {
-    const preCheckInsRef = adminDb.collection('preCheckIns');
-    const snapshot = await preCheckInsRef.where('status', '==', 'pendente').get();
+    const snapshot = await adminDb
+      .collection('preCheckIns')
+      .where('status', '==', 'pendente')
+      .get();
 
     if (snapshot.empty) return [];
 
     const checkins = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // ++ CORREÇÃO: Usando a nova função de serialização ++
-    return serializeFirestoreTimestamps(checkins);
+    // ++ CORREÇÃO: Usando JSON stringify/parse para garantir a serialização completa ++
+    return JSON.parse(JSON.stringify(checkins));
   } catch (error) {
     console.error("Erro ao buscar pré-check-ins pendentes:", error);
     return [];

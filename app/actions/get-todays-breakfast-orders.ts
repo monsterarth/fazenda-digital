@@ -3,7 +3,6 @@
 
 import { adminDb } from '@/lib/firebase-admin';
 import { BreakfastOrder } from '@/types';
-import { serializeFirestoreTimestamps } from '@/lib/utils'; // ++ ADICIONADO ++
 
 export async function getTodaysBreakfastOrders(): Promise<BreakfastOrder[]> {
   try {
@@ -15,8 +14,8 @@ export async function getTodaysBreakfastOrders(): Promise<BreakfastOrder[]> {
 
     const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // ++ CORREÇÃO: Usando a nova função de serialização ++
-    return serializeFirestoreTimestamps(orders);
+    // ++ CORREÇÃO: Usando JSON stringify/parse para garantir a serialização completa ++
+    return JSON.parse(JSON.stringify(orders));
   } catch (error) {
     console.error("Erro ao buscar pedidos de café de hoje:", error);
     return [];

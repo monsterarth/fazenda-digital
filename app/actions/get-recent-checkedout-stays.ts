@@ -3,27 +3,26 @@
 
 import { adminDb } from '@/lib/firebase-admin';
 import { Stay } from '@/types';
-// Removed client SDK imports; use Admin SDK methods instead
+// Removed Firestore client SDK imports; use Admin SDK methods instead
 import { subDays } from 'date-fns';
-import { serializeFirestoreTimestamps } from '@/lib/utils'; // ++ ADICIONADO ++
 
 export async function getRecentCheckedOutStays(): Promise<Stay[]> {
   try {
     const sevenDaysAgo = subDays(new Date(), 7);
     const staysRef = adminDb.collection('stays');
     const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
-    const querySnapshot = await staysRef
+    const snapshot = await staysRef
       .where('status', '==', 'checked_out')
       .where('checkOutDate', '>=', sevenDaysAgoStr)
       .orderBy('checkOutDate', 'desc')
       .get();
 
-    if (querySnapshot.empty) return [];
+    if (snapshot.empty) return [];
 
-    const stays = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const stays = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // ++ CORREÇÃO: Usando a nova função de serialização ++
-    return serializeFirestoreTimestamps(stays);
+    // ++ CORREÇÃO: Usando JSON stringify/parse para garantir a serialização completa ++
+    return JSON.parse(JSON.stringify(stays));
   } catch (error) {
     console.error("Erro ao buscar estadias com check-out recente:", error);
     return [];

@@ -13,7 +13,10 @@ export async function getCabins(): Promise<Cabin[]> {
       return [];
     }
 
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabin));
+    const cabins = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabin));
+
+    // ++ CORREÇÃO: Usando JSON stringify/parse para garantir a serialização completa ++
+    return JSON.parse(JSON.stringify(cabins));
   } catch (error) {
     console.error("Erro ao buscar cabanas:", error);
     return [];

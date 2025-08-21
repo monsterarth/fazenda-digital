@@ -1,47 +1,52 @@
 // app/admin/(dashboard)/hospedes/page.tsx
 
-import { adminDb } from '@/lib/firebase-admin';
+"use client"; // Converte a página para um Componente de Cliente
+
+import React, { useState, useEffect } from 'react';
 import { Guest } from '@/types/guest';
 import { GuestsList } from '@/components/admin/guests/guests-list';
+import { getFirebaseDb } from '@/lib/firebase';
+import * as firestore from 'firebase/firestore';
+import { Loader2 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
-// Função para buscar os hóspedes no lado do servidor com tratamento de erro robusto
-async function getGuests(): Promise<Guest[]> {
-  try {
-    const guestsRef = adminDb.collection('guests');
-    const querySnapshot = await guestsRef.get();
+export default function GuestsPage() {
+    const { isAdmin } = useAuth();
+    const [guests, setGuests] = useState<Guest[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    if (querySnapshot.empty) {
-      return [];
+    useEffect(() => {
+        if (!isAdmin) {
+            setLoading(false);
+            return;
+        }
+
+        const initializeListener = async () => {
+            const db = await getFirebaseDb();
+            const guestsRef = firestore.collection(db, 'guests');
+            const q = firestore.query(guestsRef, firestore.orderBy('name', 'asc'));
+
+            const unsubscribe = firestore.onSnapshot(q, (querySnapshot) => {
+                const guestsData = querySnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                } as Guest));
+                setGuests(guestsData);
+                setLoading(false);
+            });
+
+            // Função de limpeza para remover o listener
+            return () => unsubscribe();
+        };
+
+        initializeListener();
+    }, [isAdmin]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
+        );
     }
-
-    const guests = querySnapshot.docs.map(doc => {
-      const data = doc.data();
-      
-      // ++ INÍCIO DA CORREÇÃO: Lida com ambos os formatos de data ++
-      // Se for um objeto Timestamp, converte para milissegundos.
-      // Se já for um número, usa o próprio número.
-      const createdAt = data.createdAt?.toMillis ? data.createdAt.toMillis() : data.createdAt;
-      const updatedAt = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : data.updatedAt;
-      // ++ FIM DA CORREÇÃO ++
-
-      return {
-        id: doc.id,
-        ...data,
-        createdAt,
-        updatedAt,
-      };
-    });
     
-    return guests as unknown as Guest[];
-
-  } catch (error) {
-    console.error("Falha ao buscar hóspedes no servidor:", error);
-    return [];
-  }
-}
-
-export default async function GuestsPage() {
-  const guests = await getGuests();
-  
-  return <GuestsList initialGuests={guests} />;
+    return <GuestsList initialGuests={guests} />;
 }

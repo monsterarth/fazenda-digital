@@ -2,13 +2,13 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React,  { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Stay } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Edit, Printer, MoreHorizontal, LogOut } from 'lucide-react';
+import { Edit, Printer, MoreHorizontal, LogOut, PlusCircle } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,14 +30,15 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { ThermalCoupon } from './thermal-coupon';
+import { useModal } from '@/hooks/use-modal-store';
 
 interface StaysListProps {
-    activeStays: Stay[];
-    onEditStay: (stay: Stay) => void;
+    stays: Stay[];
 }
 
-export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay }) => {
+export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
     const { user, getIdToken } = useAuth();
+    const { onOpen } = useModal();
     const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [stayToEnd, setStayToEnd] = useState<Stay | null>(null);
     const [isEnding, setIsEnding] = useState(false);
@@ -68,36 +69,13 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
         }
     };
 
-    // ++ INÍCIO DA CORREÇÃO DA IMPRESSÃO ++
     const handlePrintCoupon = (stay: Stay) => {
         const qrUrl = `${window.location.origin}/?token=${stay.token}`;
-        const printWindow = window.open('', '_blank', 'width=302,height=500'); // 80mm ~ 302px de largura
+        const printWindow = window.open('', '_blank', 'width=302,height=500');
 
         if (printWindow) {
             printWindow.document.write(`
-                <html>
-                    <head>
-                        <title>Cupom de Acesso</title>
-                        <style>
-                            /* Define um tamanho máximo e força o corte do papel */
-                            @page {
-                                size: 80mm 150mm; /* Largura x Altura MÁXIMA */
-                                margin: 0;
-                            }
-                            body, html {
-                                margin: 0;
-                                padding: 0;
-                                width: 80mm;
-                                /* Garante que o corpo não tente se esticar para preencher uma página maior */
-                                height: auto;
-                                overflow: hidden;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div id="print-root"></div>
-                    </body>
-                </html>
+                <html><head><title>Cupom de Acesso</title><style>@page { size: 80mm 150mm; margin: 0; } body, html { margin: 0; padding: 0; width: 80mm; height: auto; overflow: hidden; }</style></head><body><div id="print-root"></div></body></html>
             `);
             printWindow.document.close();
 
@@ -120,10 +98,15 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
             toast.error("Habilite pop-ups para imprimir o cupom.");
         }
     };
-    // ++ FIM DA CORREÇÃO DA IMPRESSÃO ++
 
     return (
         <>
+            <div className="flex justify-end mb-4">
+                <Button onClick={() => onOpen('createStay')}>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Criar Estadia Manualmente
+                </Button>
+            </div>
             <Table>
                 <TableHeader>
                     <TableRow>
@@ -134,8 +117,8 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {activeStays.length > 0 ? (
-                        activeStays.map(stay => (
+                    {stays.length > 0 ? (
+                        stays.map(stay => (
                             <TableRow key={stay.id}>
                                 <TableCell className="font-medium">{stay.cabinName}</TableCell>
                                 <TableCell>{stay.guestName}</TableCell>
@@ -147,7 +130,12 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                            <DropdownMenuItem onClick={() => onEditStay(stay)}><Edit className="mr-2 h-4 w-4" /><span>Detalhes / Editar</span></DropdownMenuItem>
+                                            {/* ++ INÍCIO DA CORREÇÃO ++ */}
+                                            <DropdownMenuItem onClick={() => onOpen('editStay', { stay })}>
+                                                <Edit className="mr-2 h-4 w-4" />
+                                                <span>Detalhes / Editar</span>
+                                            </DropdownMenuItem>
+                                            {/* ++ FIM DA CORREÇÃO ++ */}
                                             <DropdownMenuItem onClick={() => handlePrintCoupon(stay)}><Printer className="mr-2 h-4 w-4" /><span>Imprimir Cupom</span></DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50" onClick={() => handleOpenEndStayDialog(stay)}><LogOut className="mr-2 h-4 w-4" /><span>Encerrar Estadia</span></DropdownMenuItem>
@@ -161,7 +149,6 @@ export const StaysList: React.FC<StaysListProps> = ({ activeStays, onEditStay })
                     )}
                 </TableBody>
             </Table>
-
             <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader><AlertDialogTitle>Confirmar Encerramento</AlertDialogTitle><AlertDialogDescription>Tem certeza que deseja encerrar a estadia de <span className="font-bold">{stayToEnd?.guestName}</span>? Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>

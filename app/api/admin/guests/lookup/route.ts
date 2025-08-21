@@ -1,9 +1,10 @@
 // app/api/admin/guests/lookup/route.ts
 
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin'; // Usando o Admin SDK
 import { Guest } from '@/types/guest';
-import { collection, getDocs, query, where, limit } from 'firebase/firestore';
+
+// NENHUM import de 'firebase/firestore' aqui
 
 export async function POST(request: Request) {
     try {
@@ -18,12 +19,12 @@ export async function POST(request: Request) {
              return new NextResponse("CPF inválido.", { status: 400 });
         }
 
-        const guestsRef = collection(db, 'guests');
-        const q = query(guestsRef, where('cpf', '==', numericCpf), limit(1));
-        const querySnapshot = await getDocs(q);
+        const guestsRef = adminDb.collection('guests');
+        const q = guestsRef.where('cpf', '==', numericCpf).limit(1);
+        const querySnapshot = await q.get();
 
         if (querySnapshot.empty) {
-            return NextResponse.json(null); // Nenhum hóspede encontrado
+            return NextResponse.json(null);
         }
 
         const guest = {

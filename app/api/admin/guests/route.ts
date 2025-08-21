@@ -1,15 +1,17 @@
 // app/api/admin/guests/route.ts
 
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin'; // Usando o Admin SDK
 import { Guest } from '@/types/guest';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+
+// NENHUM import de 'firebase/firestore' aqui
 
 export async function GET() {
     try {
-        const guestsRef = collection(db, 'guests');
-        const q = query(guestsRef, orderBy('name', 'asc'));
-        const querySnapshot = await getDocs(q);
+        // Usando os métodos do Admin SDK diretamente
+        const guestsRef = adminDb.collection('guests');
+        const q = guestsRef.orderBy('name', 'asc');
+        const querySnapshot = await q.get();
 
         if (querySnapshot.empty) {
             return NextResponse.json([]);

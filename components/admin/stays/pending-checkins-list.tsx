@@ -1,3 +1,4 @@
+//components/admin/stays/pending-checkins-list.tsx
 "use client";
 
 import React, { useState } from 'react';
@@ -94,7 +95,7 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({ db, pe
                 token: generateToken(),
                 status: 'active',
                 preCheckInId: selectedCheckIn.id,
-                createdAt: new Date().toISOString(),
+                createdAt: firestore.Timestamp.now(), // Alterado de string para Timestamp
                 pets: selectedCheckIn.pets || [],
             };
             batch.set(stayRef, newStay);

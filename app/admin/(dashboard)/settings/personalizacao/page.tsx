@@ -245,7 +245,15 @@ export default function PersonalizationPage() {
                                 <div key={log.id} className="flex items-start justify-between p-3 border rounded-lg">
                                     <div className="space-y-1">
                                         <p className="font-semibold">{log.guestName} <span className="font-normal text-muted-foreground">- {log.type}</span></p>
-                                        <p className="text-xs text-muted-foreground">Copiado por {log.actor} {formatDistanceToNow(log.copiedAt.toDate(), { addSuffix: true, locale: ptBR })}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Copiado por {log.actor}{" "}
+                                            {formatDistanceToNow(
+                                                (log.copiedAt && typeof log.copiedAt === "object" && "toDate" in log.copiedAt)
+                                                    ? log.copiedAt.toDate()
+                                                    : new Date(log.copiedAt),
+                                                { addSuffix: true, locale: ptBR }
+                                            )}
+                                        </p>
                                     </div>
                                     <Button variant="ghost" size="sm" onClick={() => handleCopyAgain(log.content)}><ClipboardCopy className="mr-2 h-4 w-4"/> Copiar Novamente</Button>
                                 </div>

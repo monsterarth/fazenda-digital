@@ -186,9 +186,11 @@ export default function CafePedidosPage() {
                                         <TableCell>{order.stayInfo?.guestName || 'N/A'} ({order.stayInfo?.cabinName || 'N/A'})</TableCell>
                                         <TableCell>{safeFormatDate(order.deliveryDate, "dd 'de' MMMM")}</TableCell>
                                         <TableCell>
-                                            {order.createdAt?.toDate ? 
-                                                format(order.createdAt.toDate(), "dd/MM/yy HH:mm", { locale: ptBR }) : 
-                                                'N/A'
+                                            {order.createdAt && typeof order.createdAt === 'object' && typeof order.createdAt.toDate === 'function'
+                                                ? format(order.createdAt.toDate(), "dd/MM/yy HH:mm", { locale: ptBR })
+                                                : order.createdAt && typeof order.createdAt === 'number'
+                                                    ? format(new Date(order.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })
+                                                    : 'N/A'
                                             }
                                         </TableCell>
                                         <TableCell className="text-right">

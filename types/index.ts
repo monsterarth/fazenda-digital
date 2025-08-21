@@ -1,6 +1,7 @@
 //types/index.ts
 
-import { Timestamp, DocumentReference } from "firebase/firestore";
+import { firestore } from "firebase-admin";
+import type { DocumentReference } from "firebase/firestore";
 import { ReactNode } from "react";
 
 // ========================================================================
@@ -19,7 +20,7 @@ export interface Stay {
   token: string;
   status: 'pending_validation' | 'active' | 'checked_out' | 'canceled';
   preCheckInId: string;
-  createdAt: string;
+  createdAt: Timestamp; // Alterado de string para Timestamp
   bookings?: Booking[];
   policiesAccepted?: {
     general?: Timestamp;
@@ -242,6 +243,12 @@ export interface Cabin {
 // ========================================================================
 // 6. TIPOS DE APOIO E LEGADOS
 // ========================================================================
+export type Timestamp = {
+  seconds: number;
+  nanoseconds: number;
+  toDate(): Date;
+  toMillis(): number;
+} | number;
 
 export interface HotDish {
   id: string;

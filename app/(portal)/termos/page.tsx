@@ -1,3 +1,4 @@
+//app/(portal)/termos/page.tsx
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -15,7 +16,9 @@ import { Property, Stay } from '@/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
+// ++ INÍCIO DA CORREÇÃO ++
+import { cn, getMillisFromTimestamp } from '@/lib/utils'; // Importa a nova função
+// ++ FIM DA CORREÇÃO ++
 import { format } from 'date-fns';
 
 // Função auxiliar para verificar se as políticas mais recentes foram aceitas
@@ -26,11 +29,13 @@ const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
     const { general, pet } = stay.policiesAccepted;
     const { general: generalPolicy, pet: petPolicy } = property.policies;
 
-    const generalAccepted = general && generalPolicy?.lastUpdatedAt && general.toMillis() >= generalPolicy.lastUpdatedAt.toMillis();
+    // ++ INÍCIO DA CORREÇÃO: Usando a função getMillisFromTimestamp ++
+    const generalAccepted = general && generalPolicy?.lastUpdatedAt && getMillisFromTimestamp(general) >= getMillisFromTimestamp(generalPolicy.lastUpdatedAt);
     
     if (!hasPets) return !!generalAccepted;
     
-    const petAccepted = pet && petPolicy?.lastUpdatedAt && pet.toMillis() >= petPolicy.lastUpdatedAt.toMillis();
+    const petAccepted = pet && petPolicy?.lastUpdatedAt && getMillisFromTimestamp(pet) >= getMillisFromTimestamp(petPolicy.lastUpdatedAt);
+    // ++ FIM DA CORREÇÃO ++
     return !!generalAccepted && !!petAccepted;
 };
 
@@ -104,9 +109,15 @@ export default function TermsAndPoliciesPage() {
         }
     };
 
-    const lastUpdatedDate = property?.policies?.general?.lastUpdatedAt ? 
-        format(property.policies.general.lastUpdatedAt.toDate(), 'dd/MM/yyyy') : 
-        'Data não disponível';
+    // ++ INÍCIO DA CORREÇÃO: Usando a função toDate de forma segura ++
+    const lastUpdatedDate = useMemo(() => {
+        const ts = property?.policies?.general?.lastUpdatedAt;
+        if (ts && typeof ts !== 'number' && typeof ts.toDate === 'function') {
+            return format(ts.toDate(), 'dd/MM/yyyy');
+        }
+        return 'Data não disponível';
+    }, [property]);
+    // ++ FIM DA CORREÇÃO ++
 
     if (isGuestLoading || isLoadingProperty) {
         return (
@@ -120,7 +131,6 @@ export default function TermsAndPoliciesPage() {
         <div className="min-h-screen bg-brand-light-green text-brand-dark-green flex flex-col items-center justify-center p-4 md:p-8">
             <Card className="w-full max-w-3xl bg-white/80 backdrop-blur-sm shadow-xl border-2 border-brand-primary">
                 <CardHeader>
-                    {/* Botão de voltar integrado ao CardHeader */}
                     <div className="flex items-center gap-4">
                         <Button 
                             variant="ghost" 

@@ -29,6 +29,7 @@ import {
   PlusCircle 
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useModal } from '@/hooks/use-modal-store'; // ++ ADICIONADO: Import do nosso hook
 
 interface GuestsListProps {
   initialGuests: Guest[];
@@ -37,6 +38,7 @@ interface GuestsListProps {
 export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
   const [guests, setGuests] = useState<Guest[]>(initialGuests);
   const [searchTerm, setSearchTerm] = useState('');
+  const { onOpen } = useModal(); // ++ ADICIONADO: Hook para abrir o modal
 
   const filteredGuests = useMemo(() => {
     const lowercasedFilter = searchTerm.toLowerCase();
@@ -49,11 +51,7 @@ export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
     );
   }, [guests, searchTerm]);
 
-  const handleCreateStayForGuest = (guest: Guest) => {
-    // Esta lógica será implementada na próxima etapa
-    console.log('Abrir diálogo para criar estadia para:', guest.name);
-    // Exemplo: openCreateStayDialog({ initialGuestData: guest });
-  };
+  // A função 'handleCreateStayForGuest' foi removida, pois agora chamamos 'onOpen' diretamente.
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
@@ -108,10 +106,12 @@ export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleCreateStayForGuest(guest)}>
+                        {/* ++ INÍCIO DA ALTERAÇÃO: Chamando onOpen com os dados do hóspede ++ */}
+                        <DropdownMenuItem onClick={() => onOpen('createStay', { guest })}>
                           <PlusCircle className="mr-2 h-4 w-4" />
                           Criar Nova Estadia
                         </DropdownMenuItem>
+                        {/* ++ FIM DA ALTERAÇÃO ++ */}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

@@ -24,12 +24,13 @@ import { toast } from 'sonner';
 interface StayFormFieldsProps {
     form: UseFormReturn<FullStayFormValues>;
     cabins: Cabin[];
+    onCpfBlur: (cpf: string) => void; // ++ ADICIONADO: Nova propriedade para a busca
 }
 
 const countries = ["Argentina", "Uruguai", "Chile", "Estados Unidos", "Portugal", "Alemanha"];
 const generateSimpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) => {
+export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, onCpfBlur }) => { // ++ ADICIONADO: Recebendo a nova prop
     const isForeigner = form.watch('isForeigner');
     const { fields: companions, append: appendCompanion, remove: removeCompanion } = useFieldArray({ control: form.control, name: "companions" });
     const { fields: pets, append: appendPet, remove: removePet } = useFieldArray({ control: form.control, name: "pets" });
@@ -51,7 +52,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                 return;
             }
             
-            form.setValue('address.street', data.logouro, { shouldValidate: true });
+            form.setValue('address.street', data.logradouro, { shouldValidate: true });
             form.setValue('address.neighborhood', data.bairro, { shouldValidate: true });
             form.setValue('address.city', data.localidade, { shouldValidate: true });
             form.setValue('address.state', data.uf, { shouldValidate: true });
@@ -84,13 +85,11 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                                                 <SelectValue placeholder="Selecione..." />
                                             </SelectTrigger>
                                         </FormControl>
-                                        {/* ++ INÍCIO DA CORREÇÃO: ScrollArea restaurado ++ */}
                                         <SelectContent>
                                             <ScrollArea className="h-72">
                                                 {cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                                             </ScrollArea>
                                         </SelectContent>
-                                        {/* ++ FIM DA CORREÇÃO ++ */}
                                     </Select>
                                     <FormMessage />
                                 </FormItem>
@@ -113,7 +112,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                                 <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>Passaporte / Documento</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             </>
                         ) : (
-                            // ++ INÍCIO DA CORREÇÃO: Campo de CPF com formatação automática ++
                             <FormField 
                                 name="leadGuestDocument" 
                                 control={form.control} 
@@ -124,6 +122,9 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                                             <Input 
                                                 placeholder="000.000.000-00" 
                                                 {...field}
+                                                // ++ INÍCIO DA ALTERAÇÃO: Adicionando o onBlur para a busca automática ++
+                                                onBlur={(e) => onCpfBlur(e.target.value)}
+                                                // ++ FIM DA ALTERAÇÃO ++
                                                 onChange={(e) => {
                                                     const numericValue = e.target.value.replace(/\D/g, '');
                                                     field.onChange(numericValue);
@@ -134,12 +135,10 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                                     </FormItem>
                                 )} 
                             />
-                            // ++ FIM DA CORREÇÃO ++
                         )}
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField name="leadGuestEmail" control={form.control} render={({ field }) => (<FormItem><FormLabel>E-mail</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        {/* ++ INÍCIO DA CORREÇÃO: Campo de Telefone com formatação automática ++ */}
                         <FormField 
                             name="leadGuestPhone" 
                             control={form.control} 
@@ -161,7 +160,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                                 </FormItem>
                             )}
                         />
-                         {/* ++ FIM DA CORREÇÃO ++ */}
                     </div>
                 </AccordionContent>
             </AccordionItem>
@@ -241,7 +239,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins }) 
                     </div>
                 </AccordionContent>
             </AccordionItem>
-
         </Accordion>
     );
 };

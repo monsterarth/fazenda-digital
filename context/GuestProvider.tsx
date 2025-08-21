@@ -32,11 +32,12 @@ const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
     const { general, pet } = stay.policiesAccepted;
     const { general: generalPolicy, pet: petPolicy } = property.policies;
 
-    const generalAccepted = general && generalPolicy?.lastUpdatedAt && general.toMillis() >= generalPolicy.lastUpdatedAt.toMillis();
+    const getMillis = (val: any) => typeof val === 'object' && typeof val.toMillis === 'function' ? val.toMillis() : val;
+    const generalAccepted = general && generalPolicy?.lastUpdatedAt && getMillis(general) >= getMillis(generalPolicy.lastUpdatedAt);
     
     if (!hasPets) return !!generalAccepted;
     
-    const petAccepted = pet && petPolicy?.lastUpdatedAt && pet.toMillis() >= petPolicy.lastUpdatedAt.toMillis();
+    const petAccepted = pet && petPolicy?.lastUpdatedAt && getMillis(pet) >= getMillis(petPolicy.lastUpdatedAt);
     return !!generalAccepted && !!petAccepted;
 };
 

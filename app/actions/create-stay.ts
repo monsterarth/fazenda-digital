@@ -4,17 +4,14 @@
 import { adminDb } from '@/lib/firebase-admin';
 import { FullStayFormValues } from '@/lib/schemas/stay-schema';
 import { PreCheckIn, Stay, Cabin } from '@/types';
-// ++ CORREÇÃO: Removendo imports do cliente e usando apenas os do admin ++
+import { Guest } from '@/types/guest';
 import { Timestamp } from 'firebase-admin/firestore';
-import { addActivityLogToBatch } from '@/lib/activity-logger';
 import { revalidatePath } from 'next/cache';
-import { firestore } from 'firebase-admin';
 
 const generateToken = (): string => Math.floor(100000 + Math.random() * 900000).toString();
 
 export async function createStayAction(data: FullStayFormValues, adminEmail: string) {
   try {
-    // ++ CORREÇÃO: O SDK Admin usa `doc()` com o caminho completo ++
     const cabinRef = adminDb.doc(`cabins/${data.cabinId}`);
     const cabinSnap = await cabinRef.get();
     if (!cabinSnap.exists) {
@@ -24,8 +21,8 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
 
     const batch = adminDb.batch();
     
-    // 1. Criar o documento de Pré-Check-In
-    const preCheckInRef = adminDb.collection('preCheckIns').doc(); // Cria uma referência com ID automático
+    // 1. Criar Pré-Check-In
+    const preCheckInRef = adminDb.collection('preCheckIns').doc();
     const preCheckInData: Omit<PreCheckIn, 'id' | 'stayId'> = {
       leadGuestName: data.leadGuestName,
       isForeigner: data.isForeigner,
@@ -39,13 +36,14 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
       companions: data.companions?.map(c => ({...c, age: Number(c.age)})) || [],
       pets: data.pets?.map(p => ({...p, weight: Number(p.weight), age: p.age.toString()})) || [],
       status: 'validado_admin',
-      createdAt: firestore.Timestamp.now(),
+      createdAt: Timestamp.now(),
     };
     batch.set(preCheckInRef, preCheckInData);
 
-    // 2. Criar o documento da Estadia (Stay)
+    // 2. Criar Estadia
     const stayRef = adminDb.collection('stays').doc();
     const token = generateToken();
+    const checkInTimestamp = Timestamp.fromDate(new Date(data.dates.from));
     const newStay: Omit<Stay, 'id'> = {
       guestName: data.leadGuestName,
       cabinId: selectedCabin.id,
@@ -56,16 +54,48 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
       token: token,
       status: 'active',
       preCheckInId: preCheckInRef.id,
-      createdAt: Timestamp.now(),
+      createdAt: checkInTimestamp,
       pets: data.pets?.map(p => ({...p, weight: Number(p.weight), age: p.age.toString()})) || [],
     };
     batch.set(stayRef, newStay);
-
-    // 3. Atualizar o preCheckIn com o ID da estadia
     batch.update(preCheckInRef, { stayId: stayRef.id });
+    
+    // ++ INÍCIO DA ADIÇÃO: Lógica para criar/atualizar o Hóspede (Guest) ++
+    const numericCpf = data.leadGuestDocument.replace(/\D/g, '');
+    const guestRef = adminDb.collection('guests').doc(numericCpf);
+    const guestSnap = await guestRef.get();
 
-    // 4. Adicionar log de atividade
-    // A função addActivityLogToBatch precisa ser ajustada para o SDK Admin
+    if (guestSnap.exists) {
+        // Hóspede já existe, atualiza o histórico
+        const guestData = guestSnap.data() as Guest;
+        batch.update(guestRef, {
+            stayHistory: [...guestData.stayHistory, stayRef.id],
+            updatedAt: checkInTimestamp,
+            // Opcional: atualizar os dados com os mais recentes do formulário
+            name: data.leadGuestName,
+            email: data.leadGuestEmail,
+            phone: data.leadGuestPhone,
+            address: { ...data.address, country: data.address.country ?? (data.isForeigner ? (data.country || 'N/A') : 'Brasil') },
+        });
+    } else {
+        // Hóspede não existe, cria um novo
+        const newGuest: Omit<Guest, 'id'> = {
+            name: data.leadGuestName,
+            cpf: numericCpf,
+            email: data.leadGuestEmail,
+            phone: data.leadGuestPhone,
+            address: { ...data.address, country: data.address.country ?? (data.isForeigner ? (data.country || 'N/A') : 'Brasil') },
+            isForeigner: data.isForeigner,
+            country: data.country,
+            createdAt: checkInTimestamp.toMillis(),
+            updatedAt: checkInTimestamp.toMillis(),
+            stayHistory: [stayRef.id],
+        };
+        batch.set(guestRef, newGuest);
+    }
+    // ++ FIM DA ADIÇÃO ++
+
+    // 4. Adicionar Log de Atividade
     const logRef = adminDb.collection('activity_logs').doc();
     batch.set(logRef, {
         type: 'stay_created_manually',
@@ -75,10 +105,8 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
         timestamp: Timestamp.now()
     });
     
-    // 5. Commit de todas as operações
     await batch.commit();
 
-    // 6. Revalidar o cache
     revalidatePath('/admin/stays');
     revalidatePath('/admin/hospedes');
 

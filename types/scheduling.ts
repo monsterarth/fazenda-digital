@@ -1,6 +1,7 @@
 // types/scheduling.ts
 
 import { Timestamp } from "firebase/firestore";
+import { ReactNode } from "react";
 
 // Nova tipagem mais limpa e consistente
 export interface TimeSlot {
@@ -11,6 +12,7 @@ export interface TimeSlot {
 }
 
 export interface Structure {
+  description: ReactNode;
   id: string;
   name:string;
   photoURL: string;
@@ -24,6 +26,8 @@ export interface Structure {
 export type BookingStatus = 'pendente' | 'confirmado' | 'cancelado' | 'bloqueado';
 
 export interface Booking {
+  unit: string | undefined;
+  timeSlot: any;
   id: string;
   structureId: string;
   structureName: string;

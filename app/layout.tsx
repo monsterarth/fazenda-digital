@@ -1,11 +1,10 @@
-// fazenda-digital/app/layout.tsx
-
 import type { Metadata } from "next";
 import { Inter as FontSans } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { AuthProvider } from "@/context/AuthContext";
 import { PropertyProvider } from "@/context/PropertyContext";
+import { Toaster } from "@/components/ui/sonner";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -26,13 +25,12 @@ export default function RootLayout({
     <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={cn(
-          "min-h-screen bg-background font-sans antialiased",
+          "min-h-screen bg-background font-sans text-foreground antialiased",
           fontSans.variable
         )}
       >
         <AuthProvider>
           <PropertyProvider>
-            {/* INÍCIO DA ALTERAÇÃO */}
             <div className="flex flex-col min-h-screen">
               <main className="flex-grow">{children}</main>
               <footer className="w-full py-4 px-4 text-center">
@@ -50,7 +48,7 @@ export default function RootLayout({
                 </p>
               </footer>
             </div>
-            {/* FIM DA ALTERAÇÃO */}
+            <Toaster />
           </PropertyProvider>
         </AuthProvider>
       </body>

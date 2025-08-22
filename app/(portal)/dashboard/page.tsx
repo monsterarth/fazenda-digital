@@ -67,12 +67,16 @@ export default function EstadiaPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">
-                    Olá, {guest?.displayName?.split(" ")[0]}!
-                </h1>
-                <p className="text-muted-foreground">Bem-vindo(a) à sua cabana, {stay.cabinName}.</p>
-            </div>
+            <Card>
+                <CardHeader>
+                    <CardTitle>
+                        Olá, {guest?.displayName?.split(" ")[0]}!
+                    </CardTitle>
+                    <CardDescription>
+                        Bem-vindo(a) à sua cabana, {stay.cabinName}.
+                    </CardDescription>
+                </CardHeader>
+            </Card>
 
             {/* Seção de Status Dinâmico */}
             <WeatherCard />

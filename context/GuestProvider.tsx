@@ -11,19 +11,26 @@ import { Booking } from '@/types/scheduling';
 import { getCookie, deleteCookie } from 'cookies-next';
 import { usePathname, useRouter } from 'next/navigation';
 
+// --- INÍCIO DA CORREÇÃO 1: Tipo estendido para agendamentos ---
+// Este tipo local adiciona os campos que faltam sem precisar alterar arquivos globais.
+type EnrichedBooking = Booking & {
+    serviceId?: string;
+    serviceName?: string;
+};
+
 interface GuestContextType {
     user: User | null;
     stay: Stay | null;
-    bookings: Booking[];
+    bookings: EnrichedBooking[]; // O contexto agora usa o tipo estendido
     preCheckIn: PreCheckIn | null;
     isAuthenticated: boolean;
     isLoading: boolean;
     logout: () => void;
 }
+// --- FIM DA CORREÇÃO 1 ---
 
 const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
-// Função auxiliar para verificar as políticas (sem alterações)
 const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
     if (!stay.policiesAccepted || !property.policies) return false;
     
@@ -43,7 +50,7 @@ const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
 export const GuestProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [stay, setStay] = useState<Stay | null>(null);
-    const [bookings, setBookings] = useState<Booking[]>([]);
+    const [bookings, setBookings] = useState<EnrichedBooking[]>([]); // O estado também usa o tipo estendido
     const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
@@ -91,22 +98,19 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                     const stayData = { id: staySnap.id, ...staySnap.data() } as Stay;
                     const propertyData = propertySnap.data() as Property;
                     
-                    // +++ INÍCIO DA CORREÇÃO: BUSCAR DADOS COMPLETOS DA CABANA +++
                     if (stayData.cabinId) {
                         const cabinRef = doc(db, "cabins", stayData.cabinId);
                         const cabinSnap = await getDoc(cabinRef);
                         if (cabinSnap.exists()) {
                            const cabinDataFromDb = cabinSnap.data();
-                           // Anexa o objeto 'cabin' com todos os dados ao 'stayData'
                            stayData.cabin = {
                              id: cabinSnap.id,
                              name: cabinDataFromDb.name,
-                             wifiSsid: cabinDataFromDb.wifiSsid, // <-- Adicionado
-                             wifiPassword: cabinDataFromDb.wifiPassword // <-- Adicionado
+                             wifiSsid: cabinDataFromDb.wifiSsid,
+                             wifiPassword: cabinDataFromDb.wifiPassword
                            };
                         }
                     }
-                    // +++ FIM DA CORREÇÃO +++
 
                     setStay(stayData);
                     setUser(user);
@@ -120,8 +124,23 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                     }
                     
                     const bookingsQuery = query(collection(db, 'bookings'), where('stayId', '==', stayId));
-                    unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
-                        const fetchedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Booking);
+                    unsubscribeBookings = onSnapshot(bookingsQuery, async (snapshot) => {
+                        // --- INÍCIO DA CORREÇÃO 2: Lógica de busca de serviceName ---
+                        const fetchedBookings = await Promise.all(snapshot.docs.map(async (docSnapshot) => {
+                            // Usamos o tipo EnrichedBooking para que o TypeScript reconheça os campos
+                            const bookingData = { id: docSnapshot.id, ...docSnapshot.data() } as EnrichedBooking;
+                            
+                            // A lógica para buscar o nome do serviço agora funciona sem erros de tipo
+                            if (bookingData.serviceId) {
+                                const serviceRef = doc(db, 'services', bookingData.serviceId);
+                                const serviceSnap = await getDoc(serviceRef);
+                                if (serviceSnap.exists()) {
+                                    bookingData.serviceName = serviceSnap.data().name;
+                                }
+                            }
+                            return bookingData;
+                        }));
+                        // --- FIM DA CORREÇÃO 2 ---
                         setBookings(fetchedBookings);
                     }, (error) => {
                         console.error("Erro ao escutar agendamentos:", error);

@@ -6,6 +6,7 @@ import { useGuest } from "@/context/GuestProvider";
 import { Loader2 } from "lucide-react";
 import { DashboardHeader } from "@/components/guest/dashboard/DashboardHeader";
 import { ActionGrid } from "@/components/guest/dashboard/ActionGrid";
+import { RecentActivity } from "@/components/guest/dashboard/RecentActivity"; // <-- Importação do novo componente
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 export default function DashboardPage() {
@@ -20,26 +21,28 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-900 min-h-screen">
+    // Removido o min-h-screen para um ajuste mais natural do conteúdo
+    <div className="bg-gray-50 dark:bg-gray-900 pb-4">
       <DashboardHeader />
       
       <main>
         <ActionGrid />
 
-        {/* Espaço para cards de status, como "Próximo Agendamento" ou "Status do Café" */}
+        {/* Espaço para cards de status, agora com o novo componente */}
         <div className="p-4 space-y-4">
-            <h2 className="px-2 text-lg font-semibold tracking-tight">Atualizações Importantes</h2>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Status do Café da Manhã</CardTitle>
-                    <CardDescription>
-                        Seu pedido para amanhã ainda não foi feito.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {/* Conteúdo dinâmico aqui */}
-                </CardContent>
-            </Card>
+          <RecentActivity />
+          
+          {/* Você pode adicionar outros cards informativos aqui se desejar */}
+          {/* Exemplo:
+          <Card>
+              <CardHeader>
+                  <CardTitle>Eventos de Hoje</CardTitle>
+              </CardHeader>
+              <CardContent>
+                  <p className="text-sm text-muted-foreground">Nenhum evento programado para hoje.</p>
+              </CardContent>
+          </Card>
+          */}
         </div>
       </main>
     </div>

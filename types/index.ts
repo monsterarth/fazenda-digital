@@ -13,6 +13,13 @@ export interface Stay {
   id: string;
   guestName: string;
   cabinId: string;
+  cabin?: {
+    id: string;
+    name: string;
+    wifiSsid?: string;
+    wifiPassword?: string;
+
+  };
   cabinName: string;
   checkInDate: string;
   checkOutDate: string;

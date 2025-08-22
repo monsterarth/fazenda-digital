@@ -3,11 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from 'firebase/firestore';
-import { Service } from '@/types';
-import { useForm, useFieldArray, SubmitHandler } from 'react-hook-form';
+import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
+import { useAuth } from '@/context/AuthContext';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,193 +15,159 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast, Toaster } from 'sonner';
-import { Loader2, PlusCircle, Edit, Trash2, CalendarCog, X, Clock, Wand2, Handshake } from 'lucide-react';
+import { Loader2, PlusCircle, Edit, Trash2, Package, Sparkles, HandCoins, Repeat } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-const timeSlotSchema = z.object({
-  id: z.string(),
-  label: z.string().min(1, "O rótulo é obrigatório."),
-});
+// ## ATUALIZAÇÃO: Adicionado tipo e preço ao item ##
+export interface RequestableItem {
+  id: string;
+  name: string;
+  category: string;
+  type: 'loan' | 'consumable'; // Tipo do item
+  price?: number; // Preço, opcional
+  description?: string;
+}
 
-const serviceSchema = z.object({
-    name: z.string().min(2, "O nome do serviço é obrigatório."),
-    type: z.enum(['slots', 'preference', 'on_demand']),
-    defaultStatus: z.enum(['open', 'closed']).optional(),
-    units: z.array(z.object({ value: z.string() })).optional(),
-    timeSlots: z.array(timeSlotSchema).optional(),
-    additionalOptions: z.array(z.object({ value: z.string() })).optional(),
-    instructions: z.string().optional(),
+// ## ATUALIZAÇÃO: Schema de validação com lógica condicional para o preço ##
+const itemSchema = z.object({
+    name: z.string().min(2, "O nome do item é obrigatório."),
+    category: z.string().min(2, "A categoria é obrigatória."),
+    type: z.enum(['loan', 'consumable'], { required_error: "O tipo é obrigatório."}),
+    price: z.preprocess(
+      (val) => (val === "" ? undefined : Number(val)),
+      z.number({ invalid_type_error: "O preço deve ser um número." }).positive("O preço deve ser positivo.").optional()
+    ),
+    description: z.string().optional(),
 }).refine(data => {
-    if (data.type === 'slots' && (!data.units || data.units.filter(u => u.value && u.value.trim() !== '').length === 0)) {
+    // Se o tipo for 'consumable', o preço é obrigatório.
+    if (data.type === 'consumable' && (data.price === undefined || data.price <= 0)) {
         return false;
     }
     return true;
 }, {
-    message: "Serviços do tipo 'slots' devem ter pelo menos uma unidade.",
-    path: ["units"],
-}).refine(data => {
-    if (data.type === 'slots' && (!data.timeSlots || data.timeSlots.length === 0)) {
-        return false;
-    }
-    return true;
-}, {
-    message: "Serviços do tipo 'slots' devem ter pelo menos um horário.",
-    path: ["timeSlots"],
+    message: "O preço é obrigatório para itens de consumo.",
+    path: ["price"], // Campo onde o erro será exibido
 });
 
-type ServiceFormValues = z.infer<typeof serviceSchema>;
+type ItemFormValues = z.infer<typeof itemSchema>;
 
-export default function ManageServicesPage() {
-    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
+const ITEMS_COLLECTION = 'requestableItems';
+
+export default function ManageRequestableItemsPage() {
+    const { isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
-    const [services, setServices] = useState<Service[]>([]);
+    const [items, setItems] = useState<RequestableItem[]>([]);
     const [loading, setLoading] = useState(true);
     
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingService, setEditingService] = useState<Service | null>(null);
+    const [editingItem, setEditingItem] = useState<RequestableItem | null>(null);
 
-    const form = useForm<ServiceFormValues>({
-        resolver: zodResolver(serviceSchema),
+    const form = useForm<ItemFormValues>({
+        resolver: zodResolver(itemSchema),
         defaultValues: {
             name: '',
-            type: 'slots',
-            units: [{ value: '' }],
-            timeSlots: [{id: new Date().toISOString(), label: ''}],
-            additionalOptions: [{ value: '' }],
-            instructions: '',
+            category: '',
+            type: 'loan',
+            price: undefined,
+            description: '',
         }
     });
 
-    const serviceType = form.watch('type');
-
-    const { fields: unitFields, append: appendUnit, remove: removeUnit } = useFieldArray({ control: form.control, name: "units" });
-    const { fields: timeSlotFields, append: appendTimeSlot, remove: removeTimeSlot } = useFieldArray({ control: form.control, name: "timeSlots" });
-    const { fields: optionFields, append: appendOption, remove: removeOption } = useFieldArray({ control: form.control, name: "additionalOptions" });
+    const itemType = form.watch('type');
 
     useEffect(() => {
-        // ++ CORREÇÃO: A inicialização agora espera pela confirmação de admin
         if (!isAdmin) return;
-
         const initializeApp = async () => {
             const firestoreDb = await getFirebaseDb();
             setDb(firestoreDb);
             if (!firestoreDb) {
-                toast.error("Falha ao conectar ao banco.");
+                toast.error("Falha ao conectar ao banco de dados.");
                 setLoading(false);
                 return;
             }
-            const q = firestore.query(firestore.collection(firestoreDb, 'services'));
+            const q = firestore.query(firestore.collection(firestoreDb, ITEMS_COLLECTION));
             const unsubscribe = firestore.onSnapshot(q, (snapshot) => {
-                const servicesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service));
-                setServices(servicesData);
+                const itemsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestableItem));
+                setItems(itemsData.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)));
                 setLoading(false);
             }, (error) => {
                 console.error("Erro no Firestore:", error);
-                toast.error("Falha ao carregar serviços. Verifique as permissões.");
+                toast.error("Falha ao carregar itens. Verifique as permissões de acesso.");
                 setLoading(false);
             });
             return () => unsubscribe();
         };
         initializeApp();
-    }, [isAdmin]); // ++ A dependência do useEffect agora é o status de admin
+    }, [isAdmin]);
 
-    const handleOpenModal = (service: Service | null) => {
-        setEditingService(service);
-        if (service) {
+    const handleOpenModal = (item: RequestableItem | null) => {
+        setEditingItem(item);
+        if (item) {
             form.reset({
-                name: service.name,
-                type: service.type,
-                defaultStatus: service.defaultStatus,
-                units: service.units && service.units.length > 0 ? service.units.map(u => ({ value: u })) : [{ value: '' }],
-                timeSlots: service.timeSlots || [{id: new Date().toISOString(), label: ''}],
-                additionalOptions: service.additionalOptions && service.additionalOptions.length > 0 ? service.additionalOptions.map(opt => ({ value: opt })) : [{ value: '' }],
-                instructions: service.instructions || '',
+                name: item.name,
+                category: item.category,
+                type: item.type,
+                price: item.price,
+                description: item.description || '',
             });
         } else {
             form.reset({
                 name: '',
-                type: 'slots',
-                defaultStatus: 'open',
-                units: [{ value: '' }],
-                timeSlots: [{id: new Date().toISOString(), label: ''}],
-                additionalOptions: [{ value: '' }],
-                instructions: '',
+                category: '',
+                type: 'loan',
+                price: undefined,
+                description: '',
             });
         }
         setIsModalOpen(true);
     };
 
-    const handleSaveService: SubmitHandler<ServiceFormValues> = async (data) => {
+    const handleSaveItem: SubmitHandler<ItemFormValues> = async (data) => {
         if (!db) return;
-        const toastId = toast.loading(editingService ? "Atualizando serviço..." : "Criando serviço...");
+        const toastId = toast.loading(editingItem ? "Atualizando item..." : "Criando item...");
 
         try {
-            const dataToSave: Partial<Omit<Service, 'id'>> = {
+            // ## ATUALIZAÇÃO: Salva os novos campos ##
+            const dataToSave: Omit<RequestableItem, 'id'> = {
                 name: data.name,
+                category: data.category,
                 type: data.type,
+                description: data.description || '',
             };
 
-            if (data.type === 'slots') {
-                dataToSave.units = data.units?.map(u => u.value).filter(u => u && u.trim() !== '') || [];
-                dataToSave.timeSlots = data.timeSlots?.filter(ts => ts && ts.label.trim() !== '') || [];
-                dataToSave.defaultStatus = data.defaultStatus || 'open';
-            }
-            
-            if (data.type === 'preference') {
-                dataToSave.additionalOptions = data.additionalOptions?.map(opt => opt.value).filter(opt => opt && opt.trim() !== '') || [];
-            }
-            
-            if (data.type === 'on_demand') {
-                dataToSave.instructions = data.instructions || '';
+            if (data.type === 'consumable') {
+                dataToSave.price = data.price;
             }
 
-            if (editingService) {
-                const docRef = firestore.doc(db, 'services', editingService.id);
+            if (editingItem) {
+                const docRef = firestore.doc(db, ITEMS_COLLECTION, editingItem.id);
                 await firestore.updateDoc(docRef, dataToSave);
-                toast.success("Serviço atualizado com sucesso!", { id: toastId });
+                toast.success("Item atualizado com sucesso!", { id: toastId });
             } else {
-                await firestore.addDoc(firestore.collection(db, 'services'), dataToSave);
-                toast.success("Serviço criado com sucesso!", { id: toastId });
+                await firestore.addDoc(firestore.collection(db, ITEMS_COLLECTION), dataToSave);
+                toast.success("Item criado com sucesso!", { id: toastId });
             }
             setIsModalOpen(false);
         } catch (error: any) {
-            toast.error("Falha ao salvar o serviço.", { id: toastId, description: error.message });
+            toast.error("Falha ao salvar o item.", { id: toastId, description: error.message });
         }
     };
 
-    const handleDeleteService = async (serviceId: string) => {
+    const handleDeleteItem = async (itemId: string) => {
         if(!db) return;
-        if (!confirm("Tem certeza que deseja excluir este serviço? Esta ação não pode ser desfeita.")) return;
+        if (!confirm("Tem certeza que deseja excluir este item? Esta ação não pode ser desfeita.")) return;
 
-        const toastId = toast.loading("Excluindo serviço...");
+        const toastId = toast.loading("Excluindo item...");
         try {
-            await firestore.deleteDoc(firestore.doc(db, 'services', serviceId));
-            toast.success("Serviço excluído com sucesso!", { id: toastId });
+            await firestore.deleteDoc(firestore.doc(db, ITEMS_COLLECTION, itemId));
+            toast.success("Item excluído com sucesso!", { id: toastId });
         } catch (error: any) {
-            toast.error("Falha ao excluir serviço.", { id: toastId, description: error.message });
+            toast.error("Falha ao excluir o item.", { id: toastId, description: error.message });
         }
     }
     
-    const getBadgeVariant = (type: Service['type']) => {
-        switch(type) {
-            case 'slots': return 'default';
-            case 'preference': return 'secondary';
-            case 'on_demand': return 'outline';
-            default: return 'default';
-        }
-    }
-
-    const getTypeText = (type: Service['type']) => {
-        switch(type) {
-            case 'slots': return 'Horários Fixos';
-            case 'preference': return 'Preferência';
-            case 'on_demand': return 'Sob Demanda';
-            default: 'N/A';
-        }
-    }
-
     if (loading) {
         return <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>
     }
@@ -213,43 +178,46 @@ export default function ManageServicesPage() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle className="flex items-center gap-2"><CalendarCog /> Gerenciar Serviços</CardTitle>
-                        <CardDescription>Adicione, edite ou remova os serviços oferecidos.</CardDescription>
+                        <CardTitle className="flex items-center gap-2"><Package /> Gerenciar Itens Solicitáveis</CardTitle>
+                        <CardDescription>Adicione, edite ou remova itens que os hóspedes podem solicitar.</CardDescription>
                     </div>
                     <Button onClick={() => handleOpenModal(null)}>
-                        <PlusCircle className="mr-2 h-4 w-4" /> Adicionar Serviço
+                        <PlusCircle className="mr-2 h-4 w-4" /> Adicionar Item
                     </Button>
                 </CardHeader>
                 <CardContent>
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Nome do Serviço</TableHead>
-                                    <TableHead>Tipo de Agendamento</TableHead>
-                                    <TableHead>Detalhes</TableHead>
+                                    <TableHead>Nome do Item</TableHead>
+                                    <TableHead>Tipo</TableHead>
+                                    <TableHead>Categoria</TableHead>
+                                    <TableHead>Preço</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {services.length > 0 ? (
-                                    services.map(service => (
-                                        <TableRow key={service.id}>
-                                            <TableCell className="font-medium">{service.name}</TableCell>
+                                {items.length > 0 ? (
+                                    items.map(item => (
+                                        <TableRow key={item.id}>
+                                            <TableCell className="font-medium">{item.name}</TableCell>
+                                            {/* ## ATUALIZAÇÃO: Badge para o tipo ## */}
                                             <TableCell>
-                                                <Badge variant={getBadgeVariant(service.type)}>
-                                                    {getTypeText(service.type)}
+                                                <Badge variant={item.type === 'loan' ? 'secondary' : 'default'}>
+                                                    {item.type === 'loan' ? 'Empréstimo' : 'Consumo'}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">
-                                                {service.type === 'slots' ? `${service.units?.length || 0} Unidade(s) / ${service.timeSlots?.length || 0} Horários` 
-                                                : service.type === 'preference' ? `${service.additionalOptions?.length || 0} Opções Adicionais`
-                                                : 'Serviço sob demanda'}
+                                            <TableCell>{item.category}</TableCell>
+                                            {/* ## ATUALIZAÇÃO: Exibe o preço formatado ## */}
+                                            <TableCell>
+                                                {item.type === 'consumable' && item.price ? 
+                                                    `R$ ${item.price.toFixed(2).replace('.', ',')}` : 'N/A'}
                                             </TableCell>
                                             <TableCell className="text-right space-x-2">
-                                                <Button variant="outline" size="sm" onClick={() => handleOpenModal(service)}>
+                                                <Button variant="outline" size="sm" onClick={() => handleOpenModal(item)}>
                                                     <Edit className="mr-2 h-4 w-4" /> Editar
                                                 </Button>
-                                                <Button variant="destructive" size="sm" onClick={() => handleDeleteService(service.id)}>
+                                                <Button variant="destructive" size="sm" onClick={() => handleDeleteItem(item.id)}>
                                                     <Trash2 className="mr-2 h-4 w-4" /> Excluir
                                                 </Button>
                                             </TableCell>
@@ -257,7 +225,7 @@ export default function ManageServicesPage() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="h-24 text-center">Nenhum serviço cadastrado.</TableCell>
+                                        <TableCell colSpan={5} className="h-24 text-center">Nenhum item cadastrado.</TableCell>
                                     </TableRow>
                                 )}
                             </TableBody>
@@ -266,98 +234,53 @@ export default function ManageServicesPage() {
             </Card>
 
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{editingService ? "Editar Serviço" : "Adicionar Novo Serviço"}</DialogTitle>
-                        <DialogDescription>Preencha as informações para configurar o serviço.</DialogDescription>
+                        <DialogTitle>{editingItem ? "Editar Item" : "Adicionar Novo Item"}</DialogTitle>
+                        <DialogDescription>Preencha as informações para configurar um item que pode ser solicitado pelos hóspedes.</DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
-                        <form id="service-form" onSubmit={form.handleSubmit(handleSaveService)} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
+                        <form id="item-form" onSubmit={form.handleSubmit(handleSaveItem)} className="space-y-6 py-4">
                             <FormField control={form.control} name="name" render={({ field }) => (
-                                <FormItem><FormLabel>Nome do Serviço</FormLabel><FormControl><Input placeholder="Ex: Massagem Relaxante" {...field} /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>Nome do Item</FormLabel><FormControl><Input placeholder="Ex: Toalha de Piscina" {...field} /></FormControl><FormMessage /></FormItem>
                             )}/>
+                             <FormField control={form.control} name="category" render={({ field }) => (
+                                <FormItem><FormLabel>Categoria</FormLabel><FormControl><Input placeholder="Ex: Utensílios" {...field} /></FormControl><FormMessage /></FormItem>
+                            )}/>
+                            {/* ## ATUALIZAÇÃO: Campo para selecionar o tipo ## */}
                             <FormField control={form.control} name="type" render={({ field }) => (
-                                <FormItem><FormLabel>Tipo de Agendamento</FormLabel>
+                                <FormItem><FormLabel>Tipo de Item</FormLabel>
                                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                                     <FormControl><SelectTrigger><SelectValue placeholder="Selecione o tipo..." /></SelectTrigger></FormControl>
                                     <SelectContent>
-                                        <SelectItem value="slots"><div className="flex items-center gap-2"><Clock /> Horários Fixos (Ex: Jacuzzi)</div></SelectItem>
-                                        <SelectItem value="preference"><div className="flex items-center gap-2"><Wand2 /> Preferência de Horário (Ex: Limpeza)</div></SelectItem>
-                                        <SelectItem value="on_demand"><div className="flex items-center gap-2"><Handshake /> Sob Demanda (Ex: Aula de Surf)</div></SelectItem>
+                                        <SelectItem value="loan"><div className="flex items-center gap-2"><Repeat /> Empréstimo (sem custo)</div></SelectItem>
+                                        <SelectItem value="consumable"><div className="flex items-center gap-2"><HandCoins /> Consumo (com custo)</div></SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
                                 </FormItem>
                             )}/>
-
-                            {serviceType === 'slots' && (
-                                <div className="space-y-4 p-4 border rounded-md bg-slate-50">
-                                    <FormField control={form.control} name="defaultStatus" render={({ field }) => (
-                                        <FormItem><FormLabel>Status Padrão dos Horários</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                            <FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl>
-                                            <SelectContent>
-                                                <SelectItem value="open">Abertos (Hóspede pode agendar)</SelectItem>
-                                                <SelectItem value="closed">Fechados (Admin precisa liberar)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        </FormItem>
-                                    )}/>
-                                    <div className="space-y-2">
-                                        <FormLabel>Unidades (Ex: Jacuzzi 1)</FormLabel>
-                                        {unitFields.map((field, index) => (
-                                            <FormField key={field.id} control={form.control} name={`units.${index}.value`} render={({ field }) => (
-                                                <FormItem className="flex items-center gap-2"><FormControl><Input placeholder={`Unidade ${index + 1}`} {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeUnit(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
-                                            )}/>
-                                        ))}
-                                        <Button type="button" variant="outline" size="sm" onClick={() => appendUnit({ value: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Unidade</Button>
-                                        <FormMessage>{form.formState.errors.units?.message}</FormMessage>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <FormLabel>Horários Disponíveis</FormLabel>
-                                        {timeSlotFields.map((field, index) => (
-                                            <FormField key={field.id} control={form.control} name={`timeSlots.${index}.label`} render={({ field }) => (
-                                                <FormItem className="flex items-center gap-2"><FormControl><Input placeholder="Ex: 14:00 - 15:00" {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeTimeSlot(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
-                                            )}/>
-                                        ))}
-                                        <Button type="button" variant="outline" size="sm" onClick={() => appendTimeSlot({id: new Date().toISOString(), label: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Horário</Button>
-                                        <FormMessage>{form.formState.errors.timeSlots?.message}</FormMessage>
-                                    </div>
-                                </div>
+                            {/* ## ATUALIZAÇÃO: Campo de preço condicional ## */}
+                            {itemType === 'consumable' && (
+                                <FormField control={form.control} name="price" render={({ field }) => (
+                                    <FormItem><FormLabel>Preço (R$)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="Ex: 25.50" {...field} /></FormControl><FormMessage /></FormItem>
+                                )}/>
                             )}
-
-                            {serviceType === 'preference' && (
-                                <div className="space-y-4 p-4 border rounded-md bg-slate-50">
-                                    <div className="space-y-2">
-                                        <FormLabel>Opções Adicionais (Ex: Troca de toalhas)</FormLabel>
-                                        {optionFields.map((field, index) => (
-                                            <FormField key={field.id} control={form.control} name={`additionalOptions.${index}.value`} render={({ field }) => (
-                                                 <FormItem className="flex items-center gap-2"><FormControl><Input placeholder={`Opção ${index + 1}`} {...field} /></FormControl><Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index)}><X className="h-4 w-4 text-red-500" /></Button></FormItem>
-                                            )}/>
-                                        ))}
-                                        <Button type="button" variant="outline" size="sm" onClick={() => appendOption({ value: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Opção</Button>
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {serviceType === 'on_demand' && (
-                                 <div className="space-y-4 p-4 border rounded-md bg-slate-50">
-                                     <FormField control={form.control} name="instructions" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Instruções para o Hóspede</FormLabel>
-                                            <FormControl><Textarea placeholder="Ex: Após a solicitação, a recepção entrará em contato para confirmar a disponibilidade, valores e realizar o pagamento." {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                     )}/>
-                                 </div>
-                            )}
+                            <FormField control={form.control} name="description" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Descrição (Opcional)</FormLabel>
+                                    <FormControl><Textarea placeholder="Ex: Item emprestado, devolver na recepção após o uso." {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
                         </form>
                     </Form>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-                        <Button type="submit" form="service-form" disabled={form.formState.isSubmitting}>
+                        <Button type="submit" form="item-form" disabled={form.formState.isSubmitting}>
                             {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Salvar Serviço
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Salvar Item
                         </Button>
                     </DialogFooter>
                 </DialogContent>

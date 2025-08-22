@@ -7,6 +7,7 @@ import { Loader2, LogOut } from "lucide-react";
 import Image from "next/image";
 import { useProperty } from "@/context/PropertyContext";
 import { PropertyThemeProvider } from "@/components/theme/PropertyThemeProvider";
+import { BottomNav } from "@/components/guest/navigation/BottomNav"; // ++ NOVA IMPORTAÇÃO
 
 function AuthLayout({ children }: { children: React.ReactNode }) {
     const { isAuthenticated, isLoading, logout, stay } = useGuest();
@@ -14,7 +15,6 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
 
     useEffect(() => {
-        // ATUALIZADO: Se não estiver autenticado, redireciona para a raiz.
         if (!isLoading && !isAuthenticated) {
             router.replace("/");
         }
@@ -31,7 +31,8 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
     if (isAuthenticated) {
         return (
             <PropertyThemeProvider>
-              <div className="min-h-screen bg-background text-foreground antialiased">
+              {/* ++ ATUALIZAÇÃO: Adicionado pb-20 para o espaçamento da BottomNav ++ */}
+              <div className="min-h-screen bg-background text-foreground antialiased pb-20">
                 <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur-sm">
                   <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
                     <div className="flex items-center gap-3">
@@ -49,15 +50,16 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
                   </div>
                 </header>
                 <main className="container mx-auto p-4 sm:p-6 lg:p-8">{children}</main>
+                {/* ++ NOVO COMPONENTE RENDERIZADO ++ */}
+                <BottomNav />
               </div>
             </PropertyThemeProvider>
         );
     }
 
-    return null; // Retorna nulo enquanto o redirecionamento ocorre
+    return null;
 }
 
-// SIMPLIFICADO: Este layout agora só envolve rotas protegidas.
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   return (
     <GuestProvider>

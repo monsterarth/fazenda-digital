@@ -7,7 +7,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, BedDouble, Coffee, Calendar, BarChart2, Settings, LogOut,
-    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield, Users, Cog 
+    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield, Users, Cog,
+    ConciergeBell // ++ NOVO ÍCONE IMPORTADO
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getAuth, signOut } from 'firebase/auth';
@@ -19,15 +20,16 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { useProperty } from '@/context/PropertyContext'; // ++ Importa o hook do contexto
+import { useProperty } from '@/context/PropertyContext';
 
-// As listas de navegação permanecem as mesmas
+// ++ ATUALIZAÇÃO: Adicionado o novo link para Solicitações
 const mainNavItems = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/stays', label: 'Estadias', icon: BedDouble },
     { href: "/admin/hospedes", label: "Hóspedes", icon: Users },
     { href: '/admin/pedidos/cafe', label: 'Pedidos Café', icon: Coffee },
     { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
+    { href: '/admin/solicitacoes', label: 'Solicitações', icon: ConciergeBell }, // ++ NOVA LINHA
     { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },
 ];
 
@@ -37,16 +39,15 @@ const settingsNavItems = [
     { href: '/admin/settings/cafe', label: 'Cardápio Café', icon: Utensils },
     { href: '/admin/settings/agendamentos', label: 'Gerenciar Agend.', icon: CalendarCheck },
     { href: '/admin/settings/pesquisas', label: 'Gerenciar Pesquisas', icon: FileText },
-    { href: '/admin/settings/servicos', label: 'Serviços', icon: Wrench },
+    { href: '/admin/settings/servicos', label: 'Itens', icon: Wrench }, // Nome atualizado de 'Serviços' para 'Itens'
     { href: '/admin/settings/politicas', label: 'Políticas', icon: Shield },
 ];
 
-// ++ A prop 'property' foi removida da assinatura do componente
 export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
     const { user } = useAuth();
-    const { property } = useProperty(); // ++ Os dados da propriedade agora vêm do contexto
+    const { property } = useProperty();
 
     const handleLogout = async () => {
         const auth = getAuth();
@@ -61,7 +62,7 @@ export function Sidebar() {
     };
 
     const NavLink = ({ href, label, icon: Icon }: { href: string, label: string, icon: React.ElementType }) => {
-        const isActive = pathname === href;
+        const isActive = pathname.startsWith(href); // Usando startsWith para cobrir sub-rotas
         return (
             <Link href={href} className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-gray-500 transition-all hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50",
@@ -86,7 +87,7 @@ export function Sidebar() {
                     <nav className="grid items-start px-4 text-sm font-medium">
                         {mainNavItems.map(item => <NavLink key={item.href} {...item} />)}
 
-                        <Accordion type="single" collapsible className="w-full mt-2">
+                        <Accordion type="single" collapsible className="w-full mt-2" defaultValue={settingsNavItems.some(item => pathname.startsWith(item.href)) ? "settings" : undefined}>
                             <AccordionItem value="settings" className="border-b-0">
                                 <AccordionTrigger className={cn(
                                      "flex items-center gap-3 rounded-lg px-3 py-2 text-gray-500 transition-all hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50 [&[data-state=open]>svg]:rotate-180",

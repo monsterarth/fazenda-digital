@@ -1,3 +1,5 @@
+// /components/guest/dashboard/TodaysAgendaCard.tsx
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -6,27 +8,23 @@ import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, Loader2, Clock } from 'lucide-react';
-import { format, isToday } from 'date-fns';
+import { isToday } from 'date-fns';
+import { 
+  Accordion, 
+  AccordionContent, 
+  AccordionItem, 
+  AccordionTrigger 
+} from "@/components/ui/accordion";
 
-// ++ INÍCIO DA CORREÇÃO ++
-// Definimos explicitamente a estrutura de dados que esperamos do Firestore.
-// Isso resolve os erros de tipagem do TypeScript.
-interface TimeSlot {
-  id: string;
-  startTime: string;
-  endTime: string;
-  label: string;
-}
-
+// ## INÍCIO DA CORREÇÃO: A interface agora reflete a estrutura real dos dados no Firestore ##
 interface Booking {
   id: string;
-  date: firestore.Timestamp;
-  timeSlot: TimeSlot;
+  date: string;
+  startTime: string;
+  endTime: string;
   structureName: string;
-  // outras propriedades que possam existir...
 }
-// ++ FIM DA CORREÇÃO ++
-
+// ## FIM DA CORREÇÃO ##
 
 export function TodaysAgendaCard() {
   const { stay } = useGuest();
@@ -41,7 +39,7 @@ export function TodaysAgendaCard() {
 
     const dbPromise = getFirebaseDb();
     
-    dbPromise.then(db => {
+    const unsubPromise = dbPromise.then(db => {
       if (!db) {
         setLoading(false);
         return;
@@ -55,10 +53,15 @@ export function TodaysAgendaCard() {
       const unsubscribe = firestore.onSnapshot(q, (snapshot) => {
         const allBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
         
-        // Verificação de segurança para garantir que 'date' existe antes de usar 'toDate()'
-        const today = allBookings.filter(booking => booking.date && isToday(booking.date.toDate()));
+        const today = allBookings
+          // Filtra para pegar apenas os agendamentos de hoje
+          .filter(booking => booking.date && isToday(new Date(booking.date.replace(/-/g, '/'))))
+          // Garante que apenas agendamentos com horário de início válido prossigam
+          .filter(booking => typeof booking.startTime === 'string');
 
-        setTodaysBookings(today.sort((a, b) => a.timeSlot.startTime.localeCompare(b.timeSlot.startTime)));
+        // ## INÍCIO DA CORREÇÃO: Ordena usando o campo 'startTime' que existe nos dados ##
+        setTodaysBookings(today.sort((a, b) => a.startTime.localeCompare(b.startTime)));
+        // ## FIM DA CORREÇÃO ##
         setLoading(false);
       }, (error) => {
         console.error("Erro ao buscar agendamentos:", error);
@@ -66,43 +69,54 @@ export function TodaysAgendaCard() {
       });
 
       return unsubscribe;
-    }).then(unsubscribe => {
-        return () => {
-            if (unsubscribe) {
-                unsubscribe();
-            }
-        };
     });
 
+    return () => {
+      unsubPromise.then(unsub => {
+        if (unsub) unsub();
+      });
+    };
   }, [stay?.id]);
 
+  // Define um valor padrão para o Accordion com base se há agendamentos
+  const defaultValue = todaysBookings.length > 0 ? "agenda" : "";
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Calendar className="text-primary" /> Agenda de Hoje</CardTitle>
-        <CardDescription>Seus agendamentos confirmados para hoje.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> :
-         todaysBookings.length > 0 ? (
-          <ul className="space-y-3">
-            {todaysBookings.map(booking => (
-              <li key={booking.id} className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                  <Clock className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="font-semibold">{booking.structureName}</p>
-                  {/* O erro não acontecerá mais pois 'timeSlot' está definido no tipo */}
-                  <p className="text-sm text-muted-foreground">{booking.timeSlot.label}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-center text-sm text-muted-foreground py-4">Nenhum agendamento para hoje.</p>
-        )}
-      </CardContent>
-    </Card>
+    <Accordion type="single" collapsible defaultValue={defaultValue} className="w-full">
+      <AccordionItem value="agenda" className="border-none">
+        <Card>
+          <AccordionTrigger className="p-0 w-full hover:no-underline [&_svg]:data-[state=open]:rotate-0">
+            <CardHeader className="w-full text-left">
+              <CardTitle className="flex items-center gap-2"><Calendar className="text-primary" /> Agenda de Hoje</CardTitle>
+              <CardDescription>Seus agendamentos confirmados para hoje.</CardDescription>
+            </CardHeader>
+          </AccordionTrigger>
+          <AccordionContent>
+            <CardContent>
+              {loading ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> :
+              todaysBookings.length > 0 ? (
+                <ul className="space-y-3">
+                  {todaysBookings.map(booking => (
+                    <li key={booking.id} className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                        <Clock className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">{booking.structureName}</p>
+                        {/* ## INÍCIO DA CORREÇÃO: Cria o label do horário dinamicamente ## */}
+                        <p className="text-sm text-muted-foreground">{`${booking.startTime} - ${booking.endTime}`}</p>
+                        {/* ## FIM DA CORREÇÃO ## */}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-center text-sm text-muted-foreground py-4">Nenhum agendamento para hoje.</p>
+              )}
+            </CardContent>
+          </AccordionContent>
+        </Card>
+      </AccordionItem>
+    </Accordion>
   );
 }

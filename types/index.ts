@@ -204,6 +204,11 @@ export interface BreakfastOrder {
 // 5. CONFIGURAÇÕES GERAIS
 // ========================================================================
 
+export interface Equipment {
+  type: string;
+  model: string;
+}
+
 export interface AppConfig {
   logoUrl?: string;
   nomeFazenda: string;
@@ -245,13 +250,12 @@ export interface Cabin {
   posicao?: number;
   wifiSsid?: string;
   wifiPassword?: string;
+  equipment?: Equipment[];
 }
 
 // ========================================================================
 // 6. TIPOS DE APOIO E LEGADOS
 // ========================================================================
-// ++ INÍCIO DA CORREÇÃO ++
-// Esta interface representa o objeto Timestamp COMPLETO do Firebase
 interface FirestoreTimestamp {
   seconds: number;
   nanoseconds: number;
@@ -259,9 +263,7 @@ interface FirestoreTimestamp {
   toMillis(): number;
 }
 
-// Nosso tipo 'Timestamp' agora pode ser o objeto completo OU um número (para o cliente)
 export type Timestamp = FirestoreTimestamp | number;
-// ++ FIM DA CORREÇÃO ++
 
 export interface HotDish {
   id: string;
@@ -361,6 +363,18 @@ export interface OrderState {
   specialRequests: string;
 }
 
+// ========================================================================
+// 7. GUIAS E MANUAIS (NOVA SEÇÃO)
+// ========================================================================
+
+export interface Guide {
+  id: string;
+  title: string;
+  fileUrl: string;
+  scope: 'general' | 'specific'; // Geral (pousada) ou Específico (equipamento)
+  equipmentType?: string; // Ex: 'Cofre', 'Jacuzzi'
+  equipmentModel?: string; // Ex: 'Digital Safe X100'
+}
 
 // ========================================================================
 // 8. NOVA ESTRUTURA DE PERSONALIZAÇÃO (WHITE-LABEL)

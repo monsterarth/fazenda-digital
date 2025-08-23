@@ -7,8 +7,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, BedDouble, Coffee, Calendar, BarChart2, Settings, LogOut,
-    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield, Users, Cog,
-    ConciergeBell // ++ NOVO ÍCONE IMPORTADO
+    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield, Users,
+    ConciergeBell, Book // Ícone para Guias
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getAuth, signOut } from 'firebase/auth';
@@ -22,14 +22,13 @@ import {
 } from "@/components/ui/accordion"
 import { useProperty } from '@/context/PropertyContext';
 
-// ++ ATUALIZAÇÃO: Adicionado o novo link para Solicitações
 const mainNavItems = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/stays', label: 'Estadias', icon: BedDouble },
     { href: "/admin/hospedes", label: "Hóspedes", icon: Users },
     { href: '/admin/pedidos/cafe', label: 'Pedidos Café', icon: Coffee },
     { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
-    { href: '/admin/solicitacoes', label: 'Solicitações', icon: ConciergeBell }, // ++ NOVA LINHA
+    { href: '/admin/solicitacoes', label: 'Solicitações', icon: ConciergeBell },
     { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },
 ];
 
@@ -39,7 +38,8 @@ const settingsNavItems = [
     { href: '/admin/settings/cafe', label: 'Cardápio Café', icon: Utensils },
     { href: '/admin/settings/agendamentos', label: 'Gerenciar Agend.', icon: CalendarCheck },
     { href: '/admin/settings/pesquisas', label: 'Gerenciar Pesquisas', icon: FileText },
-    { href: '/admin/settings/servicos', label: 'Itens', icon: Wrench }, // Nome atualizado de 'Serviços' para 'Itens'
+    { href: '/admin/settings/servicos', label: 'Itens', icon: Wrench },
+    { href: '/admin/settings/guias', label: 'Guias e Manuais', icon: Book }, // Novo link adicionado
     { href: '/admin/settings/politicas', label: 'Políticas', icon: Shield },
 ];
 
@@ -62,7 +62,7 @@ export function Sidebar() {
     };
 
     const NavLink = ({ href, label, icon: Icon }: { href: string, label: string, icon: React.ElementType }) => {
-        const isActive = pathname.startsWith(href); // Usando startsWith para cobrir sub-rotas
+        const isActive = pathname.startsWith(href);
         return (
             <Link href={href} className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-gray-500 transition-all hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50",

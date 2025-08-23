@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from 'firebase/firestore';
-import { Cabin } from '@/types';
-import { useForm, SubmitHandler } from 'react-hook-form';
+import { Cabin, Equipment } from '@/types';
+import { useForm, useFieldArray, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
@@ -16,17 +16,24 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { toast, Toaster } from 'sonner';
-import { Loader2, PlusCircle, Edit, Trash2, BedDouble, Wifi } from 'lucide-react'; // Adicionado Wifi
+import { Loader2, PlusCircle, Edit, Trash2, BedDouble, Wifi, HardHat } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
-// ## INÍCIO DA CORREÇÃO: Adicionados os campos de Wi-Fi ao schema ##
+// Schema para um único equipamento
+const equipmentSchema = z.object({
+  type: z.string().min(1, "O tipo de equipamento é obrigatório."),
+  model: z.string().min(1, "O modelo é obrigatório."),
+});
+
+// Schema principal da cabana, agora incluindo o array de equipamentos
 const cabinSchema = z.object({
   name: z.string().min(2, "O nome da cabana é obrigatório."),
   capacity: z.number().min(1, "A capacidade deve ser de pelo menos 1."),
   posicao: z.number().optional(),
   wifiSsid: z.string().optional(),
   wifiPassword: z.string().optional(),
+  equipment: z.array(equipmentSchema).optional(), // Novo campo para equipamentos
 });
-// ## FIM DA CORREÇÃO ##
 
 type CabinFormValues = z.infer<typeof cabinSchema>;
 
@@ -49,7 +56,14 @@ export default function ManageCabinsPage() {
             posicao: undefined,
             wifiSsid: '',
             wifiPassword: '',
+            equipment: [], // Valor padrão para o novo campo
         }
+    });
+
+    // Hook para gerenciar o array dinâmico de equipamentos no formulário
+    const { fields: equipmentFields, append: appendEquipment, remove: removeEquipment } = useFieldArray({
+        control: form.control,
+        name: "equipment"
     });
 
     useEffect(() => {
@@ -88,6 +102,7 @@ export default function ManageCabinsPage() {
                 posicao: cabin.posicao,
                 wifiSsid: cabin.wifiSsid || '',
                 wifiPassword: cabin.wifiPassword || '',
+                equipment: cabin.equipment || [], // Popula o formulário com os equipamentos existentes
             });
         } else {
             form.reset({
@@ -96,6 +111,7 @@ export default function ManageCabinsPage() {
                 posicao: cabins.length > 0 ? Math.max(...cabins.map(c => c.posicao || 0)) + 1 : 1,
                 wifiSsid: '',
                 wifiPassword: '',
+                equipment: [],
             });
         }
         setIsModalOpen(true);
@@ -106,12 +122,12 @@ export default function ManageCabinsPage() {
         const toastId = toast.loading(editingCabin ? "Salvando alterações..." : "Criando nova cabana...");
 
         try {
-            // Garante que campos opcionais vazios sejam salvos como nulos ou indefinidos
             const dataToSave = {
                 ...data,
                 posicao: data.posicao ?? null,
                 wifiSsid: data.wifiSsid || null,
                 wifiPassword: data.wifiPassword || null,
+                equipment: data.equipment || [], // Garante que o campo de equipamentos seja salvo
             };
 
             if (editingCabin) {
@@ -167,13 +183,10 @@ export default function ManageCabinsPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-[80px]">Posição</TableHead>
                                     <TableHead>Nome da Cabana</TableHead>
                                     <TableHead>Capacidade</TableHead>
-                                    {/* ## INÍCIO DA CORREÇÃO: Novas colunas na tabela ## */}
                                     <TableHead>Wi-Fi SSID</TableHead>
-                                    <TableHead>Senha</TableHead>
-                                    {/* ## FIM DA CORREÇÃO ## */}
+                                    <TableHead>Equipamentos</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -181,13 +194,18 @@ export default function ManageCabinsPage() {
                                 {cabins.length > 0 ? (
                                     cabins.map(cabin => (
                                         <TableRow key={cabin.id}>
-                                            <TableCell>{cabin.posicao || '-'}</TableCell>
-                                            <TableCell className="font-medium">{cabin.name}</TableCell>
+                                            <TableCell className="font-medium">{cabin.name} <span className="text-muted-foreground text-xs"> (Pos: {cabin.posicao || '-'})</span></TableCell>
                                             <TableCell>{cabin.capacity} pessoas</TableCell>
-                                            {/* ## INÍCIO DA CORREÇÃO: Exibição dos dados de Wi-Fi ## */}
                                             <TableCell className="font-mono text-xs">{cabin.wifiSsid || 'Não definido'}</TableCell>
-                                            <TableCell className="font-mono text-xs">{cabin.wifiPassword || 'Não definida'}</TableCell>
-                                            {/* ## FIM DA CORREÇÃO ## */}
+                                            <TableCell>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {cabin.equipment && cabin.equipment.length > 0 ? (
+                                                        cabin.equipment.map((eq, i) => <Badge key={i} variant="outline">{eq.type}</Badge>)
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">Nenhum</span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
                                             <TableCell className="text-right space-x-2">
                                                 <Button variant="outline" size="sm" onClick={() => handleOpenModal(cabin)}>
                                                     <Edit className="mr-2 h-4 w-4" /> Editar
@@ -200,7 +218,7 @@ export default function ManageCabinsPage() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="h-24 text-center">Nenhuma cabana cadastrada.</TableCell>
+                                        <TableCell colSpan={5} className="h-24 text-center">Nenhuma cabana cadastrada.</TableCell>
                                     </TableRow>
                                 )}
                             </TableBody>
@@ -210,7 +228,7 @@ export default function ManageCabinsPage() {
             </Card>
 
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent>
+                <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>{editingCabin ? "Editar Cabana" : "Adicionar Nova Cabana"}</DialogTitle>
                         <DialogDescription>Preencha as informações abaixo e clique em salvar.</DialogDescription>
@@ -222,7 +240,6 @@ export default function ManageCabinsPage() {
                                 <FormField control={form.control} name="capacity" render={({ field }) => (<FormItem><FormLabel>Capacidade</FormLabel><FormControl><Input type="number" min="1" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : Number(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
                                 <FormField control={form.control} name="posicao" render={({ field }) => (<FormItem><FormLabel>Posição (Ordem)</FormLabel><FormControl><Input type="number" min="1" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : Number(e.target.value))}/></FormControl><FormMessage /></FormItem>)} />
                             </div>
-                            {/* ## INÍCIO DA CORREÇÃO: Novos campos de Wi-Fi no formulário ## */}
                             <div className="space-y-2 pt-4 border-t">
                                 <h4 className="font-medium flex items-center gap-2 text-muted-foreground"><Wifi className="h-4 w-4" /> Configurações de Wi-Fi</h4>
                                 <div className="grid grid-cols-2 gap-4">
@@ -230,7 +247,24 @@ export default function ManageCabinsPage() {
                                      <FormField control={form.control} name="wifiPassword" render={({ field }) => (<FormItem><FormLabel>Senha</FormLabel><FormControl><Input placeholder="Senha da rede" {...field} /></FormControl><FormMessage /></FormItem>)} />
                                 </div>
                             </div>
-                            {/* ## FIM DA CORREÇÃO ## */}
+                            
+                            {/* Nova seção para gerenciar equipamentos */}
+                            <div className="space-y-4 pt-4 border-t">
+                                <div className="flex justify-between items-center">
+                                    <h4 className="font-medium flex items-center gap-2 text-muted-foreground"><HardHat className="h-4 w-4" /> Equipamentos da Cabana</h4>
+                                    <Button type="button" size="sm" variant="outline" onClick={() => appendEquipment({ type: '', model: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
+                                </div>
+                                <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                                    {equipmentFields.map((field, index) => (
+                                        <div key={field.id} className="flex items-end gap-2 p-2 bg-muted/50 rounded-md">
+                                            <FormField name={`equipment.${index}.type`} control={form.control} render={({ field }) => (<FormItem className="flex-1"><FormLabel>Tipo</FormLabel><FormControl><Input placeholder="Ex: Cofre" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                            <FormField name={`equipment.${index}.model`} control={form.control} render={({ field }) => (<FormItem className="flex-1"><FormLabel>Modelo</FormLabel><FormControl><Input placeholder="Ex: Digital Safe X100" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                            <Button type="button" variant="ghost" size="icon" onClick={() => removeEquipment(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                        </div>
+                                    ))}
+                                    {equipmentFields.length === 0 && <p className="text-xs text-center text-muted-foreground py-2">Nenhum equipamento adicionado.</p>}
+                                </div>
+                            </div>
                         </form>
                     </Form>
                     <DialogFooter>

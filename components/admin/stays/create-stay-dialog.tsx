@@ -1,5 +1,3 @@
-// components/admin/stays/create-stay-dialog.tsx
-
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -134,11 +132,16 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) =>
 
     return (
         <Dialog open={isModalOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-4xl">
+            <DialogContent 
+                className="max-w-4xl"
+                onInteractOutside={(e) => {
+                    e.preventDefault();
+                }}
+            >
                 <DialogHeader>
                     <DialogTitle>Criar Nova Estadia Manualmente</DialogTitle>
                     <DialogDescription>
-                      Preencha os dados abaixo. Se o hóspede já esteve aqui, digite o CPF para buscar seus dados.
+                        Preencha os dados abaixo. Se o hóspede já esteve aqui, digite o CPF para buscar seus dados.
                     </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>

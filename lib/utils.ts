@@ -76,3 +76,17 @@ export function serializeFirestoreTimestamps(data: any): any {
   return data;
 }
 // ++ FIM DA ADIÇÃO ++
+
+/**
+ * Normaliza uma string para CAIXA ALTA, sem acentos ou caracteres especiais.
+ * @param str A string a ser normalizada.
+ * @returns A string normalizada.
+ */
+export function normalizeString(str: string) {
+    if (!str) return "";
+    return str
+      .normalize("NFD") // Normaliza para decompor os caracteres acentuados
+      .replace(/[\u0300-\u036f]/g, "") // Remove os diacríticos (acentos)
+      .replace(/[^a-zA-Z0-9\s]/g, "") // Remove caracteres especiais, exceto espaços
+      .toUpperCase(); // Converte para caixa alta
+}

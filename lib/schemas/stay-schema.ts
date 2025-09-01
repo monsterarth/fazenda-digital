@@ -1,10 +1,9 @@
-// lib/schemas/stay-schema.ts
-
 import { z } from 'zod';
 import { isValidCPF } from '@/lib/validators';
+import { normalizeString } from '@/lib/utils'; // IMPORTANDO A FUNÇÃO
 
 const companionSchema = z.object({
-    fullName: z.string().min(1, "Nome do acompanhante é obrigatório."),
+    fullName: z.string().min(1, "Nome do acompanhante é obrigatório.").transform(normalizeString), // APLICANDO A TRANSFORMAÇÃO
     age: z.string().min(1, "Idade é obrigatória."),
     cpf: z.string().optional()
 });
@@ -21,7 +20,7 @@ const petSchema = z.object({
 
 export const fullStaySchema = z.object({
     // Pre-check-in
-    leadGuestName: z.string().min(3, "O nome completo é obrigatório."),
+    leadGuestName: z.string().min(3, "O nome completo é obrigatório.").transform(normalizeString), // APLICANDO A TRANSFORMAÇÃO
     isForeigner: z.boolean(),
     leadGuestDocument: z.string().min(3, "O documento é obrigatório."),
     country: z.string().optional(),

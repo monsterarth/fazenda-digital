@@ -26,7 +26,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
-// ++ FUNÇÃO HELPER PARA CONVERTER TIMESTAMP COM SEGURANÇA ++
+// FUNÇÃO HELPER PARA CONVERTER TIMESTAMP COM SEGURANÇA
 const getTimestampInMillis = (timestamp: Timestamp | undefined): number => {
     if (!timestamp) return 0;
     if (typeof timestamp === 'number') {
@@ -100,7 +100,7 @@ export default function CafePedidosPage() {
     }, [isAdmin]);
 
     const filteredOrders = useMemo(() => {
-        // ++ LÓGICA DE ORDENAÇÃO CORRIGIDA E MELHORADA ++
+        // LÓGICA DE ORDENAÇÃO CORRIGIDA E MELHORADA
         const sortedOrders = [...orders].sort((a, b) => {
             const dateA = a.deliveryDate ? new Date(a.deliveryDate).getTime() : 0;
             const dateB = b.deliveryDate ? new Date(b.deliveryDate).getTime() : 0;

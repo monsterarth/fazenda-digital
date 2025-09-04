@@ -1,3 +1,5 @@
+//app/(portal)/cafe/page.tsx
+
 "use client";
 
 import React, { Suspense, useState } from 'react';

@@ -1,3 +1,5 @@
+// app/admin/(dashboard)/settings/cafe/page.tsx
+
 "use client";
 
 import { Badge } from '@/components/ui/badge';
@@ -9,8 +11,8 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from "@dnd-kit/utilities";
 import { toast, Toaster } from 'sonner';
 
-import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
-import { BreakfastMenuCategory, BreakfastMenuItem, Flavor } from "@/types";
+import { useAuth } from '@/context/AuthContext';
+import { BreakfastMenuCategory, BreakfastMenuItem, Flavor, Property } from "@/types";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +21,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { GripVertical, Plus, Edit, Trash2, Loader2, Utensils, User, ShoppingBasket, Sparkles } from "lucide-react";
+import { GripVertical, Plus, Edit, Trash2, Loader2, Utensils, User, ShoppingBasket, Sparkles, Clock } from "lucide-react";
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
@@ -76,9 +78,9 @@ function SortableCategory({ category, onAddItem, onEditCategory, onDeleteCategor
                     <div>
                         <h4 className="text-lg font-semibold text-slate-900">{category.name}</h4>
                         <Badge variant="secondary" className="mt-1">
-                            {category.type === 'individual' ? 
-                                <><User className="w-3 h-3 mr-1.5"/>Seleção por Hóspede</> : 
-                                <><ShoppingBasket className="w-3 h-3 mr-1.5"/>Para a Cesta</>
+                            {category.type === 'individual' ?
+                                <><User className="w-3 h-3 mr-1.5" />Seleção por Hóspede</> :
+                                <><ShoppingBasket className="w-3 h-3 mr-1.5" />Para a Cesta</>
                             }
                         </Badge>
                     </div>
@@ -113,36 +115,38 @@ function SortableCategory({ category, onAddItem, onEditCategory, onDeleteCategor
 
 // --- PÁGINA PRINCIPAL ---
 export default function ManageBreakfastMenuPage() {
-    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
+    const { isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [menuCategories, setMenuCategories] = useState<BreakfastMenuCategory[]>([]);
     const [loading, setLoading] = useState(true);
-    
+
+    // ++ NOVO ESTADO PARA HORÁRIOS DE ENTREGA
+    const [deliveryTimes, setDeliveryTimes] = useState<string[]>([]);
+    const [newTime, setNewTime] = useState("");
+
     const [categoryModal, setCategoryModal] = useState<{ open: boolean; data?: BreakfastMenuCategory }>({ open: false });
     const [itemModal, setItemModal] = useState<{ open: boolean; categoryId?: string; data?: Partial<BreakfastMenuItem> & { flavors?: Flavor[] } }>({ open: false });
     const [isSaving, setIsSaving] = useState(false);
-    
+
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     const menuId = "default_breakfast";
+    const propertyId = "default"; // ID do documento de propriedades
 
     useEffect(() => {
-        // ++ CORREÇÃO: A inicialização agora espera pela confirmação de admin
         if (!isAdmin) {
-            // Se o usuário não for admin, nem tenta inicializar o listener
-            // para evitar o erro de permissão.
-            setLoading(false); // Para o loader se o usuário não for admin
+            setLoading(false);
             return;
         }
 
-        async function initializeDbAndListener() {
+        async function initializeDbAndListeners() {
             const firestoreDb = await getFirebaseDb();
             if (!firestoreDb) { setLoading(false); return; }
             setDb(firestoreDb);
 
+            // Listener para o Cardápio
             const menuRef = firestore.doc(firestoreDb, "breakfastMenus", menuId);
             const categoriesQuery = firestore.query(firestore.collection(menuRef, "categories"), firestore.orderBy("order", "asc"));
-            
-            const unsubscribe = firestore.onSnapshot(categoriesQuery, async (snapshot) => {
+            const unsubscribeMenu = firestore.onSnapshot(categoriesQuery, async (snapshot) => {
                 setLoading(true);
                 const categoriesData = await Promise.all(snapshot.docs.map(async (categoryDoc) => {
                     const categoryData = categoryDoc.data();
@@ -153,14 +157,59 @@ export default function ManageBreakfastMenuPage() {
                 }));
                 setMenuCategories(categoriesData);
                 setLoading(false);
-            }, (error) => { console.error("Error loading menu:", error); setLoading(false); toast.error("Falha ao carregar o cardápio. Verifique as permissões."); });
-            
-            return unsubscribe;
+            }, (error) => { console.error("Error loading menu:", error); setLoading(false); toast.error("Falha ao carregar o cardápio."); });
+
+            // ++ NOVO LISTENER PARA AS PROPRIEDADES (HORÁRIOS)
+            const propertyRef = firestore.doc(firestoreDb, "properties", propertyId);
+            const unsubscribeProperty = firestore.onSnapshot(propertyRef, (doc) => {
+                if (doc.exists()) {
+                    const propertyData = doc.data() as Property;
+                    setDeliveryTimes(propertyData.breakfast?.deliveryTimes || []);
+                }
+            }, (error) => { console.error("Error loading property:", error); toast.error("Falha ao carregar horários de entrega."); });
+
+
+            return () => {
+                unsubscribeMenu();
+                unsubscribeProperty();
+            };
         }
-        const unsubscribePromise = initializeDbAndListener();
+        const unsubscribePromise = initializeDbAndListeners();
         return () => { unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe()); };
-    }, [isAdmin]); // ++ A dependência do useEffect agora é o status de admin
-    
+    }, [isAdmin]);
+
+    // ++ NOVAS FUNÇÕES PARA GERENCIAR HORÁRIOS
+    const handleAddDeliveryTime = async () => {
+        if (!db || !newTime.trim()) return;
+        if (deliveryTimes.includes(newTime.trim())) {
+            toast.warning("Este horário já existe.");
+            return;
+        }
+        const updatedTimes = [...deliveryTimes, newTime.trim()].sort();
+        try {
+            const propertyRef = firestore.doc(db, "properties", propertyId);
+            await firestore.updateDoc(propertyRef, { "breakfast.deliveryTimes": updatedTimes });
+            toast.success("Horário adicionado!");
+            setNewTime("");
+        } catch (error) {
+            toast.error("Erro ao adicionar horário.");
+            console.error(error);
+        }
+    };
+
+    const handleDeleteDeliveryTime = async (timeToDelete: string) => {
+        if (!db) return;
+        const updatedTimes = deliveryTimes.filter(time => time !== timeToDelete);
+        try {
+            const propertyRef = firestore.doc(db, "properties", propertyId);
+            await firestore.updateDoc(propertyRef, { "breakfast.deliveryTimes": updatedTimes });
+            toast.success("Horário removido!");
+        } catch (error) {
+            toast.error("Erro ao remover horário.");
+            console.error(error);
+        }
+    };
+
     const handleDragEnd = async (event: DragEndEvent, context: 'categories' | 'items', parentId?: string) => {
         if (!db) return;
         const { active, over } = event;
@@ -203,15 +252,15 @@ export default function ManageBreakfastMenuPage() {
 
         if (!name || !type) { toast.error("Nome e Tipo são obrigatórios."); return; }
         setIsSaving(true);
-        
+
         const collectionRef = firestore.collection(db, "breakfastMenus", menuId, "categories");
-        const dataToSave = { 
-            name, 
+        const dataToSave = {
+            name,
             type,
             limitType: type === 'collective' ? limitType : 'none',
             limitGuestMultiplier: type === 'collective' ? limitGuestMultiplier : 1,
         };
-        
+
         try {
             if (categoryModal.data?.id) {
                 await firestore.updateDoc(firestore.doc(collectionRef, categoryModal.data.id), dataToSave);
@@ -241,20 +290,20 @@ export default function ManageBreakfastMenuPage() {
     const handleSaveItem = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!db || !itemModal.categoryId || !itemModal.data) return;
-    
+
         const formData = new FormData(e.currentTarget);
         const imageFile = formData.get("imageUrl") as File;
         let imageUrl = itemModal.data.imageUrl || '';
-    
+
         setIsSaving(true);
         const toastId = toast.loading("Salvando item...");
-    
+
         try {
             if (imageFile && imageFile.size > 0) {
                 toast.loading("Enviando imagem...", { id: toastId });
                 imageUrl = await uploadFile(imageFile, `menu_items/${Date.now()}_${imageFile.name}`);
             }
-    
+
             const itemData = {
                 name: formData.get("name") as string,
                 description: formData.get("description") as string,
@@ -262,13 +311,13 @@ export default function ManageBreakfastMenuPage() {
                 imageUrl: imageUrl,
                 flavors: itemModal.data.flavors?.filter(f => f.name.trim() !== '') || []
             };
-    
+
             if (!itemData.name) {
                 toast.error("O nome do item é obrigatório.", { id: toastId });
                 setIsSaving(false);
                 return;
             }
-    
+
             toast.loading("Salvando dados do item...", { id: toastId });
             const collectionRef = firestore.collection(db, "breakfastMenus", menuId, "categories", itemModal.categoryId, "items");
             if (itemModal.data.id) {
@@ -287,7 +336,7 @@ export default function ManageBreakfastMenuPage() {
             setIsSaving(false);
         }
     };
-    
+
     const handleDeleteItem = async (categoryId: string, itemId: string) => {
         if (!db) return; if (!confirm("Tem certeza que deseja excluir este item?")) return;
         try {
@@ -299,51 +348,95 @@ export default function ManageBreakfastMenuPage() {
 
     const handleAddFlavor = () => {
         const newFlavor: Flavor = { id: `flavor_${Date.now()}`, name: '', available: true };
-        setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: [...(prev.data?.flavors || []), newFlavor] }}));
+        setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: [...(prev.data?.flavors || []), newFlavor] } }));
     };
     const handleUpdateFlavor = (id: string, name: string) => {
-        setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: (prev.data?.flavors || []).map(f => f.id === id ? { ...f, name } : f) }}));
+        setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: (prev.data?.flavors || []).map(f => f.id === id ? { ...f, name } : f) } }));
     };
     const handleDeleteFlavor = (id: string) => {
-        setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: (prev.data?.flavors || []).filter(f => f.id !== id) }}));
+        setItemModal(prev => ({ ...prev, data: { ...prev.data, flavors: (prev.data?.flavors || []).filter(f => f.id !== id) } }));
     };
 
     return (
-        <div className="container mx-auto p-4 md:p-6 space-y-6">
+        <div className="container mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Toaster richColors position="top-center" />
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                        <CardTitle className="flex items-center gap-2"><Utensils /> Cardápio do Café da Manhã</CardTitle>
-                        <CardDescription>Adicione, edite e reordene as categorias e itens do café da manhã.</CardDescription>
-                    </div>
-                    <Button onClick={() => setCategoryModal({ open: true, data: undefined })}><Plus className="w-4 h-4 mr-2" />Nova Categoria</Button>
-                </CardHeader>
-                <CardContent>
-                    {loading ? (
-                        <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 text-slate-400 animate-spin"/></div>
-                    ) : (
-                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'categories')}>
-                            <div className="space-y-6">
-                            <SortableContext items={menuCategories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-                                {menuCategories.map((category) => (
-                                    <SortableCategory
-                                        key={category.id}
-                                        category={category}
-                                        onEditCategory={(cat) => setCategoryModal({ open: true, data: cat })}
-                                        onDeleteCategory={handleDeleteCategory}
-                                        onAddItem={(catId) => setItemModal({ open: true, categoryId: catId, data: { name: '', description: '', available: true, flavors: [] }})}
-                                        onEditItem={(catId, item) => setItemModal({ open: true, categoryId: catId, data: item })}
-                                        onDeleteItem={handleDeleteItem}
-                                        onItemsDragEnd={(event, categoryId) => handleDragEnd(event, 'items', categoryId)}
-                                    />
-                                ))}
-                            </SortableContext>
-                            </div>
-                        </DndContext>
-                    )}
-                </CardContent>
-            </Card>
+            <div className="lg:col-span-2 space-y-6">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle className="flex items-center gap-2"><Utensils /> Cardápio do Café da Manhã</CardTitle>
+                            <CardDescription>Adicione, edite e reordene as categorias e itens do café da manhã.</CardDescription>
+                        </div>
+                        <Button onClick={() => setCategoryModal({ open: true, data: undefined })}><Plus className="w-4 h-4 mr-2" />Nova Categoria</Button>
+                    </CardHeader>
+                    <CardContent>
+                        {loading ? (
+                            <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 text-slate-400 animate-spin" /></div>
+                        ) : (
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'categories')}>
+                                <div className="space-y-6">
+                                    <SortableContext items={menuCategories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                                        {menuCategories.map((category) => (
+                                            <SortableCategory
+                                                key={category.id}
+                                                category={category}
+                                                onEditCategory={(cat) => setCategoryModal({ open: true, data: cat })}
+                                                onDeleteCategory={handleDeleteCategory}
+                                                onAddItem={(catId) => setItemModal({ open: true, categoryId: catId, data: { name: '', description: '', available: true, flavors: [] } })}
+                                                onEditItem={(catId, item) => setItemModal({ open: true, categoryId: catId, data: item })}
+                                                onDeleteItem={handleDeleteItem}
+                                                onItemsDragEnd={(event, categoryId) => handleDragEnd(event, 'items', categoryId)}
+                                            />
+                                        ))}
+                                    </SortableContext>
+                                </div>
+                            </DndContext>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* ++ NOVO CARD PARA HORÁRIOS ++ */}
+            <div className="lg:col-span-1 space-y-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Clock /> Horários de Entrega</CardTitle>
+                        <CardDescription>Defina os horários em que os hóspedes podem receber o café da manhã.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex gap-2 mb-4">
+                            <Input
+                                type="time"
+                                value={newTime}
+                                onChange={(e) => setNewTime(e.target.value)}
+                                placeholder="HH:MM"
+                            />
+                            <Button onClick={handleAddDeliveryTime} disabled={!newTime.trim()}>
+                                <Plus className="w-4 h-4" />
+                            </Button>
+                        </div>
+                        <div className="space-y-2">
+                            {deliveryTimes.length > 0 ? (
+                                deliveryTimes.map(time => (
+                                    <div key={time} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                                        <span className="font-mono">{time}</span>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7"
+                                            onClick={() => handleDeleteDeliveryTime(time)}
+                                        >
+                                            <Trash2 className="w-4 h-4 text-destructive" />
+                                        </Button>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-sm text-muted-foreground text-center py-4">Nenhum horário definido.</p>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
 
             <Dialog open={categoryModal.open} onOpenChange={(open) => setCategoryModal({ open, data: open ? categoryModal.data : undefined })}>
                 <DialogContent>
@@ -369,7 +462,7 @@ export default function ManageBreakfastMenuPage() {
                                 </div>
                             </RadioGroup>
                         </div>
-                         <div className="space-y-4 pt-4 border-t">
+                        <div className="space-y-4 pt-4 border-t">
                             <Label>Regras de Limite (Apenas para categorias coletivas)</Label>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -385,19 +478,19 @@ export default function ManageBreakfastMenuPage() {
                                 </div>
                                 <div>
                                     <Label htmlFor="limitGuestMultiplier">Multiplicador por Hóspede</Label>
-                                    <Input name="limitGuestMultiplier" type="number" defaultValue={categoryModal.data?.limitGuestMultiplier || 1} min="1"/>
+                                    <Input name="limitGuestMultiplier" type="number" defaultValue={categoryModal.data?.limitGuestMultiplier || 1} min="1" />
                                 </div>
                             </div>
                             <p className="text-xs text-muted-foreground">Ex: Para 2 pães por hóspede, use "Por Categoria" e Multiplicador "2".</p>
                         </div>
                         <DialogFooter className="pt-4">
                             <Button type="button" variant="outline" onClick={() => setCategoryModal({ open: false })}>Cancelar</Button>
-                            <Button type="submit" disabled={isSaving}>{isSaving ? <Loader2 className="w-4 h-4 animate-spin"/> : "Salvar"}</Button>
+                            <Button type="submit" disabled={isSaving}>{isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Salvar"}</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
-            
+
             <Dialog open={itemModal.open} onOpenChange={(open) => setItemModal({ open, data: open ? itemModal.data : undefined, categoryId: open ? itemModal.categoryId : undefined })}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
@@ -422,23 +515,23 @@ export default function ManageBreakfastMenuPage() {
                             <Checkbox id="available" name="available" defaultChecked={itemModal.data?.available ?? true} />
                             <Label htmlFor="available">Disponível para seleção</Label>
                         </div>
-                        
+
                         <div className="space-y-4 pt-4 border-t">
-                             <div className="flex justify-between items-center">
-                                <Label className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500"/>Sabores / Variações</Label>
-                                <Button type="button" size="sm" variant="outline" onClick={handleAddFlavor}><Plus className="w-4 h-4 mr-2"/>Adicionar Sabor</Button>
+                            <div className="flex justify-between items-center">
+                                <Label className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500" />Sabores / Variações</Label>
+                                <Button type="button" size="sm" variant="outline" onClick={handleAddFlavor}><Plus className="w-4 h-4 mr-2" />Adicionar Sabor</Button>
                             </div>
                             <p className="text-xs text-muted-foreground">Se um item não tiver sabores, deixe esta seção em branco.</p>
                             <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
                                 {(itemModal.data?.flavors || []).map(flavor => (
                                     <div key={flavor.id} className="flex items-center gap-2">
-                                        <Input 
-                                            placeholder="Nome do Sabor (Ex: Queijo)" 
-                                            value={flavor.name} 
+                                        <Input
+                                            placeholder="Nome do Sabor (Ex: Queijo)"
+                                            value={flavor.name}
                                             onChange={(e) => handleUpdateFlavor(flavor.id, e.target.value)}
                                         />
                                         <Button type="button" size="icon" variant="ghost" onClick={() => handleDeleteFlavor(flavor.id)}>
-                                            <Trash2 className="w-4 h-4 text-destructive"/>
+                                            <Trash2 className="w-4 h-4 text-destructive" />
                                         </Button>
                                     </div>
                                 ))}
@@ -447,7 +540,7 @@ export default function ManageBreakfastMenuPage() {
 
                         <DialogFooter className="pt-4">
                             <Button type="button" variant="outline" onClick={() => setItemModal({ open: false })}>Cancelar</Button>
-                            <Button type="submit" disabled={isSaving}>{isSaving ? <Loader2 className="w-4 h-4 animate-spin"/> : "Salvar"}</Button>
+                            <Button type="submit" disabled={isSaving}>{isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Salvar"}</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>

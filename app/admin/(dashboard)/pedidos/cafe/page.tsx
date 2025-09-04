@@ -1,14 +1,16 @@
+// app/admin/(dashboard)/pedidos/cafe/page.tsx
+
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { BreakfastOrder, OrderWithStay, Property, Stay } from '@/types';
+import type { BreakfastOrder, OrderWithStay, Property, Stay, Timestamp } from '@/types';
 import { toast, Toaster } from 'sonner';
 import { format, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-import { useAuth } from '@/context/AuthContext'; // ++ Importa o hook de autenticação
+import { useAuth } from '@/context/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,8 +26,21 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
+// ++ FUNÇÃO HELPER PARA CONVERTER TIMESTAMP COM SEGURANÇA ++
+const getTimestampInMillis = (timestamp: Timestamp | undefined): number => {
+    if (!timestamp) return 0;
+    if (typeof timestamp === 'number') {
+        return timestamp;
+    }
+    if (typeof timestamp === 'object' && 'toDate' in timestamp && typeof timestamp.toDate === 'function') {
+        return timestamp.toDate().getTime();
+    }
+    return 0;
+};
+
+
 export default function CafePedidosPage() {
-    const { isAdmin } = useAuth(); // ++ Usa o hook para verificar o status de admin
+    const { isAdmin } = useAuth();
     const [orders, setOrders] = useState<OrderWithStay[]>([]);
     const [property, setProperty] = useState<Property | null>(null);
     const [loading, setLoading] = useState(true);
@@ -36,9 +51,7 @@ export default function CafePedidosPage() {
     const [detailsModal, setDetailsModal] = useState<{ isOpen: boolean; order: OrderWithStay | null }>({ isOpen: false, order: null });
 
     useEffect(() => {
-        // ++ CORREÇÃO: A inicialização agora espera pela confirmação de admin
         if (!isAdmin) {
-            // Se o usuário não for admin, não tenta criar o listener
             return;
         }
 
@@ -84,13 +97,29 @@ export default function CafePedidosPage() {
         
         initializeListener();
         
-    }, [isAdmin]); // ++ A dependência do useEffect agora é o status de admin
+    }, [isAdmin]);
 
     const filteredOrders = useMemo(() => {
+        // ++ LÓGICA DE ORDENAÇÃO CORRIGIDA E MELHORADA ++
+        const sortedOrders = [...orders].sort((a, b) => {
+            const dateA = a.deliveryDate ? new Date(a.deliveryDate).getTime() : 0;
+            const dateB = b.deliveryDate ? new Date(b.deliveryDate).getTime() : 0;
+            if (dateA !== dateB) return dateA - dateB; // Ordena do mais próximo para o mais distante
+
+            const timeA = a.deliveryTime || '';
+            const timeB = b.deliveryTime || '';
+            if (timeA !== timeB) return timeA.localeCompare(timeB); // Ordena pelo horário
+
+            const createdAtA = getTimestampInMillis(a.createdAt);
+            const createdAtB = getTimestampInMillis(b.createdAt);
+            return createdAtB - createdAtA; // Por último, pelo mais recente
+        });
+
+
         if (hideArchived) {
-            return orders.filter(order => order.status !== 'delivered' && order.status !== 'canceled');
+            return sortedOrders.filter(order => order.status !== 'delivered' && order.status !== 'canceled');
         }
-        return orders;
+        return sortedOrders;
     }, [orders, hideArchived]);
 
     const handleSelectOrder = (order: OrderWithStay, isSelected: boolean) => {
@@ -146,7 +175,7 @@ export default function CafePedidosPage() {
                                 <Switch id="hide-archived" checked={hideArchived} onCheckedChange={setHideArchived} />
                                 <Label htmlFor="hide-archived" className="flex items-center gap-2 cursor-pointer">
                                     {hideArchived ? <Archive className="h-4 w-4" /> : <ArchiveRestore className="h-4 w-4" />}
-                                    <span>{hideArchived ? 'Ocultar Arquivados' : 'Mostrar Todos'}</span>
+                                    <span>{hideArchived ? 'Ocultar Ativos' : 'Mostrar Todos'}</span>
                                 </Label>
                             </div>
                             <Button onClick={() => handlePrint(<OrdersSummaryLayout orders={selectedOrders} property={property} />)} disabled={isPrinting || selectedOrders.length === 0}>
@@ -183,15 +212,17 @@ export default function CafePedidosPage() {
                                     <TableRow key={order.id} data-state={selectedOrders.some(o => o.id === order.id) ? "selected" : ""}>
                                         <TableCell><Checkbox onCheckedChange={(checked) => handleSelectOrder(order, !!checked)} checked={selectedOrders.some(o => o.id === order.id)} /></TableCell>
                                         <TableCell>{getStatusBadge(order.status)}</TableCell>
-                                        <TableCell>{order.stayInfo?.guestName || 'N/A'} ({order.stayInfo?.cabinName || 'N/A'})</TableCell>
-                                        <TableCell>{safeFormatDate(order.deliveryDate, "dd 'de' MMMM")}</TableCell>
                                         <TableCell>
-                                            {order.createdAt && typeof order.createdAt === 'object' && typeof order.createdAt.toDate === 'function'
-                                                ? format(order.createdAt.toDate(), "dd/MM/yy HH:mm", { locale: ptBR })
-                                                : order.createdAt && typeof order.createdAt === 'number'
-                                                    ? format(new Date(order.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })
-                                                    : 'N/A'
-                                            }
+                                            <div className="font-medium">{order.stayInfo?.guestName || 'N/A'}</div>
+                                            <div className="text-sm text-muted-foreground">{order.stayInfo?.cabinName || 'N/A'}</div>
+                                        </TableCell>
+                                        <TableCell>
+                                            {/* ++ EXIBIÇÃO DA DATA E HORA DE ENTREGA ++ */}
+                                            <div>{safeFormatDate(order.deliveryDate, "dd 'de' MMMM")}</div>
+                                            {order.deliveryTime && <div className="text-sm text-muted-foreground font-mono">às {order.deliveryTime}</div>}
+                                        </TableCell>
+                                        <TableCell>
+                                            {format(getTimestampInMillis(order.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu>

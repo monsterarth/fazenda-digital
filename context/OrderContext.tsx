@@ -1,3 +1,5 @@
+// context/OrderContext.tsx
+
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
@@ -9,10 +11,12 @@ interface OrderState {
   currentStep: number;
   individualItems: IndividualOrderItem[];
   collectiveItems: CollectiveOrderItem[];
+  deliveryTime: string | null; // ++ NOVO ESTADO
 }
 
 interface OrderContextType extends OrderState {
   setStep: (step: number) => void;
+  setDeliveryTime: (time: string | null) => void; // ++ NOVA FUNÇÃO
   selections: {
     individualItems: IndividualOrderItem[];
     collectiveItems: CollectiveOrderItem[];
@@ -34,26 +38,24 @@ interface OrderContextType extends OrderState {
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 export const OrderProvider = ({ children }: { children: ReactNode }) => {
-    // ## CORREÇÃO PRINCIPAL ##
-    // O 'useGuest' ainda é chamado, mas agora verificamos se 'stay' existe antes de usá-lo.
     const { stay } = useGuest(); 
     
     const [state, setState] = useState<OrderState>({
         currentStep: 1,
         individualItems: [],
         collectiveItems: [],
+        deliveryTime: null, // ++ INICIALIZAÇÃO
     });
 
     const setStep = (step: number) => setState(prev => ({ ...prev, currentStep: step }));
-    const clearOrder = () => setState(prev => ({ ...prev, individualItems: [], collectiveItems: [] }));
+    const setDeliveryTime = (time: string | null) => setState(prev => ({ ...prev, deliveryTime: time }));
+    const clearOrder = () => setState(prev => ({ ...prev, individualItems: [], collectiveItems: [], deliveryTime: null }));
     
     // --- Lógica para Itens Coletivos (Acompanhamentos) ---
     const getCollectiveItemQuantity = (itemId: string) => state.collectiveItems.find(i => i.itemId === itemId)?.quantity || 0;
     const totalCollectiveItems = useMemo(() => state.collectiveItems.reduce((total, item) => total + item.quantity, 0), [state.collectiveItems]);
 
     const canAddItem = useCallback((item: BreakfastMenuItem, category: BreakfastMenuCategory): boolean => {
-        // Se 'stay' não existir (estamos no admin), retorna true para não quebrar.
-        // A lógica de negócio real só é aplicada no portal do hóspede.
         const numberOfGuests = stay?.numberOfGuests || 1;
         if (category.limitType === 'none') return true;
         const limit = category.limitGuestMultiplier * numberOfGuests;
@@ -140,6 +142,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
     const value = {
         ...state,
         setStep,
+        setDeliveryTime,
         selections: {
             individualItems: state.individualItems,
             collectiveItems: state.collectiveItems,

@@ -1,4 +1,4 @@
-//app/api/cafe/route.ts
+// app/api/cafe/route.ts
 
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
@@ -25,6 +25,11 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Dados do pedido não fornecidos." }, { status: 400 });
         }
         
+        // ++ VALIDAÇÃO ADICIONAL PARA O HORÁRIO ++
+        if (!orderData.deliveryTime) {
+            return NextResponse.json({ error: "O horário de entrega é obrigatório." }, { status: 400 });
+        }
+        
         const ordersRef = adminDb.collection('breakfastOrders');
         
         if (existingOrderId) {
@@ -39,15 +44,13 @@ export async function POST(request: Request) {
 
         const newOrderRef = await ordersRef.add(newOrder);
 
-        // ++ INÍCIO DA CORREÇÃO: Adiciona o log de atividade no backend ++
         await adminDb.collection('activity_logs').add({
             type: 'cafe_ordered',
             actor: { type: 'guest', identifier: orderData.guestName || 'Hóspede' },
-            details: `Novo pedido de café de ${orderData.guestName || 'Hóspede'}.`,
+            details: `Novo pedido de café de ${orderData.guestName || 'Hóspede'} para as ${orderData.deliveryTime}.`, // ++ Log aprimorado
             link: '/admin/pedidos/cafe',
             timestamp: firestore.FieldValue.serverTimestamp()
         });
-        // ++ FIM DA CORREÇÃO ++
 
         return NextResponse.json({ success: true, orderId: newOrderRef.id });
 

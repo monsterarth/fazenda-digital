@@ -1,4 +1,4 @@
-//types/index.ts
+// types/index.ts
 
 import { firestore } from "firebase-admin";
 import type { DocumentReference } from "firebase/firestore";
@@ -90,7 +90,7 @@ export interface PreCheckIn {
   travelReason?: string;
   foodRestrictions?: string;
   createdAt: Timestamp;
-  status: PreCheckInStatus; 
+  status: PreCheckInStatus;
   stayId?: string;
 }
 
@@ -192,6 +192,7 @@ export interface BreakfastOrder {
     id: string;
     stayId: string;
     deliveryDate: string;
+    deliveryTime?: string; // ++ NOVO CAMPO ++
     numberOfGuests: number;
     individualItems: IndividualOrderItem[];
     collectiveItems: CollectiveOrderItem[];
@@ -417,9 +418,10 @@ export interface Property {
     breakfast?: {
       isAvailable: boolean;
       type: 'delivery' | 'on-site';
-      menu: BreakfastMenuCategory[]; 
+      menu: BreakfastMenuCategory[];
       orderingStartTime: string;
       orderingEndTime: string;
+      deliveryTimes?: string[]; // ++ NOVO CAMPO ++
     };
 policies?: {
       general: {

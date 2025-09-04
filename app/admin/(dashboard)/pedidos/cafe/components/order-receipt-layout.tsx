@@ -1,6 +1,8 @@
+// app/admin/(dashboard)/pedidos/cafe/components/order-receipt-layout.tsx
+
 import React from 'react';
 import { OrderWithStay, Property } from '@/types';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { groupItems } from '@/lib/order-utils';
 
@@ -13,6 +15,10 @@ export const OrderReceiptLayout: React.FC<OrderReceiptLayoutProps> = ({ order, p
   const groupedIndividual = groupItems(order.individualItems || []);
   const groupedCollective = groupItems(order.collectiveItems || []);
 
+  const deliveryDate = order.deliveryDate ? new Date(`${order.deliveryDate}T00:00:00`) : null;
+  const formattedDate = deliveryDate && isValid(deliveryDate) ? format(deliveryDate, "dd/MM/yyyy", { locale: ptBR }) : 'Data inválida';
+
+
   return (
     <div className="p-2 font-mono bg-white text-black text-xs w-[80mm]">
       <div className="text-center mb-2">
@@ -22,7 +28,8 @@ export const OrderReceiptLayout: React.FC<OrderReceiptLayoutProps> = ({ order, p
       <hr className="border-dashed border-black my-2" />
       <p><strong>Cabana:</strong> {order.stayInfo?.cabinName}</p>
       <p><strong>Hóspede:</strong> {order.stayInfo?.guestName}</p>
-      <p><strong>Entrega:</strong> {format(new Date(order.deliveryDate), "dd/MM/yy")}</p>
+      {/* ++ EXIBIÇÃO DA DATA E HORA ++ */}
+      <p><strong>Entrega:</strong> {formattedDate} {order.deliveryTime && `as ${order.deliveryTime}`}</p>
       <p><strong>Pessoas:</strong> {order.numberOfGuests}</p>
       <hr className="border-dashed border-black my-2" />
       
@@ -48,7 +55,7 @@ export const OrderReceiptLayout: React.FC<OrderReceiptLayoutProps> = ({ order, p
         <>
           <hr className="border-dashed border-black my-2" />
           <p className="font-bold">OBS:</p>
-          <p>{order.generalNotes}</p>
+          <p className="whitespace-pre-wrap">{order.generalNotes}</p>
         </>
       )}
       <hr className="border-dashed border-black my-2" />

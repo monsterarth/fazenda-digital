@@ -1,13 +1,18 @@
+// components/guest/cafe/StepReview.tsx
+
 "use client";
 
 import React, { useState } from 'react';
 import { useGuest } from '@/context/GuestProvider';
 import { useOrder } from '@/context/OrderContext';
+import { useProperty } from '@/context/PropertyContext'; // ++ Importa o hook da propriedade
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // ++ Importa o Select
+import { ArrowLeft, CheckCircle, Loader2, Clock } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface StepReviewProps {
   onConfirmOrder: (notes: string) => Promise<void>; 
@@ -22,11 +27,20 @@ const OrderSummarySection: React.FC<{ title: string; children: React.ReactNode; 
 
 export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
     const { stay } = useGuest();
-    const { setStep, individualItems, collectiveItems } = useOrder();
+    const { property } = useProperty(); // ++ Pega os dados da propriedade
+    const { setStep, individualItems, collectiveItems, deliveryTime, setDeliveryTime } = useOrder();
     const [generalNotes, setGeneralNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // ++ Obtém os horários disponíveis
+    const availableTimes = property?.breakfast?.deliveryTimes || [];
+
     const handleConfirmOrder = async () => {
+        // ++ Validação do horário
+        if (!deliveryTime) {
+            toast.error("Por favor, selecione um horário para a entrega.");
+            return;
+        }
         setIsSubmitting(true);
         await onConfirmOrder(generalNotes);
         setIsSubmitting(false);
@@ -37,10 +51,27 @@ export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
             <CardHeader>
                 <CardTitle>Revisão Final do Pedido</CardTitle>
                 <CardDescription>
-                    Confira todos os itens selecionados. Se estiver tudo certo, adicione observações (opcional) e confirme o envio.
+                    Confira os itens, escolha o horário de entrega e confirme o envio.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+                {/* ++ SELETOR DE HORÁRIO ++ */}
+                <div>
+                    <Label htmlFor="delivery-time" className="text-base font-semibold flex items-center gap-2"><Clock className="w-5 h-5" /> Horário de Entrega</Label>
+                    <Select onValueChange={setDeliveryTime} value={deliveryTime || ""}>
+                        <SelectTrigger id="delivery-time" className="mt-2">
+                            <SelectValue placeholder="Selecione um horário..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {availableTimes.length > 0 ? (
+                                availableTimes.map(time => <SelectItem key={time} value={time}>{time}</SelectItem>)
+                            ) : (
+                                <SelectItem value="disabled" disabled>Nenhum horário disponível</SelectItem>
+                            )}
+                        </SelectContent>
+                    </Select>
+                </div>
+                
                 <OrderSummarySection
                     title="Escolhas Individuais"
                     hasItems={individualItems.length > 0}
@@ -90,11 +121,10 @@ export const StepReview: React.FC<StepReviewProps> = ({ onConfirmOrder }) => {
                         <ArrowLeft className="w-4 h-4 mr-2" />
                         Voltar
                     </Button>
-                    {/* ++ BOTÃO ATUALIZADO ++ */}
                     <Button
                         size="lg"
                         onClick={handleConfirmOrder}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || !deliveryTime} // ++ Desabilita se não houver horário
                         className="bg-brand-primary text-white hover:bg-brand-primary/90 disabled:bg-brand-primary/50"
                     >
                         {isSubmitting ? (

@@ -1,3 +1,5 @@
+// app/admin/(dashboard)/pedidos/cafe/components/order-details-dialog.tsx
+
 "use client";
 
 import React from 'react';
@@ -5,6 +7,8 @@ import { OrderWithStay } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { User, ShoppingBasket, FileText } from 'lucide-react';
+import { format, isValid } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface OrderDetailsDialogProps {
   isOpen: boolean;
@@ -15,6 +19,9 @@ interface OrderDetailsDialogProps {
 export const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ isOpen, onClose, order }) => {
   if (!order) return null;
 
+  const deliveryDate = order.deliveryDate ? new Date(`${order.deliveryDate}T00:00:00`) : null;
+  const formattedDate = deliveryDate && isValid(deliveryDate) ? format(deliveryDate, "dd 'de' MMMM", { locale: ptBR }) : 'Data inválida';
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl">
@@ -22,6 +29,11 @@ export const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ isOpen, 
           <DialogTitle>Detalhes do Pedido - {order.stayInfo?.cabinName}</DialogTitle>
           <DialogDescription>
             Pedido de {order.stayInfo?.guestName} para {order.numberOfGuests} pessoa(s).
+            {/* ++ EXIBIÇÃO DA DATA E HORA ++ */}
+            <div className="mt-2">
+              <strong>Entrega:</strong> {formattedDate}
+              {order.deliveryTime && <span className="font-mono font-semibold"> às {order.deliveryTime}</span>}
+            </div>
           </DialogDescription>
         </DialogHeader>
         <div className="mt-4 space-y-6 max-h-[60vh] overflow-y-auto pr-4">

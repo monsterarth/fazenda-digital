@@ -90,3 +90,17 @@ export function normalizeString(str: string) {
       .replace(/[^a-zA-Z0-9\s]/g, "") // Remove caracteres especiais, exceto espaços
       .toUpperCase(); // Converte para caixa alta
 }
+
+/**
+ * Extrai o primeiro nome de um nome completo e o formata com a primeira letra maiúscula.
+ * Ex: "JOAO PAULO" -> "Joao"
+ * @param fullName O nome completo a ser formatado.
+ * @returns O primeiro nome formatado.
+ */
+export function getFirstName(fullName: string | undefined | null): string {
+  if (!fullName) {
+    return "";
+  }
+  const firstName = fullName.split(' ')[0];
+  return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+}

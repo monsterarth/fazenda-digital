@@ -1,16 +1,12 @@
-// /components/guest/dashboard/DashboardHeader.tsx
-
 "use client";
 
 import { useGuest } from "@/context/GuestProvider";
 import { format } from "date-fns";
 import { BedDouble, Calendar } from "lucide-react";
 import { WeatherComponent } from "./WeatherComponent";
-// A importação do 'usePropertyTheme' foi REMOVIDA
 
 export function DashboardHeader() {
-  const { stay } = useGuest();
-  // A chamada ao hook 'usePropertyTheme' foi REMOVIDA
+  const { stay, firstName } = useGuest(); // OBTENDO O firstName DO CONTEXTO
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -19,7 +15,7 @@ export function DashboardHeader() {
     return "Boa noite";
   };
 
-  const firstName = stay?.guestName.split(" ")[0];
+  // Lógica para extrair o primeiro nome foi removida daqui
   const startDate = stay?.checkInDate
     ? format(new Date(stay.checkInDate), "dd/MM")
     : "N/A";
@@ -28,14 +24,13 @@ export function DashboardHeader() {
     : "N/A";
 
   return (
-    // CORREÇÃO: Agora usa a variável CSS '--primary' diretamente com a sintaxe do Tailwind.
-    // O seu `PropertyThemeProvider` define '--primary' no formato HSL, então usamos 'hsl(var(...))'.
     <header 
       className="bg-[hsl(var(--primary))] text-white p-4 rounded-b-3xl shadow-lg sticky top-0 z-20"
     >
       <div className="flex justify-between items-start mb-4">
         <div className="flex-grow">
           <h1 className="text-2xl font-bold tracking-tight">
+            {/* USANDO O firstName DIRETAMENTE */}
             {getGreeting()}, {firstName}!
           </h1>
         </div>

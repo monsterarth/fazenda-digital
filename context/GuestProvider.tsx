@@ -1,8 +1,6 @@
-// /context/GuestProvider.tsx
-
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut, User } from 'firebase/auth';
 import { app, getFirebaseDb } from '@/lib/firebase';
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -10,8 +8,8 @@ import { Stay, PreCheckIn, Property } from '@/types';
 import { Booking } from '@/types/scheduling'; 
 import { getCookie, deleteCookie } from 'cookies-next';
 import { usePathname, useRouter } from 'next/navigation';
+import { getFirstName } from '@/lib/utils'; // 1. IMPORTANDO A FUNÇÃO DE FORMATAÇÃO
 
-// --- INÍCIO DA CORREÇÃO 1: Tipo estendido para agendamentos ---
 // Este tipo local adiciona os campos que faltam sem precisar alterar arquivos globais.
 type EnrichedBooking = Booking & {
     serviceId?: string;
@@ -21,13 +19,13 @@ type EnrichedBooking = Booking & {
 interface GuestContextType {
     user: User | null;
     stay: Stay | null;
-    bookings: EnrichedBooking[]; // O contexto agora usa o tipo estendido
+    bookings: EnrichedBooking[]; 
     preCheckIn: PreCheckIn | null;
     isAuthenticated: boolean;
     isLoading: boolean;
     logout: () => void;
+    firstName: string; // 2. ADICIONANDO O PRIMEIRO NOME AO TIPO DO CONTEXTO
 }
-// --- FIM DA CORREÇÃO 1 ---
 
 const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
@@ -50,7 +48,7 @@ const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
 export const GuestProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [stay, setStay] = useState<Stay | null>(null);
-    const [bookings, setBookings] = useState<EnrichedBooking[]>([]); // O estado também usa o tipo estendido
+    const [bookings, setBookings] = useState<EnrichedBooking[]>([]);
     const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
@@ -125,12 +123,9 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                     
                     const bookingsQuery = query(collection(db, 'bookings'), where('stayId', '==', stayId));
                     unsubscribeBookings = onSnapshot(bookingsQuery, async (snapshot) => {
-                        // --- INÍCIO DA CORREÇÃO 2: Lógica de busca de serviceName ---
                         const fetchedBookings = await Promise.all(snapshot.docs.map(async (docSnapshot) => {
-                            // Usamos o tipo EnrichedBooking para que o TypeScript reconheça os campos
                             const bookingData = { id: docSnapshot.id, ...docSnapshot.data() } as EnrichedBooking;
                             
-                            // A lógica para buscar o nome do serviço agora funciona sem erros de tipo
                             if (bookingData.serviceId) {
                                 const serviceRef = doc(db, 'services', bookingData.serviceId);
                                 const serviceSnap = await getDoc(serviceRef);
@@ -140,7 +135,6 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                             }
                             return bookingData;
                         }));
-                        // --- FIM DA CORREÇÃO 2 ---
                         setBookings(fetchedBookings);
                     }, (error) => {
                         console.error("Erro ao escutar agendamentos:", error);
@@ -177,9 +171,13 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
             unsubscribeBookings();
         };
     }, [logout, pathname, router]);
+    
+    // 3. CALCULANDO O PRIMEIRO NOME COM useMemo PARA EVITAR RECÁLCULOS
+    const firstName = useMemo(() => getFirstName(stay?.guestName), [stay]);
 
     return (
-        <GuestContext.Provider value={{ user, stay, bookings, preCheckIn, isAuthenticated: !!user, isLoading, logout }}>
+        // 4. DISPONIBILIZANDO O firstName PARA OS COMPONENTES FILHOS
+        <GuestContext.Provider value={{ user, stay, bookings, preCheckIn, isAuthenticated: !!user, isLoading, logout, firstName }}>
             {children}
         </GuestContext.Provider>
     );
@@ -192,3 +190,4 @@ export const useGuest = () => {
     }
     return context;
 };
+

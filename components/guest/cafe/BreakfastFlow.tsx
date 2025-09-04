@@ -1,3 +1,5 @@
+// components/guest/cafe/BreakfastFlow.tsx
+
 "use client";
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -26,7 +28,7 @@ import { toast } from 'sonner';
 export const BreakfastFlow: React.FC = () => {
     const { property, loading: propertyLoading, breakfastMenu } = useProperty();
     const { stay, isLoading: guestLoading } = useGuest();
-    const { currentStep, setStep, selections, clearOrder } = useOrder();
+    const { currentStep, setStep, selections, deliveryTime, clearOrder } = useOrder(); // ++ Adiciona deliveryTime do contexto
 
     const [existingOrder, setExistingOrder] = useState<BreakfastOrder | null | undefined>(undefined);
     const [editMode, setEditMode] = useState(false);
@@ -78,6 +80,12 @@ export const BreakfastFlow: React.FC = () => {
             return;
         }
 
+        // ++ ADICIONADO: Validação para garantir que o horário foi selecionado no frontend
+        if (!deliveryTime) {
+            toast.error("Por favor, selecione um horário de entrega.");
+            return;
+        }
+
         const toastId = toast.loading("Enviando seu pedido...");
         try {
             const idToken = await user.getIdToken();
@@ -88,6 +96,7 @@ export const BreakfastFlow: React.FC = () => {
                 cabinName: stay.cabinName,
                 numberOfGuests: stay.numberOfGuests,
                 deliveryDate: deliveryDateString,
+                deliveryTime: deliveryTime, // ++ CORREÇÃO: Adiciona o horário de entrega aos dados do pedido
                 ...selections,
                 generalNotes: generalNotes,
                 status: 'pending',
@@ -145,7 +154,7 @@ export const BreakfastFlow: React.FC = () => {
                 );
             } else {
                 return (
-                     <StateCard
+                       <StateCard
                         icon={<Lock className="h-10 w-10 text-brand-mid-green" />}
                         title="Pedido Confirmado"
                         description={`Seu pedido já foi recebido e está sendo preparado! O período para alterações encerrou às ${breakfastConfig.orderingEndTime}.`}
@@ -175,11 +184,7 @@ export const BreakfastFlow: React.FC = () => {
                 {currentStep === 4 && <StepReview onConfirmOrder={handleSendOrder} />}
                 {currentStep === 5 && <StepSuccess />}
             </div>
-            {/* ++ INÍCIO DA ALTERAÇÃO ++ */}
-            {/* A classe "hidden" oculta o componente em telas pequenas (mobile) */}
-            {/* A classe "lg:block" faz com que ele reapareça em telas grandes (desktop) */}
             <div className="hidden lg:block lg:col-span-1">
-            {/* ++ FIM DA ALTERAÇÃO ++ */}
                 {currentStep > 1 && currentStep < 5 && (
                     <OrderSidebar individualCategories={individualCategories} collectiveCategories={collectiveCategories} />
                 )}

@@ -7,8 +7,11 @@ import { toast, Toaster } from 'sonner';
 import { getProperty } from '@/app/actions/get-property';
 import { logMessageCopy } from '@/app/actions/log-message-copy';
 import { getActiveStaysForSelect, EnrichedStayForSelect } from '@/app/actions/get-active-stays-for-select';
+import { getUpcomingCheckouts } from '@/app/actions/get-upcoming-checkouts';
+import { getPendingBreakfastStays } from '@/app/actions/get-pending-breakfast-stays';
+import { getStaysToNotifyAboutBreakfastChange } from '@/app/actions/get-stays-to-notify-about-breakfast-change'; // NOVO
 import { Property } from '@/types';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { AuthContext } from '@/context/AuthContext';
 
@@ -18,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { MessageSquare, Copy, X, Wand2, Loader2, Phone, BedDouble, Calendar } from 'lucide-react';
+import { MessageSquare, Copy, X, Wand2, Phone, BedDouble, Calendar, Bell, Coffee, LogOut, Info } from 'lucide-react'; // NOVO ÍCONE
 
 export default function CommunicationCenterPage() {
     const auth = useContext(AuthContext);
@@ -29,6 +32,14 @@ export default function CommunicationCenterPage() {
     const [selectedStay, setSelectedStay] = useState<EnrichedStayForSelect | null>(null);
     const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>('');
     const [generatedMessage, setGeneratedMessage] = useState('');
+
+    // Estados para as dicas
+    const [upcomingCheckouts, setUpcomingCheckouts] = useState<EnrichedStayForSelect[]>([]);
+    const [pendingBreakfast, setPendingBreakfast] = useState<EnrichedStayForSelect[]>([]);
+    const [staysToNotify, setStaysToNotify] = useState<EnrichedStayForSelect[]>([]); // NOVO ESTADO
+    const [showBreakfastChangeTip, setShowBreakfastChangeTip] = useState(false); // NOVO ESTADO
+    const [loadingTips, setLoadingTips] = useState(true);
+
 
     const messageTemplates = useMemo(() => {
         if (!property) return {};
@@ -44,17 +55,29 @@ export default function CommunicationCenterPage() {
         const fetchData = async () => {
             try {
                 setIsLoading(true);
-                const [propData, staysData] = await Promise.all([
+                setLoadingTips(true);
+                const [propData, staysData, checkoutsData, breakfastData, staysToNotifyData] = await Promise.all([
                     getProperty(),
-                    getActiveStaysForSelect()
+                    getActiveStaysForSelect(),
+                    getUpcomingCheckouts(),
+                    getPendingBreakfastStays(),
+                    getStaysToNotifyAboutBreakfastChange() // CHAMADA DA NOVA ACTION
                 ]);
                 setProperty(propData || null);
-                setActiveStays(staysData);
+                
+                const sortedStays = staysData.sort((a, b) => a.guest.name.localeCompare(b.guest.name));
+                setActiveStays(sortedStays);
+
+                setUpcomingCheckouts(checkoutsData);
+                setPendingBreakfast(breakfastData);
+                setStaysToNotify(staysToNotifyData); // SALVA OS DADOS NO ESTADO
+
             } catch (error) {
                 toast.error('Falha ao carregar dados iniciais.');
                 console.error(error);
             } finally {
                 setIsLoading(false);
+                setLoadingTips(false);
             }
         };
         fetchData();
@@ -68,16 +91,29 @@ export default function CommunicationCenterPage() {
 
         let template = messageTemplates[selectedTemplateKey] || '';
         
-        const checkInDate = new Date(selectedStay.checkInDate);
-        const checkOutDate = new Date(selectedStay.checkOutDate);
+        const getFirstName = (fullName: string) => {
+            if (!fullName) return '';
+            const firstName = fullName.split(' ')[0];
+            return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+        };
+
+        const portalLink = `https://portal.fazendadorosa.com.br/?token=${selectedStay.token}`;
+        const wifiSsid = selectedStay.cabin?.wifiSsid || 'Não informado';
+        const wifiPassword = selectedStay.cabin?.wifiPassword || 'Não informado';
+        const feedbackLink = `https://portal.fazendadorosa.com.br/s/${property.defaultSurveyId || 'default_survey'}?token=${selectedStay.token}`;
+        const tomorrow = addDays(new Date(), 1);
+        const nextDate = format(tomorrow, 'dd/MM');
+        const breakfastType = property.breakfast?.type;
+        const newModality = breakfastType === 'on-site' ? 'servido no salão' : 'entregue em cesta';
+        const newLocation = breakfastType === 'on-site' ? 'Salão Mayam' : 'sua cabana';
+        const checkoutTime = '11:00';
 
         const replacements: { [key: string]: string | undefined } = {
-            '{propertyName}': property.name,
-            '{guestName}': selectedStay.guest?.name,
-            '{cabinName}': selectedStay.cabin?.name,
-            '{checkinDate}': isValidDate(checkInDate) ? format(checkInDate, 'dd/MM/yyyy', { locale: ptBR }) : '',
-            '{checkoutDate}': isValidDate(checkOutDate) ? format(checkOutDate, 'dd/MM/yyyy', { locale: ptBR }) : '',
-            '{token}': selectedStay.token,
+            '{guestName}': getFirstName(selectedStay.guest?.name),
+            '{portalLink}': portalLink, '{wifiSsid}': wifiSsid, '{wifiPassword}': wifiPassword,
+            '{feedbackLink}': feedbackLink, '{date}': nextDate, '{newModality}': newModality,
+            '{newLocation}': newLocation, '{checkoutTime}': checkoutTime, '{propertyName}': property.name,
+            '{cabinName}': selectedStay.cabin?.name, '{token}': selectedStay.token,
             '{deadline}': property?.breakfast?.orderingEndTime || '',
         };
 
@@ -91,11 +127,18 @@ export default function CommunicationCenterPage() {
 
     }, [selectedStay, selectedTemplateKey, property, messageTemplates]);
 
-    const isValidDate = (d: any) => d instanceof Date && !isNaN(d.getTime());
 
     const handleStaySelect = (stayId: string) => {
-        const findStay = activeStays.find(s => s.id === stayId);
+        const findStay = activeStays.find(s => s.id === stayId) || 
+                         staysToNotify.find(s => s.id === stayId); // Procura na outra lista também
         setSelectedStay(findStay || null);
+    };
+
+    const handleGenerateFromTip = (stay: EnrichedStayForSelect, templateKey: string) => {
+        setSelectedStay(stay);
+        setSelectedTemplateKey(templateKey);
+        setShowBreakfastChangeTip(false); // Esconde a dica de mudança após o uso
+        toast.info(`Mensagem para ${stay.guest.name} pré-selecionada.`);
     };
 
     const handleClearSelection = () => {
@@ -129,14 +172,10 @@ export default function CommunicationCenterPage() {
 
     const getTemplateLabel = (key: string) => {
         const labels: { [key: string]: string } = {
-            'whatsappPreCheckIn': 'Pré-Check-in',
-            'whatsappWelcome': 'Boas-Vindas',
-            'whatsappBreakfastReminder': 'Lembrete de Café da Manhã',
-            'whatsappCheckoutInfo': 'Informações de Check-out',
-            'whatsappFeedbackRequest': 'Pedido de Avaliação',
-            'whatsappBookingConfirmed': 'Confirmação de Agendamento',
-            'whatsappRequestReceived': 'Confirmação de Pedido',
-            'whatsappEventInvite': 'Convite para Evento',
+            'whatsappPreCheckIn': 'Pré-Check-in', 'whatsappWelcome': 'Boas-Vindas',
+            'whatsappBreakfastReminder': 'Lembrete de Café da Manhã', 'whatsappCheckoutInfo': 'Informações de Check-out',
+            'whatsappFeedbackRequest': 'Pedido de Avaliação', 'whatsappBookingConfirmed': 'Confirmação de Agendamento',
+            'whatsappRequestReceived': 'Confirmação de Pedido', 'whatsappEventInvite': 'Convite para Evento',
             'whatsappBreakfastChange': 'Alteração no Café da Manhã',
         };
         return labels[key] || key;
@@ -145,8 +184,7 @@ export default function CommunicationCenterPage() {
     if (isLoading || auth?.loading) {
         return (
             <div className="container mx-auto p-4 md:p-6 space-y-6">
-                <Skeleton className="h-12 w-1/2" />
-                <Skeleton className="h-8 w-3/4" />
+                <Skeleton className="h-12 w-1/2" /> <Skeleton className="h-8 w-3/4" />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-2 space-y-4"><Skeleton className="h-64 w-full" /></div>
                     <div><Skeleton className="h-64 w-full" /></div>
@@ -160,8 +198,7 @@ export default function CommunicationCenterPage() {
             <Toaster richColors position="top-center" />
             <div>
                 <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                    <MessageSquare className="h-8 w-8 text-primary" />
-                    Centro de Comunicação
+                    <MessageSquare className="h-8 w-8 text-primary" /> Centro de Comunicação
                 </h1>
                 <p className="text-muted-foreground">Gere e envie mensagens personalizadas para seus hóspedes.</p>
             </div>
@@ -172,11 +209,11 @@ export default function CommunicationCenterPage() {
                         <CardHeader>
                             <CardTitle>Gerador de Mensagens</CardTitle>
                             <CardDescription>
-                                {selectedStay ? `Gerando mensagem para ${selectedStay.guest?.name}` : 'Selecione uma estadia para começar.'}
+                                {selectedStay ? `Gerando mensagem para ${selectedStay.guest?.name}` : 'Selecione uma estadia ou use uma dica proativa.'}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {!selectedStay ? (
+                            <div className={selectedStay ? 'hidden' : 'block'}>
                                 <Select onValueChange={handleStaySelect}>
                                     <SelectTrigger className="text-base h-12">
                                         <SelectValue placeholder="Selecione uma estadia ativa..." />
@@ -187,12 +224,12 @@ export default function CommunicationCenterPage() {
                                                 <span className='font-semibold'>{stay.guest.name}</span>
                                                 <span className='text-muted-foreground ml-2'>({stay.cabin.name})</span>
                                             </SelectItem>
-                                        )) : (
-                                            <div className='p-4 text-center text-sm text-muted-foreground'>Nenhuma estadia ativa encontrada.</div>
-                                        )}
+                                        )) : ( <div className='p-4 text-center text-sm text-muted-foreground'>Nenhuma estadia ativa.</div> )}
                                     </SelectContent>
                                 </Select>
-                            ) : (
+                            </div>
+                            
+                            {selectedStay && (
                                 <div className="space-y-4">
                                     <Card className="bg-muted/50">
                                         <CardContent className="p-4 space-y-2">
@@ -206,7 +243,7 @@ export default function CommunicationCenterPage() {
                                                 </div>
                                                 <Button variant="ghost" size="icon" onClick={handleClearSelection}><X className="h-5 w-5" /></Button>
                                             </div>
-                                            <div className="text-sm text-muted-foreground flex items-center gap-1.5 pt-1">
+                                            <div className="text-sm text-muted-foreground flex items-center gap-1.e5 pt-1">
                                                  <Calendar size={14} />
                                                  {format(new Date(selectedStay.checkInDate), 'dd/MM/yyyy')} até {format(new Date(selectedStay.checkOutDate), 'dd/MM/yyyy')}
                                             </div>
@@ -234,18 +271,71 @@ export default function CommunicationCenterPage() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><Wand2 className="text-amber-500" /> Dicas Proativas</CardTitle>
                             <CardDescription>Oportunidades de comunicação para encantar seus hóspedes.</CardDescription>
-                        {/* A CORREÇÃO ESTÁ AQUI */}
                         </CardHeader>
-                        <CardContent>
-                             <Alert>
-                                <MessageSquare className="h-4 w-4" />
-                                <AlertTitle>Em breve!</AlertTitle>
-                                <AlertDescription>
-                                    Estamos trabalhando para trazer sugestões automáticas de mensagens com base nos eventos da sua propriedade.
-                                </AlertDescription>
-                            </Alert>
+                        <CardContent className="space-y-4">
+                            {loadingTips ? <Skeleton className="h-24 w-full" /> : (
+                                <>
+                                    {/* DICA: AVISO DE MUDANÇA NO CAFÉ */}
+                                    {showBreakfastChangeTip && staysToNotify.length > 0 &&
+                                        <div className="p-3 border rounded-lg bg-blue-50 border-blue-200">
+                                             <div className="flex items-start justify-between">
+                                                <div className="space-y-1">
+                                                    <p className="font-semibold text-sm flex items-center gap-2"><Info size={14} className='text-blue-600'/> Notificar Hóspedes</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        A modalidade do café mudou. Avise os <strong>{staysToNotify.length} hóspedes</strong> atuais.
+                                                    </p>
+                                                </div>
+                                                {/* Este botão poderia levar para uma tela de envio em massa no futuro */}
+                                                <Button size="sm" variant="outline" onClick={() => toast.info("Funcionalidade de envio em massa em desenvolvimento.")}>Avisar Todos</Button>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    {pendingBreakfast.length === 0 && upcomingCheckouts.length === 0 && !showBreakfastChangeTip &&
+                                        <Alert>
+                                            <Bell className="h-4 w-4" />
+                                            <AlertTitle>Tudo em dia!</AlertTitle>
+                                            <AlertDescription>Nenhuma ação proativa sugerida no momento.</AlertDescription>
+                                        </Alert>
+                                    }
+                                    
+                                    {/* DICA: CAFÉ PENDENTE */}
+                                    {pendingBreakfast.map(stay => (
+                                        <div key={stay.id} className="p-3 border rounded-lg bg-background hover:bg-muted transition-colors">
+                                            <div className="flex items-start justify-between">
+                                                <div className="space-y-1">
+                                                    <p className="font-semibold text-sm flex items-center gap-2"><Coffee size={14} className='text-amber-600'/> Café da Manhã Pendente</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Lembrar <strong>{stay.guest.name}</strong> ({stay.cabin.name}) de pedir o café para amanhã.
+                                                    </p>
+                                                </div>
+                                                <Button size="sm" variant="outline" onClick={() => handleGenerateFromTip(stay, 'whatsappBreakfastReminder')}>Gerar</Button>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {/* DICA: CHECK-OUT AMANHÃ */}
+                                     {upcomingCheckouts.map(stay => (
+                                        <div key={stay.id} className="p-3 border rounded-lg bg-background hover:bg-muted transition-colors">
+                                            <div className="flex items-start justify-between">
+                                                <div className="space-y-1">
+                                                    <p className="font-semibold text-sm flex items-center gap-2"><LogOut size={14} className='text-blue-600'/> Check-out Amanhã</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Enviar infos de check-out para <strong>{stay.guest.name}</strong> ({stay.cabin.name}).
+                                                    </p>
+                                                </div>
+                                                <Button size="sm" variant="outline" onClick={() => handleGenerateFromTip(stay, 'whatsappCheckoutInfo')}>Gerar</Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </>
+                            )}
                         </CardContent>
                     </Card>
+                    {/* Botão para simular a mudança de modalidade */}
+                    <Button variant="secondary" className='w-full' onClick={() => setShowBreakfastChangeTip(s => !s)}>
+                        Simular Mudança no Café
+                    </Button>
                 </div>
             </div>
         </div>

@@ -1,40 +1,29 @@
-// app/actions/get-active-stays-for-select.ts
+// app/actions/get-upcoming-checkouts.ts
 
 "use server";
 
 import { adminDb } from "@/lib/firebase-admin";
 import { Stay, Guest, Cabin } from "@/types";
 import { Timestamp } from "firebase-admin/firestore";
+import { EnrichedStayForSelect } from "./get-active-stays-for-select";
 
-// TIPO LOCAL: Define a estrutura de dados "enriquecida" que o componente precisa
-export interface EnrichedStayForSelect {
-    id: string;
-    token: string;
-    checkInDate: string; 
-    checkOutDate: string;
-    guest: Guest;
-    cabin: Cabin;
-    guestName: string;
-    cabinName: string;
-    status: Stay['status'];
-    createdAt: string; // Convertido para string
-    [key: string]: any;
-}
-
-// Função para formatar o nome
-const formatGuestName = (fullName: string | undefined): string => {
-    if (!fullName) return '';
-    const firstName = fullName.split(' ')[0];
-    return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
-};
-
-export async function getActiveStaysForSelect(): Promise<EnrichedStayForSelect[]> {
+export async function getUpcomingCheckouts(): Promise<EnrichedStayForSelect[]> {
     try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+
+        // Formato YYYY-MM-DD para corresponder ao que está no Firestore
+        const tomorrowString = tomorrow.toISOString().split('T')[0];
+
         const staysRef = adminDb.collection('stays');
-        const activeStaysQuery = staysRef
-            .where('status', '==', 'active');
+        const upcomingCheckoutsQuery = staysRef
+            .where('status', '==', 'active')
+            .where('checkOutDate', '==', tomorrowString);
             
-        const querySnapshot = await activeStaysQuery.get();
+        const querySnapshot = await upcomingCheckoutsQuery.get();
 
         if (querySnapshot.empty) {
             return [];
@@ -50,8 +39,7 @@ export async function getActiveStaysForSelect(): Promise<EnrichedStayForSelect[]
                     const preCheckInData = preCheckInSnap.data();
                     guestData = {
                         id: preCheckInSnap.id,
-                        // AJUSTE 1: Nome do hóspede já formatado
-                        name: formatGuestName(preCheckInData?.leadGuestName),
+                        name: preCheckInData?.leadGuestName,
                         email: preCheckInData?.leadGuestEmail,
                         phone: preCheckInData?.leadGuestPhone,
                         document: preCheckInData?.leadGuestDocument,
@@ -63,15 +51,7 @@ export async function getActiveStaysForSelect(): Promise<EnrichedStayForSelect[]
             if(stayData.cabinId) {
                  const cabinSnap = await adminDb.collection('cabins').doc(stayData.cabinId).get();
                  if(cabinSnap.exists){
-                     // AJUSTE 3: Garante que os dados de Wi-Fi sejam incluídos
-                     const data = cabinSnap.data();
-                     cabinData = { 
-                         id: cabinSnap.id, 
-                         name: data?.name,
-                         capacity: data?.capacity,
-                         wifiSsid: data?.wifiSsid,
-                         wifiPassword: data?.wifiPassword,
-                     } as Cabin;
+                     cabinData = { id: cabinSnap.id, ...cabinSnap.data() } as Cabin;
                  }
             }
             
@@ -81,10 +61,8 @@ export async function getActiveStaysForSelect(): Promise<EnrichedStayForSelect[]
                 cabinName: stayData.cabinName,
                 checkInDate: stayData.checkInDate,
                 checkOutDate: stayData.checkOutDate,
-                numberOfGuests: stayData.numberOfGuests,
                 token: stayData.token,
                 status: stayData.status,
-                preCheckInId: stayData.preCheckInId,
                 createdAt: (stayData.createdAt as unknown as Timestamp).toDate().toISOString(),
                 guest: guestData,
                 cabin: cabinData,
@@ -94,11 +72,10 @@ export async function getActiveStaysForSelect(): Promise<EnrichedStayForSelect[]
         });
 
         const enrichedStays = await Promise.all(staysPromises);
-        
         return enrichedStays.filter(stay => stay.guest && stay.cabin);
 
     } catch (error) {
-        console.error("Erro ao buscar estadias ativas para o seletor:", error);
+        console.error("Erro ao buscar check-outs futuros:", error);
         return [];
     }
 }

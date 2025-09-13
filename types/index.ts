@@ -5,6 +5,17 @@ import type { DocumentReference } from "firebase/firestore";
 import { ReactNode } from "react";
 
 // ========================================================================
+// NOVO TIPO: Guest (Hóspede)
+// ========================================================================
+export interface Guest {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  document: string;
+}
+
+// ========================================================================
 // 1. ESTRUTURA CENTRAL: A ESTADIA DO HÓSPEDE (O CORAÇÃO DO SISTEMA)
 // ========================================================================
 
@@ -18,7 +29,6 @@ export interface Stay {
     name: string;
     wifiSsid?: string;
     wifiPassword?: string;
-
   };
   cabinName: string;
   checkInDate: string;
@@ -33,10 +43,12 @@ export interface Stay {
     general?: Timestamp;
     pet?: Timestamp;
   }
-    communicationStatus?: {
+  communicationStatus?: {
     welcomeMessageSentAt?: Timestamp | null;
     feedbackMessageSentAt?: Timestamp | null;
   };
+  // Adicionando a referência ao Hóspede
+  guest?: Guest; 
 }
 
 
@@ -406,6 +418,12 @@ export interface PropertyMessages {
     whatsappWelcome: string;
     whatsappBreakfastReminder: string;
     whatsappFeedbackRequest: string;
+    // Adicione os novos campos aqui se eles não foram adicionados anteriormente
+    whatsappCheckoutInfo: string;
+    whatsappBookingConfirmed: string;
+    whatsappRequestReceived: string;
+    whatsappEventInvite: string;
+    whatsappBreakfastChange: string;
 }
 
 export interface Property {
@@ -449,9 +467,9 @@ export type OrderWithStay = BreakfastOrder & {
 // ========================================================================
 export interface MessageLog {
     id: string;
-    stayId: string;
+    stayId?: string; // Pode não estar sempre disponível
     guestName: string;
-    type: 'pre-check-in' | 'welcome' | 'breakfast' | 'feedback';
+    type: string; // Alterado para string para aceitar tipos customizados
     content: string;
     copiedAt: Timestamp;
     actor: string; // E-mail do admin que copiou a mensagem

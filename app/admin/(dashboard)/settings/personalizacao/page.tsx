@@ -46,11 +46,17 @@ const propertySchema = z.object({
         surveySuccessSubtitle: z.string(),
         breakfastBasketClosed: z.string(),
         breakfastBasketDefaultMessage: z.string(),
-        // Novos modelos para WhatsApp
+        // Modelos existentes para WhatsApp
         whatsappPreCheckIn: z.string().min(1, "Modelo de mensagem é obrigatório."),
         whatsappWelcome: z.string().min(1, "Modelo de mensagem é obrigatório."),
         whatsappBreakfastReminder: z.string().min(1, "Modelo de mensagem é obrigatório."),
         whatsappFeedbackRequest: z.string().min(1, "Modelo de mensagem é obrigatório."),
+        // NOVOS MODELOS ADICIONADOS
+        whatsappCheckoutInfo: z.string().min(1, "Modelo de mensagem é obrigatório."),
+        whatsappBookingConfirmed: z.string().min(1, "Modelo de mensagem é obrigatório."),
+        whatsappRequestReceived: z.string().min(1, "Modelo de mensagem é obrigatório."),
+        whatsappEventInvite: z.string().min(1, "Modelo de mensagem é obrigatório."),
+        whatsappBreakfastChange: z.string().min(1, "Modelo de mensagem é obrigatório."),
     }),
     breakfast: z.object({
         type: z.enum(['delivery', 'on-site']),
@@ -91,6 +97,11 @@ export default function PersonalizationPage() {
                     whatsappWelcome: data.messages?.whatsappWelcome || `Seja muito bem-vindo(a) à {propertyName}, {guestName}! ✨\n\n🔑 Seu Portal do Hóspede (código {token}):\n👉 {portalLink}\n\n📶 Wi-Fi: {wifiSsid}\n🔒 Senha: {wifiPassword}\n\nTenha uma ótima estadia!`,
                     whatsappBreakfastReminder: data.messages?.whatsappBreakfastReminder || `Olá, {guestName}! 🥐\nLembrete amigável para pedir sua cesta de café da manhã para amanhã até as {deadline} hoje.\n👉 {portalLink}`,
                     whatsappFeedbackRequest: data.messages?.whatsappFeedbackRequest || `Olá, {guestName}!\n\nFoi um prazer recebê-lo(a). Gostaríamos muito de saber como foi sua experiência. Poderia nos avaliar?\n\n👉 {feedbackLink}`,
+                    whatsappCheckoutInfo: data.messages?.whatsappCheckoutInfo || `Olá {guestName}, esperamos que esteja aproveitando seus momentos conosco! Gostaríamos de lembrar que o seu check-out amanhã, {checkoutDate}, é até as {checkoutTime}. Por favor, deixe a chave na recepção ao sair. Se precisar de algo, nos avise!`,
+                    whatsappBookingConfirmed: data.messages?.whatsappBookingConfirmed || `Olá {guestName}! Confirmamos o seu agendamento para o serviço '{serviceName}' no dia {serviceDate} às {serviceTime}. Está tudo certo!`,
+                    whatsappRequestReceived: data.messages?.whatsappRequestReceived || `Olá {guestName}, recebemos sua solicitação de '{requestName}' e já estamos cuidando de tudo. Em breve retornaremos o contato. Obrigado!`,
+                    whatsappEventInvite: data.messages?.whatsappEventInvite || `Olá {guestName}! Hoje teremos um evento especial na Fazenda: '{eventName}' às {eventTime} no {eventLocation}. Será uma ótima oportunidade para {eventDescription}. Contamos com sua presença!`,
+                    whatsappBreakfastChange: data.messages?.whatsappBreakfastChange || `Atenção, {guestName}! Informamos que a partir de amanhã, {date}, nosso café da manhã passará a ser servido no formato {newModality} ({newLocation}). Agradecemos a compreensão!`
                 },
                 breakfast: {
                     type: data.breakfast?.type || 'delivery',
@@ -203,9 +214,33 @@ export default function PersonalizationPage() {
                                 <FormField control={form.control} name="messages.whatsappBreakfastReminder" render={({ field }) => (
                                     <FormItem><FormLabel>Lembrete de Café da Manhã</FormLabel><FormControl><Textarea {...field} rows={4} /></FormControl><FormDescription>Variáveis: {"{guestName}"}, {"{deadline}"}, {"{portalLink}"}</FormDescription><FormMessage /></FormItem>
                                 )} />
+
+                                <FormField control={form.control} name="messages.whatsappCheckoutInfo" render={({ field }) => (
+                                    <FormItem><FormLabel>Informações de Check-out</FormLabel><FormControl><Textarea {...field} rows={4} /></FormControl><FormDescription>Variáveis: {"{guestName}"}, {"{checkoutDate}"}, {"{checkoutTime}"}</FormDescription><FormMessage /></FormItem>
+                                )} />
+                                
                                 <FormField control={form.control} name="messages.whatsappFeedbackRequest" render={({ field }) => (
                                     <FormItem><FormLabel>Pedido de Avaliação</FormLabel><FormControl><Textarea {...field} rows={4} /></FormControl><FormDescription>Variáveis: {"{propertyName}"}, {"{guestName}"}, {"{feedbackLink}"}</FormDescription><FormMessage /></FormItem>
                                 )} />
+                                
+                                <FormField control={form.control} name="messages.whatsappBookingConfirmed" render={({ field }) => (
+                                    <FormItem><FormLabel>Confirmação de Agendamento</FormLabel><FormControl><Textarea {...field} rows={3} /></FormControl><FormDescription>Variáveis: {"{guestName}"}, {"{serviceName}"}, {"{serviceDate}"}, {"{serviceTime}"}</FormDescription><FormMessage /></FormItem>
+                                )} />
+
+                                <FormField control={form.control} name="messages.whatsappRequestReceived" render={({ field }) => (
+                                    <FormItem><FormLabel>Confirmação de Pedido Recebido</FormLabel><FormControl><Textarea {...field} rows={3} /></FormControl><FormDescription>Variáveis: {"{guestName}"}, {"{requestName}"}</FormDescription><FormMessage /></FormItem>
+                                )} />
+
+                                {/* CORREÇÃO APLICADA AQUI */}
+                                <FormField control={form.control} name="messages.whatsappEventInvite" render={({ field }) => (
+                                    <FormItem><FormLabel>Convite para Evento/Atividade</FormLabel><FormControl><Textarea {...field} rows={4} /></FormControl><FormDescription>Variáveis: {"{guestName}"}, {"{eventName}"}, {"{eventTime}"}, {"{eventLocation}"}, {"{eventDescription}"}</FormDescription><FormMessage /></FormItem>
+                                )} />
+                                
+                                {/* CORREÇÃO APLICADA AQUI */}
+                                <FormField control={form.control} name="messages.whatsappBreakfastChange" render={({ field }) => (
+                                    <FormItem><FormLabel>Alteração na Modalidade do Café</FormLabel><FormControl><Textarea {...field} rows={4} /></FormControl><FormDescription>Variáveis: {"{guestName}"}, {"{date}"}, {"{newModality}"}, {"{newLocation}"}</FormDescription><FormMessage /></FormItem>
+                                )} />
+
                             </CardContent>
                         </Card>
                     </TabsContent>

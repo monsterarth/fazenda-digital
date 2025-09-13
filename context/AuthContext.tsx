@@ -10,12 +10,11 @@ interface AuthContextType {
     user: User | null;
     isAdmin: boolean;
     loading: boolean;
-    // ++ INÍCIO DA ADIÇÃO ++
     getIdToken: () => Promise<string | null>;
-    // ++ FIM DA ADIÇÃO ++
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// CORREÇÃO: Adicionado 'export' aqui
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
@@ -44,7 +43,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return () => unsubscribe();
     }, []);
 
-    // ++ INÍCIO DA ADIÇÃO ++
     const getIdToken = useCallback(async (): Promise<string | null> => {
         if (!user) {
             return null;
@@ -56,7 +54,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             return null;
         }
     }, [user]);
-    // ++ FIM DA ADIÇÃO ++
 
 
     return (

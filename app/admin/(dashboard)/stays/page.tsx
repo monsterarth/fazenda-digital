@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Loader2, Users, FileCheck2 } from 'lucide-react';
 import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
 import { StaysList } from '@/components/admin/stays/stays-list';
-import { CommunicationsCenter } from '@/components/admin/stays/communications-center';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { subDays } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
@@ -105,14 +104,7 @@ export default function ManageStaysPage() {
                 <div className="flex items-center justify-center h-64"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
             ) : (
                 <>
-                    <CommunicationsCenter 
-                        db={db} // ++ CORREÇÃO: Adicionando a prop 'db' que estava faltando ++
-                        activeStays={activeStays}
-                        checkedOutStays={checkedOutStays}
-                        breakfastOrders={breakfastOrders}
-                        cabins={cabins}
-                        property={property}
-                    />
+
 
                     <Tabs defaultValue="active">
                         <TabsList className="grid w-full grid-cols-2">

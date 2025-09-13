@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, BedDouble, Coffee, Calendar, BarChart2, Settings, LogOut,
-    Home, Paintbrush, Utensils, CalendarCheck, FileText, Wrench, Shield, Users,
+    Home, Paintbrush, Utensils, CalendarCheck, MessageSquare, FileText, Wrench, Shield, Users,
     ConciergeBell, Book // Ícone para Guias
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -25,6 +25,7 @@ import { useProperty } from '@/context/PropertyContext';
 const mainNavItems = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/stays', label: 'Estadias', icon: BedDouble },
+     {href: "/admin/comunicacao", label: "Comunicação", icon: MessageSquare },
     { href: "/admin/hospedes", label: "Hóspedes", icon: Users },
     { href: '/admin/pedidos/cafe', label: 'Pedidos Café', icon: Coffee },
     { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },

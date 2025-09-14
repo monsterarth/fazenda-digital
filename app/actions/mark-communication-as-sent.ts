@@ -7,36 +7,48 @@ import { Timestamp } from "firebase-admin/firestore";
 import { revalidatePath } from "next/cache";
 
 interface MarkAsSentPayload {
-    stayId: string;
-    messageType: 'feedback' | 'welcome'; // 'welcome' foi adicionado
+    stayId?: string; // Opcional para o novo tipo
+    bookingId?: string; // Opcional para o novo tipo
+    messageType: 'feedback' | 'welcome' | 'bookingConfirmation'; // Novo tipo adicionado
 }
 
 export async function markCommunicationAsSent(payload: MarkAsSentPayload): Promise<{ success: boolean; error?: string }> {
-    const { stayId, messageType } = payload;
+    const { stayId, bookingId, messageType } = payload;
 
-    if (!stayId || !messageType) {
-        return { success: false, error: "ID da estadia e tipo de mensagem são obrigatórios." };
+    if ((messageType === 'feedback' || messageType === 'welcome') && !stayId) {
+        return { success: false, error: "ID da estadia é obrigatório para este tipo de mensagem." };
+    }
+
+    if (messageType === 'bookingConfirmation' && !bookingId) {
+        return { success: false, error: "ID da reserva é obrigatório para este tipo de mensagem." };
     }
 
     try {
-        const stayRef = adminDb.collection('stays').doc(stayId);
+        let docRef;
+        let fieldToUpdate;
 
-        // Mapeia o tipo de mensagem para o campo correto no Firestore
-        const fieldToUpdateMap = {
-            'feedback': 'communicationStatus.feedbackMessageSentAt',
-            'welcome': 'communicationStatus.welcomeMessageSentAt' // CAMPO ADICIONADO
-        };
-
-        const fieldToUpdate = fieldToUpdateMap[messageType];
-
-        if (!fieldToUpdate) {
-            return { success: false, error: "Tipo de mensagem inválido." };
+        switch (messageType) {
+            case 'feedback':
+                docRef = adminDb.collection('stays').doc(stayId!);
+                fieldToUpdate = 'communicationStatus.feedbackMessageSentAt';
+                break;
+            case 'welcome':
+                docRef = adminDb.collection('stays').doc(stayId!);
+                fieldToUpdate = 'communicationStatus.welcomeMessageSentAt';
+                break;
+            case 'bookingConfirmation':
+                docRef = adminDb.collection('bookings').doc(bookingId!);
+                fieldToUpdate = 'confirmationSentAt'; // O novo campo na reserva
+                break;
+            default:
+                return { success: false, error: "Tipo de mensagem inválido." };
         }
 
-        await stayRef.update({
+        await docRef.update({
             [fieldToUpdate]: Timestamp.now()
         });
         
+        // Revalida o cache da página para refletir a mudança
         revalidatePath('/admin/comunicacao');
 
         return { success: true };

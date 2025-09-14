@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as firestore from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase';
-import { Structure, Booking, TimeSlot } from '@/types/scheduling';
+import { Structure, Booking } from '@/types/scheduling';
 import { Stay } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -162,7 +162,7 @@ export default function AdminBookingsDashboard() {
         return map;
     }, [bookings]);
 
-    const getSlotInfo = useCallback((structure: Structure, unit: string | null, timeSlot: TimeSlot): SlotInfo => {
+    const getSlotInfo = useCallback((structure: Structure, unit: string | null, timeSlot: any): SlotInfo => {
         const id = `${structure.id}-${unit ?? 'null'}-${timeSlot.startTime}`;
         const booking = bookingsMap.get(id);
         let status: SlotStatusType;
@@ -225,12 +225,10 @@ export default function AdminBookingsDashboard() {
         const toastId = toast.loading("Processando...");
 
         try {
-            // ++ INÍCIO DA CORREÇÃO: Encontra o objeto timeSlot completo ++
             const timeSlotObject = structure.timeSlots.find(ts => ts.startTime === startTime);
             if (!timeSlotObject) {
                 throw new Error("Detalhes do horário não encontrados.");
             }
-            // ++ FIM DA CORREÇÃO ++
 
             const batch = firestore.writeBatch(db);
             const existingDocRef = booking ? firestore.doc(db, 'bookings', booking.id) : null;
@@ -257,12 +255,12 @@ export default function AdminBookingsDashboard() {
                 toast.success("Horário liberado!", { id: toastId });
             }
             else if (action === 'block') {
-                // ++ INÍCIO DA CORREÇÃO: Adiciona as propriedades 'unit' e 'timeSlot' ++
                 const blockBooking: Omit<Booking, 'id' | 'createdAt'> = { 
                     structureId: structure.id, 
                     structureName: structure.name, 
                     unitId: unit, 
                     stayId: 'admin', 
+                    guestId: 'admin', // CORREÇÃO: Adicionada propriedade 'guestId'
                     date: dateStr, 
                     startTime, 
                     endTime, 
@@ -272,7 +270,6 @@ export default function AdminBookingsDashboard() {
                     unit: unit ?? undefined,
                     timeSlot: timeSlotObject,
                 };
-                // ++ FIM DA CORREÇÃO ++
                 if (existingDocRef) batch.delete(existingDocRef);
                 const newDocRef = firestore.doc(collectionRef);
                 batch.set(newDocRef, { ...blockBooking, createdAt: firestore.serverTimestamp() });
@@ -284,12 +281,12 @@ export default function AdminBookingsDashboard() {
                     toast.error("Hóspede inválido.", { id: toastId });
                     return;
                 };
-                // ++ INÍCIO DA CORREÇÃO: Adiciona as propriedades 'unit' e 'timeSlot' ++
                 const newBooking: Omit<Booking, 'id' | 'createdAt'> = { 
                     structureId: structure.id, 
                     structureName: structure.name, 
                     unitId: unit, 
                     stayId: guest.id, 
+                    guestId: guest.id, // CORREÇÃO: Adicionada propriedade 'guestId'
                     date: dateStr, 
                     startTime, 
                     endTime, 
@@ -299,7 +296,6 @@ export default function AdminBookingsDashboard() {
                     unit: unit ?? undefined,
                     timeSlot: timeSlotObject,
                 };
-                // ++ FIM DA CORREÇÃO ++
                 if (existingDocRef) batch.delete(existingDocRef);
                 const newDocRef = firestore.doc(collectionRef);
                 batch.set(newDocRef, { ...newBooking, createdAt: firestore.serverTimestamp() });
@@ -353,20 +349,18 @@ export default function AdminBookingsDashboard() {
                 if (action === 'block') {
                     const docRef = firestore.doc(firestore.collection(db, 'bookings'));
                     
-                    // ++ INÍCIO DA CORREÇÃO: Encontra o objeto timeSlot completo ++
                     const timeSlotObject = slot.structure.timeSlots.find(ts => ts.startTime === slot.startTime);
                     if (!timeSlotObject) {
                         console.error(`Não foi possível encontrar o horário para ${slot.startTime} na estrutura ${slot.structure.name}`);
                         return; 
                     }
-                    // ++ FIM DA CORREÇÃO ++
 
-                    // ++ INÍCIO DA CORREÇÃO: Adiciona as propriedades 'unit' e 'timeSlot' ++
                     const baseBooking: Omit<Booking, 'id' | 'createdAt'> = {
                         structureId: slot.structure.id, 
                         structureName: slot.structure.name, 
                         unitId: slot.unit, 
                         stayId: 'admin', 
+                        guestId: 'admin', // CORREÇÃO: Adicionada propriedade 'guestId'
                         date: dateStr, 
                         startTime: slot.startTime, 
                         endTime: slot.endTime, 
@@ -376,7 +370,6 @@ export default function AdminBookingsDashboard() {
                         unit: slot.unit ?? undefined,
                         timeSlot: timeSlotObject
                     };
-                    // ++ FIM DA CORREÇÃO ++
                     batch.set(docRef, { ...baseBooking, createdAt: firestore.serverTimestamp() });
                 }
             });

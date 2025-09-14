@@ -64,15 +64,24 @@ export async function POST(request: Request) {
 
                 // 3. Cria a nova reserva
                 const newBookingRef = adminDb.collection('bookings').doc();
-                const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
+                
+                // Objeto do novo agendamento com a correção
+                const newBooking = {
                     ...bookingData,
                     unitId: normalizedUnitId,
                     stayId: stayId,
-                    guestId: stayId,
+                    guestId: stayId, // Ajustar se guestId for diferente de stayId
                     guestName: stayInfo.guestName,
-                    cabinId: stayInfo.cabinName,
+                    cabinName: stayInfo.cabinName, // Corrigido de 'cabinId' para 'cabinName' para corresponder ao valor
                     createdAt: firestore.FieldValue.serverTimestamp(),
+                    confirmationSentAt: null, // <-- CORREÇÃO APLICADA AQUI
                 };
+
+                // Remove o campo 'id' se ele estiver vindo do frontend para evitar erro
+                if ('id' in newBooking) {
+                    delete newBooking.id;
+                }
+
                 transaction.set(newBookingRef, newBooking);
 
                 // ++ INÍCIO DA CORREÇÃO: Cria o log de atividade na mesma transação ++

@@ -1,14 +1,16 @@
+//context/GuestProvider.tsx
+
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut, User } from 'firebase/auth';
 import { app, getFirebaseDb } from '@/lib/firebase';
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
-import { Stay, PreCheckIn, Property } from '@/types'; 
-import { Booking } from '@/types/scheduling'; 
+import { Stay, PreCheckIn, Property, Cabin } from '@/types'; 
+import { Booking } from '@/types'; 
 import { getCookie, deleteCookie } from 'cookies-next';
 import { usePathname, useRouter } from 'next/navigation';
-import { getFirstName } from '@/lib/utils'; // 1. IMPORTANDO A FUNÇÃO DE FORMATAÇÃO
+import { getFirstName } from '@/lib/utils';
 
 // Este tipo local adiciona os campos que faltam sem precisar alterar arquivos globais.
 type EnrichedBooking = Booking & {
@@ -24,7 +26,7 @@ interface GuestContextType {
     isAuthenticated: boolean;
     isLoading: boolean;
     logout: () => void;
-    firstName: string; // 2. ADICIONANDO O PRIMEIRO NOME AO TIPO DO CONTEXTO
+    firstName: string;
 }
 
 const GuestContext = createContext<GuestContextType | undefined>(undefined);
@@ -87,7 +89,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
 
                     const db = await getFirebaseDb();
                     const stayRef = doc(db, 'stays', stayId);
-                    const propertyRef = doc(db, 'properties', 'main_property'); 
+                    const propertyRef = doc(db, 'properties', 'default'); // Usando 'default' como no resto do app
                     
                     const [staySnap, propertySnap] = await Promise.all([getDoc(stayRef), getDoc(propertyRef)]);
 
@@ -101,12 +103,11 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                         const cabinSnap = await getDoc(cabinRef);
                         if (cabinSnap.exists()) {
                            const cabinDataFromDb = cabinSnap.data();
+                           // CORREÇÃO APLICADA AQUI: Adicionado 'capacity' e o restante dos dados da cabana.
                            stayData.cabin = {
                              id: cabinSnap.id,
-                             name: cabinDataFromDb.name,
-                             wifiSsid: cabinDataFromDb.wifiSsid,
-                             wifiPassword: cabinDataFromDb.wifiPassword
-                           };
+                             ...cabinDataFromDb
+                           } as Cabin;
                         }
                     }
 
@@ -172,11 +173,9 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
         };
     }, [logout, pathname, router]);
     
-    // 3. CALCULANDO O PRIMEIRO NOME COM useMemo PARA EVITAR RECÁLCULOS
     const firstName = useMemo(() => getFirstName(stay?.guestName), [stay]);
 
     return (
-        // 4. DISPONIBILIZANDO O firstName PARA OS COMPONENTES FILHOS
         <GuestContext.Provider value={{ user, stay, bookings, preCheckIn, isAuthenticated: !!user, isLoading, logout, firstName }}>
             {children}
         </GuestContext.Provider>
@@ -190,4 +189,3 @@ export const useGuest = () => {
     }
     return context;
 };
-

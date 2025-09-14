@@ -10,6 +10,7 @@ import { getActiveStaysForSelect, EnrichedStayForSelect } from '@/app/actions/ge
 import { getUpcomingCheckouts } from '@/app/actions/get-upcoming-checkouts';
 import { getPendingBreakfastStays } from '@/app/actions/get-pending-breakfast-stays';
 import { getRecentCheckoutsForFeedback } from '@/app/actions/get-recent-checkouts-for-feedback';
+import { getActiveStaysForWelcome } from '@/app/actions/get-active-stays-for-welcome'; // NOVO
 import { markCommunicationAsSent } from '@/app/actions/mark-communication-as-sent';
 import { Property } from '@/types';
 import { format, addDays } from 'date-fns';
@@ -23,8 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-// CORREÇÃO: Adicionado 'Loader2' à importação
-import { MessageSquare, Copy, X, Wand2, Phone, BedDouble, Calendar, Bell, Coffee, LogOut, Star, CheckCircle, Loader2 } from 'lucide-react';
+import { MessageSquare, Copy, X, Wand2, Phone, BedDouble, Calendar, Bell, Coffee, LogOut, Star, CheckCircle, Loader2, Handshake } from 'lucide-react'; // NOVO ÍCONE
 
 type TipMessageType = 'feedback' | 'welcome';
 
@@ -49,6 +49,7 @@ export default function CommunicationCenterPage() {
     const [upcomingCheckouts, setUpcomingCheckouts] = useState<EnrichedStayForSelect[]>([]);
     const [pendingBreakfast, setPendingBreakfast] = useState<EnrichedStayForSelect[]>([]);
     const [recentCheckouts, setRecentCheckouts] = useState<EnrichedStayForSelect[]>([]);
+    const [staysNeedingWelcome, setStaysNeedingWelcome] = useState<EnrichedStayForSelect[]>([]); // NOVO ESTADO
     const [loadingTips, setLoadingTips] = useState(true);
     const [dialogState, setDialogState] = useState<DialogState>({ isOpen: false });
 
@@ -63,9 +64,9 @@ export default function CommunicationCenterPage() {
         const fetchData = async () => {
             try {
                 setIsLoading(true); setLoadingTips(true);
-                const [propData, activeStaysData, checkoutsData, breakfastData, recentCheckoutsData] = await Promise.all([
+                const [propData, activeStaysData, checkoutsData, breakfastData, recentCheckoutsData, welcomeData] = await Promise.all([
                     getProperty(), getActiveStaysForSelect(), getUpcomingCheckouts(),
-                    getPendingBreakfastStays(), getRecentCheckoutsForFeedback()
+                    getPendingBreakfastStays(), getRecentCheckoutsForFeedback(), getActiveStaysForWelcome() // CHAMADA DA NOVA ACTION
                 ]);
                 setProperty(propData || null);
                 
@@ -75,7 +76,7 @@ export default function CommunicationCenterPage() {
                 setAllStaysForSelect(sortedStays);
 
                 setUpcomingCheckouts(checkoutsData); setPendingBreakfast(breakfastData);
-                setRecentCheckouts(recentCheckoutsData);
+                setRecentCheckouts(recentCheckoutsData); setStaysNeedingWelcome(welcomeData); // SALVA OS DADOS NO ESTADO
             } catch (error) {
                 toast.error('Falha ao carregar dados iniciais.'); console.error(error);
             } finally {
@@ -133,33 +134,26 @@ export default function CommunicationCenterPage() {
     };
     
     const handleConfirmMarkAsSent = () => {
-        // CORREÇÃO: Verificação adicionada para garantir que 'stay' e 'messageType' existam
-        if (!dialogState.stay || !dialogState.messageType) {
-            toast.error("Ocorreu um erro. Tente novamente.");
-            return;
-        }
+        if (!dialogState.stay || !dialogState.messageType) { toast.error("Ocorreu um erro. Tente novamente."); return; }
         
         startTransition(async () => {
-            if(dialogState.messageType !== 'feedback') {
-                toast.error("Este tipo de mensagem ainda não pode ser marcado como enviado.");
-                setDialogState({ isOpen: false });
-                return;
-            }
-
             const result = await markCommunicationAsSent({
-                stayId: dialogState.stay!.id, // O '!' é seguro aqui por causa da verificação acima
-                messageType: dialogState.messageType
+                stayId: dialogState.stay!.id,
+                messageType: dialogState.messageType!
             });
 
             if (result.success) {
                 toast.success("Mensagem marcada como enviada!");
+                // Remove a dica da UI instantaneamente com base no tipo
                 if (dialogState.messageType === 'feedback') {
                     setRecentCheckouts(prev => prev.filter(s => s.id !== dialogState.stay?.id));
+                } else if (dialogState.messageType === 'welcome') {
+                    setStaysNeedingWelcome(prev => prev.filter(s => s.id !== dialogState.stay?.id));
                 }
             } else {
                 toast.error("Falha ao marcar como enviada.", { description: result.error });
             }
-            setDialogState({ isOpen: false }); // Fecha o diálogo em ambos os casos
+            setDialogState({ isOpen: false });
         });
     };
 
@@ -284,7 +278,7 @@ export default function CommunicationCenterPage() {
                         <CardContent className="space-y-4">
                             {loadingTips ? <Skeleton className="h-24 w-full" /> : (
                                 <>
-                                    {pendingBreakfast.length === 0 && upcomingCheckouts.length === 0 && recentCheckouts.length === 0 &&
+                                    {staysNeedingWelcome.length === 0 && pendingBreakfast.length === 0 && upcomingCheckouts.length === 0 && recentCheckouts.length === 0 &&
                                         <Alert>
                                             <Bell className="h-4 w-4" />
                                             <AlertTitle>Tudo em dia!</AlertTitle>
@@ -292,6 +286,23 @@ export default function CommunicationCenterPage() {
                                         </Alert>
                                     }
 
+                                    {/* DICA: MENSAGEM DE BOAS VINDAS */}
+                                    {staysNeedingWelcome.map(stay => (
+                                        <div key={stay.id} className="p-3 border rounded-lg bg-background hover:bg-muted transition-colors">
+                                            <div className="space-y-2">
+                                                <p className="font-semibold text-sm flex items-center gap-2"><Handshake size={14} className='text-green-600'/> Boas-Vindas</p>
+                                                <p className="text-xs text-muted-foreground"> Enviar mensagem para <strong>{stay.guest.name}</strong> ({stay.cabin.name}). </p>
+                                                <div className="flex items-center gap-2 pt-1">
+                                                     <Button size="sm" className="flex-1" variant="outline" onClick={() => handleGenerateFromTip(stay, 'whatsappWelcome')}>Gerar</Button>
+                                                     <Button size="sm" className="flex-1" variant="secondary" onClick={() => handleOpenMarkAsSentDialog(stay, 'welcome')}>
+                                                        <CheckCircle size={14} className="mr-1.5"/> Marcar
+                                                     </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {/* DICA: PEDIDO DE AVALIAÇÃO */}
                                     {recentCheckouts.map(stay => (
                                         <div key={stay.id} className="p-3 border rounded-lg bg-background hover:bg-muted transition-colors">
                                             <div className="space-y-2">
@@ -307,6 +318,7 @@ export default function CommunicationCenterPage() {
                                         </div>
                                     ))}
                                     
+                                    {/* DICA: CAFÉ PENDENTE */}
                                     {pendingBreakfast.map(stay => (
                                         <div key={stay.id} className="p-3 border rounded-lg bg-background hover:bg-muted transition-colors">
                                             <div className="flex items-start justify-between">
@@ -319,6 +331,7 @@ export default function CommunicationCenterPage() {
                                         </div>
                                     ))}
 
+                                    {/* DICA: CHECK-OUT AMANHÃ */}
                                      {upcomingCheckouts.map(stay => (
                                         <div key={stay.id} className="p-3 border rounded-lg bg-background hover:bg-muted transition-colors">
                                             <div className="flex items-start justify-between">

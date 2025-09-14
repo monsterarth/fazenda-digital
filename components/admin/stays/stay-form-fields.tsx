@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
 import { FullStayFormValues } from '@/lib/schemas/stay-schema';
-import { Cabin } from '@/types';
+import { Cabin, Guest } from '@/types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CalendarIcon, PlusCircle, Trash2, Loader2 } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2, Loader2, UserCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
@@ -24,13 +24,16 @@ import { toast } from 'sonner';
 interface StayFormFieldsProps {
     form: UseFormReturn<FullStayFormValues>;
     cabins: Cabin[];
-    onCpfBlur: (cpf: string) => void; // ++ ADICIONADO: Nova propriedade para a busca
+    onCpfBlur: (cpf: string) => void;
+    isLookingUp: boolean; // NOVO
+    foundGuest: Guest | null; // NOVO
+    onUseFoundGuest: () => void; // NOVO
 }
 
 const countries = ["Argentina", "Uruguai", "Chile", "Estados Unidos", "Portugal", "Alemanha"];
 const generateSimpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, onCpfBlur }) => { // ++ ADICIONADO: Recebendo a nova prop
+export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, onCpfBlur, isLookingUp, foundGuest, onUseFoundGuest }) => {
     const isForeigner = form.watch('isForeigner');
     const { fields: companions, append: appendCompanion, remove: removeCompanion } = useFieldArray({ control: form.control, name: "companions" });
     const { fields: pets, append: appendPet, remove: removePet } = useFieldArray({ control: form.control, name: "pets" });
@@ -103,6 +106,22 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
             <AccordionItem value="item-2">
                 <AccordionTrigger className="text-lg font-semibold">2. Hóspede Responsável</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">
+                    
+                    {/* BANNER DE HÓSPEDE ENCONTRADO MOVIDO PARA CÁ */}
+                    {foundGuest && (
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between animate-in fade-in-50">
+                            <div className="flex items-center">
+                                <UserCheck className="h-5 w-5 mr-2 text-green-600" />
+                                <p className="text-sm font-medium text-green-800">
+                                    Hóspede recorrente: <span className="font-bold">{foundGuest.name}</span>
+                                </p>
+                            </div>
+                            <Button type="button" size="sm" variant="outline" onClick={onUseFoundGuest}>
+                                Usar Dados
+                            </Button>
+                        </div>
+                    )}
+
                     <FormField name="leadGuestName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Nome Completo</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField name="isForeigner" control={form.control} render={({ field }) => (<FormItem className="flex flex-row items-center space-x-3 space-y-0 pt-2"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">Hóspede Estrangeiro</FormLabel></FormItem>)} />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -118,19 +137,24 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>CPF</FormLabel>
-                                        <FormControl>
-                                            <Input 
-                                                placeholder="000.000.000-00" 
-                                                {...field}
-                                                // ++ INÍCIO DA ALTERAÇÃO: Adicionando o onBlur para a busca automática ++
-                                                onBlur={(e) => onCpfBlur(e.target.value)}
-                                                // ++ FIM DA ALTERAÇÃO ++
-                                                onChange={(e) => {
-                                                    const numericValue = e.target.value.replace(/\D/g, '');
-                                                    field.onChange(numericValue);
-                                                }}
-                                            />
-                                        </FormControl>
+                                        <div className="relative">
+                                            <FormControl>
+                                                <Input 
+                                                    placeholder="000.000.000-00" 
+                                                    {...field}
+                                                    onBlur={(e) => onCpfBlur(e.target.value)}
+                                                    onChange={(e) => {
+                                                        const numericValue = e.target.value.replace(/\D/g, '');
+                                                        field.onChange(numericValue);
+                                                    }}
+                                                />
+                                            </FormControl>
+                                            {/* FEEDBACK VISUAL ADICIONADO AQUI */}
+                                            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                                {isLookingUp && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+                                                {foundGuest && <UserCheck className="h-5 w-5 text-green-600" />}
+                                            </div>
+                                        </div>
                                         <FormMessage />
                                     </FormItem>
                                 )} 
@@ -164,6 +188,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                 </AccordionContent>
             </AccordionItem>
 
+            {/* O restante do formulário permanece inalterado... */}
             <AccordionItem value="item-3">
                 <AccordionTrigger className="text-lg font-semibold">3. Endereço (para Nota Fiscal)</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">
@@ -197,10 +222,10 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
             <AccordionItem value="item-4">
                 <AccordionTrigger className="text-lg font-semibold">4. Detalhes da Chegada</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField name="estimatedArrivalTime" control={form.control} render={({ field }) => (<FormItem><FormLabel>Horário Previsto</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="vehiclePlate" control={form.control} render={({ field }) => (<FormItem><FormLabel>Placa do Veículo</FormLabel><FormControl><Input placeholder="ABC-1234" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    </div>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FormField name="estimatedArrivalTime" control={form.control} render={({ field }) => (<FormItem><FormLabel>Horário Previsto</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField name="vehiclePlate" control={form.control} render={({ field }) => (<FormItem><FormLabel>Placa do Veículo</FormLabel><FormControl><Input placeholder="ABC-1234" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        </div>
                 </AccordionContent>
             </AccordionItem>
 

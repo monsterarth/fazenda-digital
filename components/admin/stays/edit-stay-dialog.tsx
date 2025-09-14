@@ -18,8 +18,8 @@ import { Separator } from '@/components/ui/separator';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useAuth } from '@/context/AuthContext';
 import { createActivityLog } from '@/lib/activity-logger';
-import { useModal } from '@/hooks/use-modal-store'; // ++ ADICIONADO ++
-import { getFirebaseDb } from '@/lib/firebase'; // ++ ADICIONADO ++
+import { useModal } from '@/hooks/use-modal-store';
+import { getFirebaseDb } from '@/lib/firebase';
 
 interface EditStayDialogProps {
     cabins: Cabin[];
@@ -148,7 +148,8 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
         }
     };
     
-    const handleCpfBlur = () => {}; // Não faz nada na edição
+    // Na edição, a busca por CPF não é necessária
+    const handleCpfBlur = () => {}; 
 
     if (!isModalOpen) {
         return null;
@@ -171,7 +172,15 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                     <Form {...form}>
                         <form id="edit-stay-form" onSubmit={form.handleSubmit(handleUpdateStay)}>
                             <div className="py-4 max-h-[75vh] overflow-y-auto pr-4 space-y-6">
-                               <StayFormFields form={form} cabins={cabins} onCpfBlur={handleCpfBlur} />
+                                {/* CORREÇÃO APLICADA AQUI: Adicionando as props que faltavam com valores padrão */}
+                               <StayFormFields 
+                                   form={form} 
+                                   cabins={cabins} 
+                                   onCpfBlur={handleCpfBlur}
+                                   isLookingUp={false}
+                                   foundGuest={null}
+                                   onUseFoundGuest={() => {}}
+                                />
                                
                                <Separator />
                                <div>

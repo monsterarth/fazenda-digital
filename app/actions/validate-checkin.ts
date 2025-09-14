@@ -1,11 +1,12 @@
+//app/actions/validate-checkin.ts
+
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin';
-import { PreCheckIn, Stay, Cabin, Companion } from '@/types';
-import { Guest } from '@/types/guest';
+import { PreCheckIn, Stay, Cabin, Guest } from '@/types';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath } from 'next/cache';
-import { normalizeString } from '@/lib/utils'; // 1. IMPORTANDO A FUNÇÃO DE NORMALIZAÇÃO
+import { normalizeString } from '@/lib/utils';
 
 const generateToken = (): string => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -26,7 +27,6 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
         }
         const selectedCheckIn = { ...preCheckInSnap.data(), id: preCheckInSnap.id } as PreCheckIn;
 
-        // 2. NORMALIZANDO OS NOMES VINDOS DO PRÉ-CHECK-IN DO HÓSPEDE
         const normalizedGuestName = normalizeString(selectedCheckIn.leadGuestName);
         const normalizedCompanions = selectedCheckIn.companions?.map(c => ({
             ...c,
@@ -46,9 +46,8 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
         const token = generateToken();
         const checkInTimestamp = Timestamp.fromDate(new Date(data.dates.from));
         
-        // 3. USANDO OS NOMES NORMALIZADOS PARA CRIAR A ESTADIA
         const newStay: Omit<Stay, 'id'> = {
-            guestName: normalizedGuestName, // <-- APLICADO
+            guestName: normalizedGuestName,
             cabinId: selectedCabin.id,
             cabinName: selectedCabin.name,
             checkInDate: data.dates.from.toISOString(),
@@ -62,12 +61,11 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
         };
         batch.set(stayRef, newStay);
 
-        // 4. ATUALIZANDO O PRÓPRIO PRÉ-CHECK-IN COM OS DADOS NORMALIZADOS
         batch.update(preCheckInRef, { 
             status: 'validado', 
             stayId: stayRef.id,
-            leadGuestName: normalizedGuestName, // <-- APLICADO
-            companions: normalizedCompanions,  // <-- APLICADO
+            leadGuestName: normalizedGuestName,
+            companions: normalizedCompanions,
         });
 
         const numericCpf = selectedCheckIn.leadGuestDocument.replace(/\D/g, '');
@@ -76,20 +74,20 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
 
         if (guestSnap.exists) {
             const guestData = guestSnap.data() as Guest;
-            // 5. USANDO O NOME NORMALIZADO AO ATUALIZAR UM HÓSPEDE EXISTENTE
+            // CORREÇÃO APLICADA AQUI:
+            // Garante que guestData.stayHistory seja um array antes de usar o spread operator.
             batch.update(guestRef, {
-                stayHistory: [...guestData.stayHistory, stayRef.id],
+                stayHistory: [...(guestData.stayHistory || []), stayRef.id],
                 updatedAt: checkInTimestamp,
-                name: normalizedGuestName, // <-- APLICADO
+                name: normalizedGuestName,
                 email: selectedCheckIn.leadGuestEmail,
                 phone: selectedCheckIn.leadGuestPhone,
                 address: selectedCheckIn.address,
             });
         } else {
-            // 6. USANDO O NOME NORMALIZADO AO CRIAR UM NOVO HÓSPEDE
             const newGuest: Omit<Guest, 'id'> = {
-                name: normalizedGuestName, // <-- APLICADO
-                cpf: numericCpf,
+                name: normalizedGuestName,
+                document: numericCpf,
                 email: selectedCheckIn.leadGuestEmail,
                 phone: selectedCheckIn.leadGuestPhone,
                 address: selectedCheckIn.address,
@@ -107,7 +105,7 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
             timestamp: Timestamp.now(),
             type: 'checkin_validated',
             actor: { type: 'admin', identifier: adminEmail },
-            details: `Pré-check-in de ${normalizedGuestName} validado.`, // <-- Usando nome normalizado no log
+            details: `Pré-check-in de ${normalizedGuestName} validado.`,
             link: '/admin/stays'
         });
 

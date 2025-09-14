@@ -1,7 +1,7 @@
 // hooks/use-modal-store.ts
 
 import { create } from 'zustand';
-import { Guest } from '@/types/guest';
+import { Guest } from '@/types';
 import { Stay } from '@/types'; // ++ ADICIONADO ++
 
 export type ModalType = 'createStay' | 'editStay'; // ++ ADICIONADO: 'editStay' ++

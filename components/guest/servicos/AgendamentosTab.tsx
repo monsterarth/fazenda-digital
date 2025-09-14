@@ -228,7 +228,7 @@ export function AgendamentosTab() {
                                 <li key={b.id} className="flex justify-between items-center p-3 rounded-md bg-muted">
                                     <div>
                                         <span className="font-semibold">{b.structureName}</span>
-                                        {b.unitId && <span className="text-muted-foreground"> ({b.unitId})</span>}
+                                        {b.unit && <span className="text-muted-foreground"> ({b.unit})</span>}
                                         <span className="text-muted-foreground ml-2">{b.startTime} - {b.endTime}</span>
                                     </div>
                                     <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-100" onClick={() => setDialogState({ type: 'cancelBooking', data: { bookingId: b.id } })}>

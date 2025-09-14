@@ -1,3 +1,5 @@
+//lib/utils.ts
+
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { parse } from 'date-fns';
@@ -7,7 +9,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// NOVA FUNÇÃO
 export const isOrderingWindowActive = (startTimeStr?: string, endTimeStr?: string): boolean => {
     if (!startTimeStr || !endTimeStr) return false;
     try {
@@ -22,26 +23,29 @@ export const isOrderingWindowActive = (startTimeStr?: string, endTimeStr?: strin
 };
 
 /**
- * Converte um objeto Timestamp (do Firestore ou serializado como número) para milissegundos.
+ * Converte um objeto Timestamp (do Firestore, Date ou número) para milissegundos.
  * @param ts O Timestamp a ser convertido.
  * @returns O valor em milissegundos como um número, ou 0 se a entrada for inválida.
  */
 export function getMillisFromTimestamp(ts: Timestamp | null | undefined): number {
-  if (!ts) {
+    if (!ts) {
+        return 0;
+    }
+    // Se já for um número (serializado de um Server Component).
+    if (typeof ts === 'number') {
+        return ts;
+    }
+    // CORREÇÃO: Se for um objeto Date nativo do JavaScript.
+    if (ts instanceof Date) {
+        return ts.getTime();
+    }
+    // Se for um objeto Timestamp do Firestore (que tem o método toMillis).
+    if (typeof (ts as any).toMillis === 'function') {
+        return (ts as any).toMillis();
+    }
     return 0;
-  }
-  // Se já for um número (serializado de um Server Component), retorne-o.
-  if (typeof ts === 'number') {
-    return ts;
-  }
-  // Se for um objeto Timestamp, use o método toMillis().
-  if (typeof ts.toMillis === 'function') {
-    return ts.toMillis();
-  }
-  return 0;
 }
 
-// ++ INÍCIO DA ADIÇÃO ++
 /**
  * Percorre recursivamente um objeto ou array e converte todas as instâncias de 
  * Timestamp do Firestore (que são classes) em números (milissegundos).
@@ -49,33 +53,32 @@ export function getMillisFromTimestamp(ts: Timestamp | null | undefined): number
  * @returns Os dados com todos os Timestamps convertidos para números.
  */
 export function serializeFirestoreTimestamps(data: any): any {
-  if (!data) {
-    return data;
-  }
-
-  // Se for um array, percorre cada item
-  if (Array.isArray(data)) {
-    return data.map(item => serializeFirestoreTimestamps(item));
-  }
-
-  // Se for um objeto Timestamp do Firestore (identificado pela função toMillis)
-  if (data && typeof data.toMillis === 'function') {
-    return data.toMillis();
-  }
-
-  // Se for um objeto genérico, percorre cada propriedade
-  if (typeof data === 'object') {
-    const newObj: { [key: string]: any } = {};
-    for (const key in data) {
-      newObj[key] = serializeFirestoreTimestamps(data[key]);
+    if (!data) {
+        return data;
     }
-    return newObj;
-  }
 
-  // Retorna o valor primitivo como está
-  return data;
+    // Se for um array, percorre cada item
+    if (Array.isArray(data)) {
+        return data.map(item => serializeFirestoreTimestamps(item));
+    }
+
+    // Se for um objeto Timestamp do Firestore (identificado pela função toMillis)
+    if (data && typeof data.toMillis === 'function') {
+        return data.toMillis();
+    }
+
+    // Se for um objeto genérico, percorre cada propriedade
+    if (typeof data === 'object' && data !== null && !(data instanceof Date)) {
+        const newObj: { [key: string]: any } = {};
+        for (const key in data) {
+            newObj[key] = serializeFirestoreTimestamps(data[key]);
+        }
+        return newObj;
+    }
+
+    // Retorna o valor primitivo (ou Date) como está
+    return data;
 }
-// ++ FIM DA ADIÇÃO ++
 
 /**
  * Normaliza uma string para CAIXA ALTA, sem acentos ou caracteres especiais.
@@ -98,9 +101,9 @@ export function normalizeString(str: string) {
  * @returns O primeiro nome formatado.
  */
 export function getFirstName(fullName: string | undefined | null): string {
-  if (!fullName) {
-    return "";
-  }
-  const firstName = fullName.split(' ')[0];
-  return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+    if (!fullName) {
+        return "";
+    }
+    const firstName = fullName.split(' ')[0];
+    return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
 }

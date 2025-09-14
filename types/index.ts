@@ -5,31 +5,58 @@ import type { DocumentReference } from "firebase/firestore";
 import { ReactNode } from "react";
 
 // ========================================================================
-// NOVO TIPO: Guest (Hóspede)
+// 0. TIPOS PRIMÁRIOS (ENTIDADES CENTRAIS)
 // ========================================================================
+
+/**
+ * Representa o Hóspede principal. Esta é a definição unificada usada em todo o sistema.
+ */
 export interface Guest {
   id: string;
   name: string;
   email: string;
   phone: string;
-  document: string;
+  document: string; // Padronizado para CPF ou outro documento
+  isForeigner?: boolean;
+  country?: string;
+  address?: Address;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+  stayHistory?: string[];
+}
+
+/**
+ * Representa um equipamento que pode estar presente em uma cabana.
+ */
+export interface Equipment {
+  type: string;
+  model: string;
+}
+
+/**
+ * Representa a Cabana, com seus detalhes e configurações.
+ */
+export interface Cabin {
+  id: string;
+  name: string;
+  capacity: number;
+  posicao?: number;
+  wifiSsid?: string;
+  wifiPassword?: string;
+  equipment?: Equipment[];
 }
 
 // ========================================================================
-// 1. ESTRUTURA CENTRAL: A ESTADIA DO HÓSPEDE (O CORAÇÃO DO SISTEMA)
+// 1. ESTRUTURA CENTRAL: A ESTADIA DO HÓSPEDE
 // ========================================================================
 
+/**
+ * Representa a estadia de um hóspede, ligando o hóspede, a cabana e o período.
+ */
 export interface Stay {
-  pets: any;
   id: string;
   guestName: string;
   cabinId: string;
-  cabin?: {
-    id: string;
-    name: string;
-    wifiSsid?: string;
-    wifiPassword?: string;
-  };
   cabinName: string;
   checkInDate: string;
   checkOutDate: string;
@@ -37,8 +64,14 @@ export interface Stay {
   token: string;
   status: 'pending_validation' | 'active' | 'checked_out' | 'canceled';
   preCheckInId: string;
-  createdAt: Timestamp; // Alterado de string para Timestamp
+  createdAt: Timestamp;
+  endedAt?: Timestamp;
+  endedBy?: string;
+  
+  guest?: Guest;
+  cabin?: Cabin;
   bookings?: Booking[];
+  
   policiesAccepted?: {
     general?: Timestamp;
     pet?: Timestamp;
@@ -47,8 +80,7 @@ export interface Stay {
     welcomeMessageSentAt?: Timestamp | null;
     feedbackMessageSentAt?: Timestamp | null;
   };
-  // Adicionando a referência ao Hóspede
-  guest?: Guest; 
+  pets: any;
 }
 
 
@@ -64,12 +96,12 @@ export interface Address {
   neighborhood: string;
   city: string;
   state: string;
-  country: string;
+  country?: string;
 }
 
 export interface Companion {
   fullName: string;
-  age: number;
+  age: number | string;
   cpf?: string;
 }
 
@@ -78,13 +110,12 @@ export interface PetDetails {
   name: string;
   species: 'cachorro' | 'gato' | 'outro';
   breed: string;
-  weight: number;
+  weight: number | string;
   age: string;
   notes?: string;
 }
 
-export type PreCheckInStatus = 'pendente' | 'validado' | 'arquivado' | 'validado_admin'; {
-}
+export type PreCheckInStatus = 'pendente' | 'validado' | 'arquivado' | 'validado_admin';
 
 export interface PreCheckIn {
   id: string;
@@ -148,7 +179,7 @@ export interface Booking {
 }
 
 // ========================================================================
-// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ (ATUALIZADO PARA NOVAS REGRAS)
+// 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ
 // ========================================================================
 
 export interface Flavor {
@@ -204,7 +235,7 @@ export interface BreakfastOrder {
     id: string;
     stayId: string;
     deliveryDate: string;
-    deliveryTime?: string; // ++ NOVO CAMPO ++
+    deliveryTime?: string;
     numberOfGuests: number;
     individualItems: IndividualOrderItem[];
     collectiveItems: CollectiveOrderItem[];
@@ -214,13 +245,111 @@ export interface BreakfastOrder {
 }
 
 // ========================================================================
-// 5. CONFIGURAÇÕES GERAIS
+// 5. CONFIGURAÇÕES GERAIS E PERSONALIZAÇÃO (WHITE-LABEL)
 // ========================================================================
 
-export interface Equipment {
-  type: string;
-  model: string;
+export interface PropertyColors {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+    card: string;
+    text: string;
+    textOnPrimary: string;
 }
+
+export interface PropertyMessages {
+    preCheckInWelcomeTitle: string;
+    preCheckInWelcomeSubtitle: string;
+    preCheckInSuccessTitle: string;
+    preCheckInSuccessSubtitle: string;
+    portalWelcomeTitle: string;
+    portalWelcomeSubtitle: string;
+    surveySuccessTitle: string;
+    surveySuccessSubtitle: string;
+    breakfastBasketClosed: string;
+    breakfastBasketDefaultMessage: string;
+    whatsappPreCheckIn: string;
+    whatsappWelcome: string;
+    whatsappBreakfastReminder: string;
+    whatsappCheckoutInfo: string;
+    whatsappFeedbackRequest: string;
+    whatsappBookingConfirmed: string;
+    whatsappRequestReceived: string;
+    whatsappEventInvite: string;
+    whatsappBreakfastChange: string;
+}
+
+export interface Property {
+    contact: any;
+    id: string;
+    name: string;
+    logoUrl: string;
+    colors: PropertyColors;
+    messages: PropertyMessages;
+    breakfast?: {
+      isAvailable: boolean;
+      type: 'delivery' | 'on-site';
+      menu: BreakfastMenuCategory[];
+      orderingStartTime: string;
+      orderingEndTime: string;
+      deliveryTimes?: string[];
+    };
+    policies?: {
+        general: {
+            content: string;
+            lastUpdatedAt: Timestamp;
+        };
+        pet: {
+            content: string;
+            lastUpdatedAt: Timestamp;
+        }
+    };
+    defaultSurveyId?: string;
+}
+
+// ========================================================================
+// 6. TIPOS DE APOIO E LEGADOS
+// ========================================================================
+
+interface FirestoreTimestamp {
+  seconds: number;
+  nanoseconds: number;
+  toDate(): Date;
+  toMillis(): number;
+}
+export type Timestamp = FirestoreTimestamp | number | Date;
+
+export interface MessageLog {
+    id: string;
+    stayId?: string;
+    guestName: string;
+    type: string;
+    content: string;
+    copiedAt: Timestamp;
+    actor: string;
+}
+
+export type OrderWithStay = BreakfastOrder & {
+  stayInfo?: Stay;
+};
+
+// ========================================================================
+// 7. GUIAS E MANUAIS
+// ========================================================================
+
+export interface Guide {
+  id: string;
+  title: string;
+  fileUrl: string;
+  scope: 'general' | 'specific';
+  equipmentType?: string;
+  equipmentModel?: string;
+}
+
+// ========================================================================
+// 8. TIPOS LEGADOS (Mantidos para compatibilidade)
+// ========================================================================
 
 export interface AppConfig {
   logoUrl?: string;
@@ -254,223 +383,4 @@ export interface AppConfig {
   surveySuccessTitle?: string;
   surveySuccessSubtitle?: string;
   surveySuccessFooter?: string;
-}
-
-export interface Cabin {
-  id: string;
-  name: string;
-  capacity: number;
-  posicao?: number;
-  wifiSsid?: string;
-  wifiPassword?: string;
-  equipment?: Equipment[];
-}
-
-// ========================================================================
-// 6. TIPOS DE APOIO E LEGADOS
-// ========================================================================
-interface FirestoreTimestamp {
-  seconds: number;
-  nanoseconds: number;
-  toDate(): Date;
-  toMillis(): number;
-}
-
-export type Timestamp = FirestoreTimestamp | number;
-
-export interface HotDish {
-  id: string;
-  nomeItem: string;
-  emoji?: string;
-  disponivel: boolean;
-  sabores: Flavor[];
-  imageUrl?: string;
-  posicao?: number;
-}
-
-export interface AccompanimentCategory {
-  id: string;
-  name: string;
-  items: AccompanimentItem[];
-}
-
-export interface AccompanimentItem {
-  id: string;
-  nomeItem: string;
-  emoji?: string;
-  disponivel: boolean;
-  descricaoPorcao?: string;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-}
-
-export interface StockItem {
-  id: string;
-  name: string;
-  supplierId: string;
-  posicao?: number;
-}
-
-export interface ItemPedido {
-  nomeItem: string;
-  quantidade: number;
-  observacao?: string;
-  paraPessoa?: string;
-  categoria?: string;
-  sabor?: string;
-}
-
-export interface Order {
-  id: string;
-  stayId: DocumentReference;
-  horarioEntrega?: string;
-  status: "Novo" | "Em Preparação" | "Entregue" | "Cancelado";
-  timestampPedido?: Timestamp;
-  itensPedido?: ItemPedido[];
-  observacoesGerais?: string;
-  hospedeNome?: string;
-  cabanaNumero?: string;
-  numeroPessoas?: number;
-}
-
-export interface Comanda {
-  id: string;
-  guestName: string;
-  cabin: string;
-  numberOfGuests: number;
-  token: string;
-  isActive: boolean;
-  status?: 'ativa' | 'arquivada';
-  createdAt: Timestamp;
-  usedAt?: Timestamp;
-  horarioLimite?: Timestamp;
-  mensagemAtraso?: string;
-}
-
-export interface Person {
-  id: number;
-  hotDish: {
-    typeId: string;
-    flavorId: string;
-  } | null;
-  notes?: string;
-}
-
-export interface OrderState {
-  isAuthenticated: boolean;
-  comanda: Omit<Comanda, 'id' | 'createdAt' | 'isActive' | 'usedAt'> | null;
-  currentStep: number;
-  completedSteps: number[];
-  guestInfo: {
-    name: string;
-    cabin: string;
-    people: number;
-    time: string;
-  };
-  persons: Person[];
-  accompaniments: Record<string, Record<string, number>>;
-  globalHotDishNotes: string;
-  specialRequests: string;
-}
-
-// ========================================================================
-// 7. GUIAS E MANUAIS (NOVA SEÇÃO)
-// ========================================================================
-
-export interface Guide {
-  id: string;
-  title: string;
-  fileUrl: string;
-  scope: 'general' | 'specific'; // Geral (pousada) ou Específico (equipamento)
-  equipmentType?: string; // Ex: 'Cofre', 'Jacuzzi'
-  equipmentModel?: string; // Ex: 'Digital Safe X100'
-}
-
-// ========================================================================
-// 8. NOVA ESTRUTURA DE PERSONALIZAÇÃO (WHITE-LABEL)
-// ========================================================================
-
-export interface PropertyColors {
-    primary: string;
-    secondary: string;
-    accent: string;
-    background: string;
-    card: string;
-    text: string;
-    textOnPrimary: string;
-}
-
-export interface PropertyMessages {
-    preCheckInWelcomeTitle: string;
-    preCheckInWelcomeSubtitle: string;
-    preCheckInSuccessTitle: string;
-    preCheckInSuccessSubtitle: string;
-    portalWelcomeTitle: string;
-    portalWelcomeSubtitle: string;
-    surveySuccessTitle: string;
-    surveySuccessSubtitle: string;
-    breakfastBasketClosed: string;
-    breakfastBasketDefaultMessage: string;
-    whatsappPreCheckIn: string;
-    whatsappWelcome: string;
-    whatsappBreakfastReminder: string;
-    whatsappFeedbackRequest: string;
-    // Adicione os novos campos aqui se eles não foram adicionados anteriormente
-    whatsappCheckoutInfo: string;
-    whatsappBookingConfirmed: string;
-    whatsappRequestReceived: string;
-    whatsappEventInvite: string;
-    whatsappBreakfastChange: string;
-}
-
-export interface Property {
-    contact: any;
-    id: string;
-    name: string;
-    logoUrl: string;
-    colors: PropertyColors;
-    messages: PropertyMessages;
-    breakfast?: {
-      isAvailable: boolean;
-      type: 'delivery' | 'on-site';
-      menu: BreakfastMenuCategory[];
-      orderingStartTime: string;
-      orderingEndTime: string;
-      deliveryTimes?: string[]; // ++ NOVO CAMPO ++
-    };
-policies?: {
-      general: {
-        content: string;
-        lastUpdatedAt: Timestamp;
-      };
-      pet: {
-          content: string;
-          lastUpdatedAt: Timestamp;
-        }
-    };
-    defaultSurveyId?: string; // ID da pesquisa padrão para feedback
-}
-
-// ========================================================================
-// 9. TIPOS COMBINADOS (HELPER TYPES)
-// ========================================================================
-
-export type OrderWithStay = BreakfastOrder & {
-  stayInfo?: Stay;
-};
-
-// ========================================================================
-// NOVO TIPO: Log de Mensagens Enviadas
-// ========================================================================
-export interface MessageLog {
-    id: string;
-    stayId?: string; // Pode não estar sempre disponível
-    guestName: string;
-    type: string; // Alterado para string para aceitar tipos customizados
-    content: string;
-    copiedAt: Timestamp;
-    actor: string; // E-mail do admin que copiou a mensagem
 }

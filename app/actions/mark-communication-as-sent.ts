@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 
 interface MarkAsSentPayload {
     stayId: string;
-    messageType: 'feedback' | 'welcome'; // Expansível para outros tipos no futuro
+    messageType: 'feedback' | 'welcome'; // 'welcome' foi adicionado
 }
 
 export async function markCommunicationAsSent(payload: MarkAsSentPayload): Promise<{ success: boolean; error?: string }> {
@@ -24,7 +24,7 @@ export async function markCommunicationAsSent(payload: MarkAsSentPayload): Promi
         // Mapeia o tipo de mensagem para o campo correto no Firestore
         const fieldToUpdateMap = {
             'feedback': 'communicationStatus.feedbackMessageSentAt',
-            'welcome': 'communicationStatus.welcomeMessageSentAt'
+            'welcome': 'communicationStatus.welcomeMessageSentAt' // CAMPO ADICIONADO
         };
 
         const fieldToUpdate = fieldToUpdateMap[messageType];
@@ -37,7 +37,6 @@ export async function markCommunicationAsSent(payload: MarkAsSentPayload): Promi
             [fieldToUpdate]: Timestamp.now()
         });
         
-        // Revalida o cache da página para garantir que os dados sejam atualizados
         revalidatePath('/admin/comunicacao');
 
         return { success: true };

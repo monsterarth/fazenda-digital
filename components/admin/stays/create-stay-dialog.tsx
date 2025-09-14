@@ -1,3 +1,5 @@
+// components/admin/stays/create-stay-dialog.tsx
+
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -5,8 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { fullStaySchema, FullStayFormValues } from '@/lib/schemas/stay-schema';
 import { useModal } from '@/hooks/use-modal-store';
-import { Cabin } from '@/types';
-import { Guest } from '@/types/guest';
+import { Cabin, Guest } from '@/types'; // CORREÇÃO: Importando Guest do local correto e unificado
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
@@ -15,16 +16,16 @@ import { addDays } from 'date-fns';
 import { toast } from 'sonner';
 import { Loader2, UserPlus, UserCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { createStayAction } from '@/app/actions/create-stay'; // Importando a Server Action
+import { createStayAction } from '@/app/actions/create-stay';
 
 interface CreateStayDialogProps {
-  cabins: Cabin[];
+    cabins: Cabin[];
 }
 
 // Função auxiliar para mapear dados de Guest para os valores do formulário
 const mapGuestToFormValues = (guest: Guest): Partial<FullStayFormValues> => ({
     leadGuestName: guest.name,
-    leadGuestDocument: guest.cpf,
+    leadGuestDocument: guest.document, // CORREÇÃO: Alterado de guest.cpf para guest.document
     leadGuestEmail: guest.email,
     leadGuestPhone: guest.phone,
     isForeigner: guest.isForeigner,
@@ -83,7 +84,7 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) =>
         setIsLookingUp(true);
         setFoundGuest(null);
         try {
-            const response = await fetch('/api/admin/guests/lookup', {
+            const response = await fetch('/api/admin/guests/lookup-by-cpf', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cpf }),
@@ -147,28 +148,19 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) =>
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)}>
                         <div className="py-4 max-h-[75vh] overflow-y-auto pr-4 space-y-6">
-                            <StayFormFields form={form} cabins={cabins} onCpfBlur={handleCpfBlur} />
-
-                            {isLookingUp && <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Buscando CPF...</div>}
-                            
-                            {foundGuest && (
-                                <div className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between">
-                                    <div className="flex items-center">
-                                        <UserCheck className="h-5 w-5 mr-2 text-green-600" />
-                                        <p className="text-sm font-medium text-green-800">
-                                            Hóspede recorrente: <span className="font-bold">{foundGuest.name}</span>
-                                        </p>
-                                    </div>
-                                    <Button type="button" size="sm" variant="outline" onClick={handleUseFoundGuest}>
-                                        Usar Dados
-                                    </Button>
-                                </div>
-                            )}
+                            <StayFormFields 
+                                form={form} 
+                                cabins={cabins} 
+                                onCpfBlur={handleCpfBlur} 
+                                isLookingUp={isLookingUp}
+                                foundGuest={foundGuest}
+                                onUseFoundGuest={handleUseFoundGuest}
+                            />
                         </div>
                         
                         <DialogFooter className="pt-4 border-t mt-4">
                             <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>Cancelar</Button>
-                            <Button type="submit" disabled={isSubmitting}>
+                            <Button type="submit" disabled={isSubmitting || isLookingUp}>
                                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4"/>}
                                 Criar e Ativar Estadia
                             </Button>

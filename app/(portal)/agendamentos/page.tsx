@@ -306,7 +306,7 @@ export default function GuestSchedulingPage() {
                                    <li key={b.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm p-3 rounded-md bg-white/70 border border-brand-mid-green/20 shadow-sm">
                                        <div>
                                            <span className="font-semibold">{b.structureName}</span>
-                                           {b.unitId && <span className="text-brand-mid-green"> ({b.unitId})</span>}
+                                           {b.unit && <span className="text-brand-mid-green"> ({b.unit})</span>}
                                            <span className="text-brand-mid-green ml-2 font-mono">{b.startTime} - {b.endTime}</span>
                                        </div>
                                        <div className="flex items-center gap-2">

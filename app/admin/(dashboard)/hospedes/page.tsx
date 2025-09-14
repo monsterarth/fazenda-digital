@@ -2,7 +2,7 @@
 
 // A diretiva "use client" foi removida. Este é novamente um Componente de Servidor.
 import { adminDb } from '@/lib/firebase-admin';
-import { Guest } from '@/types/guest';
+import { Guest } from '@/types';
 import { GuestsList } from '@/components/admin/guests/guests-list';
 
 // Adicionamos esta linha para garantir que a página sempre busque dados novos a cada visita,

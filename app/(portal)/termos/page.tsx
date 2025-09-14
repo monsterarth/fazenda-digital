@@ -12,14 +12,20 @@ import { Loader2, ArrowLeft, ScrollText, PawPrint } from 'lucide-react';
 import { getFirebaseDb } from '@/lib/firebase';
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
-import { Property, Stay } from '@/types';
+import { Property, Stay, Timestamp } from '@/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
-// ++ INÍCIO DA CORREÇÃO ++
-import { cn, getMillisFromTimestamp } from '@/lib/utils'; // Importa a nova função
-// ++ FIM DA CORREÇÃO ++
+import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+
+// Função auxiliar para converter qualquer tipo de Timestamp para milissegundos
+const getMillisFromTimestamp = (ts: Timestamp): number => {
+    if (typeof ts === 'number') return ts;
+    if (ts instanceof Date) return ts.getTime();
+    if (ts && typeof ts.toMillis === 'function') return ts.toMillis();
+    return 0;
+};
 
 // Função auxiliar para verificar se as políticas mais recentes foram aceitas
 const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
@@ -29,13 +35,11 @@ const hasAcceptedLatestPolicies = (stay: Stay, property: Property) => {
     const { general, pet } = stay.policiesAccepted;
     const { general: generalPolicy, pet: petPolicy } = property.policies;
 
-    // ++ INÍCIO DA CORREÇÃO: Usando a função getMillisFromTimestamp ++
     const generalAccepted = general && generalPolicy?.lastUpdatedAt && getMillisFromTimestamp(general) >= getMillisFromTimestamp(generalPolicy.lastUpdatedAt);
     
     if (!hasPets) return !!generalAccepted;
     
     const petAccepted = pet && petPolicy?.lastUpdatedAt && getMillisFromTimestamp(pet) >= getMillisFromTimestamp(petPolicy.lastUpdatedAt);
-    // ++ FIM DA CORREÇÃO ++
     return !!generalAccepted && !!petAccepted;
 };
 
@@ -53,7 +57,7 @@ export default function TermsAndPoliciesPage() {
         const fetchPropertyData = async () => {
             try {
                 const db = await getFirebaseDb();
-                const propertyRef = doc(db, "properties", "main_property");
+                const propertyRef = doc(db, "properties", "default"); // Corrigido para 'default'
                 const propertySnap = await getDoc(propertyRef);
                 if (propertySnap.exists()) {
                     setProperty(propertySnap.data() as Property);
@@ -109,47 +113,54 @@ export default function TermsAndPoliciesPage() {
         }
     };
 
-    // ++ INÍCIO DA CORREÇÃO: Usando a função toDate de forma segura ++
     const lastUpdatedDate = useMemo(() => {
         const ts = property?.policies?.general?.lastUpdatedAt;
-        if (ts && typeof ts !== 'number' && typeof ts.toDate === 'function') {
-            return format(ts.toDate(), 'dd/MM/yyyy');
+        if (!ts) return 'Data não disponível';
+        
+        // CORREÇÃO: Lógica robusta para tratar Date, number ou Firestore Timestamp
+        if (ts instanceof Date) {
+            return format(ts, 'dd/MM/yyyy');
         }
-        return 'Data não disponível';
+        if (typeof ts === 'number') {
+            return format(new Date(ts), 'dd/MM/yyyy');
+        }
+        if (typeof (ts as any).toDate === 'function') {
+            return format((ts as any).toDate(), 'dd/MM/yyyy');
+        }
+
+        return 'Data inválida';
     }, [property]);
-    // ++ FIM DA CORREÇÃO ++
 
     if (isGuestLoading || isLoadingProperty) {
         return (
-            <div className="flex h-screen w-full items-center justify-center bg-brand-light-green">
-                <Loader2 className="h-10 w-10 text-brand-dark-green animate-spin" />
+            <div className="flex h-screen w-full items-center justify-center">
+                <Loader2 className="h-10 w-10 animate-spin" />
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-brand-light-green text-brand-dark-green flex flex-col items-center justify-center p-4 md:p-8">
-            <Card className="w-full max-w-3xl bg-white/80 backdrop-blur-sm shadow-xl border-2 border-brand-primary">
+        <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8">
+            <Card className="w-full max-w-3xl shadow-xl">
                 <CardHeader>
                     <div className="flex items-center gap-4">
                         <Button 
                             variant="ghost" 
                             size="icon" 
-                            onClick={() => router.back()} 
-                            className="text-brand-dark-green hover:bg-brand-light-green"
+                            onClick={() => router.back()}
                         >
                             <ArrowLeft className="h-6 w-6" />
                         </Button>
                         <div>
-                            <CardTitle className="text-3xl font-bold text-brand-dark-green flex items-center gap-2">
-                                <ScrollText className="h-7 w-7 text-brand-primary" />
+                            <CardTitle className="text-3xl font-bold flex items-center gap-2">
+                                <ScrollText className="h-7 w-7" />
                                 Políticas e Termos
                             </CardTitle>
-                            <CardDescription className="text-brand-mid-green">
+                            <CardDescription>
                                 {stay ? `Olá, ${stay.guestName.split(' ')[0]}! ` : ''}
                                 {alreadyAccepted ? "Estes são os termos que você aceitou." : "Para continuar, por favor, leia e aceite nossos termos."}
                             </CardDescription>
-                            <p className="text-sm text-brand-mid-green mt-2">
+                            <p className="text-sm text-muted-foreground mt-2">
                                 Última atualização: {lastUpdatedDate}
                             </p>
                         </div>
@@ -157,57 +168,55 @@ export default function TermsAndPoliciesPage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div>
-                        <h3 className="font-semibold text-lg text-brand-dark-green mb-2">Políticas Gerais da Propriedade</h3>
-                        <div className="prose prose-sm dark:prose-invert max-w-none max-h-60 overflow-y-auto rounded-md border border-brand-mid-green/50 bg-brand-light-green p-4">
+                        <h3 className="font-semibold text-lg mb-2">Políticas Gerais da Propriedade</h3>
+                        <div className="prose prose-sm dark:prose-invert max-w-none max-h-60 overflow-y-auto rounded-md border p-4">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{property?.policies?.general?.content || "Carregando políticas..."}</ReactMarkdown>
                         </div>
                     </div>
                     {hasPets && (
                         <div>
-                            <h3 className="font-semibold text-lg text-brand-dark-green mb-2 flex items-center gap-2">
-                                <PawPrint className="h-5 w-5 text-brand-primary" />
+                            <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                                <PawPrint className="h-5 w-5" />
                                 Políticas para Estadias com Pets
                             </h3>
-                            <div className="prose prose-sm dark:prose-invert max-w-none max-h-60 overflow-y-auto rounded-md border border-brand-mid-green/50 bg-brand-light-green p-4">
+                            <div className="prose prose-sm dark:prose-invert max-w-none max-h-60 overflow-y-auto rounded-md border p-4">
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{property?.policies?.pet?.content || "Carregando políticas de pets..."}</ReactMarkdown>
                             </div>
                         </div>
                     )}
                 </CardContent>
-                <CardFooter className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-brand-primary/20 pt-6">
+                <CardFooter className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-6">
                     <div className="space-y-3">
                         <div className="flex items-center space-x-2">
                             <Checkbox 
                                 id="terms-general" 
-                                className="border-brand-mid-green data-[state=checked]:bg-brand-primary data-[state=checked]:text-white"
                                 checked={alreadyAccepted || acceptedGeneral} 
                                 onCheckedChange={(c) => setAcceptedGeneral(!!c)} 
                                 disabled={alreadyAccepted} 
                             />
-                            <Label htmlFor="terms-general" className={cn("text-brand-dark-green", alreadyAccepted && "text-brand-mid-green")}>Li e concordo com as Políticas Gerais.</Label>
+                            <Label htmlFor="terms-general" className={cn(alreadyAccepted && "text-muted-foreground")}>Li e concordo com as Políticas Gerais.</Label>
                         </div>
                         {hasPets && (
                             <div className="flex items-center space-x-2">
                                 <Checkbox 
                                     id="terms-pet" 
-                                    className="border-brand-mid-green data-[state=checked]:bg-brand-primary data-[state=checked]:text-white"
                                     checked={alreadyAccepted || acceptedPet} 
                                     onCheckedChange={(c) => setAcceptedPet(!!c)} 
                                     disabled={alreadyAccepted}
                                 />
-                                <Label htmlFor="terms-pet" className={cn("text-brand-dark-green", alreadyAccepted && "text-brand-mid-green")}>Li e concordo com as Políticas para Pets.</Label>
+                                <Label htmlFor="terms-pet" className={cn(alreadyAccepted && "text-muted-foreground")}>Li e concordo com as Políticas para Pets.</Label>
                             </div>
                         )}
                     </div>
                     {alreadyAccepted ? (
-                        <Button asChild className="w-full sm:w-auto bg-brand-dark-green text-white hover:bg-brand-mid-green transition-colors">
+                        <Button asChild className="w-full sm:w-auto">
                             <Link href="/dashboard"><ArrowLeft className="mr-2 h-4 w-4" /> Voltar ao Início</Link>
                         </Button>
                     ) : (
                         <Button 
                             onClick={handleAccept} 
                             disabled={!canAccept || isSubmitting} 
-                            className="w-full sm:w-auto bg-brand-dark-green text-white hover:bg-brand-mid-green transition-colors"
+                            className="w-full sm:w-auto"
                         >
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Continuar

@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin'; // Usando o Admin SDK
-import { Guest } from '@/types/guest';
+import { Guest } from '@/types';
 
 // NENHUM import de 'firebase/firestore' aqui
 

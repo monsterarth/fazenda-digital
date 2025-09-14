@@ -3,7 +3,7 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import { Guest } from '@/types/guest';
+import { Guest } from '@/types';
 import { 
   Table, 
   TableBody, 
@@ -50,7 +50,7 @@ export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
 
     return guests.filter(guest => 
       guest.name.toLowerCase().includes(lowercasedFilter) ||
-      guest.cpf.includes(lowercasedFilter) ||
+      guest.document.includes(lowercasedFilter) ||
       guest.email.toLowerCase().includes(lowercasedFilter)
     );
   }, [guests, searchTerm]);
@@ -88,7 +88,7 @@ export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
               filteredGuests.map((guest) => (
                 <TableRow key={guest.id}>
                   <TableCell className="font-medium">{guest.name}</TableCell>
-                  <TableCell>{guest.cpf}</TableCell>
+                  <TableCell>{guest.document}</TableCell>
                   <TableCell>
                     <div className="flex flex-col">
                       <span>{guest.email}</span>

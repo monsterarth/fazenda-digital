@@ -3,8 +3,7 @@
 
 import { adminDb } from '@/lib/firebase-admin';
 import { FullStayFormValues } from '@/lib/schemas/stay-schema';
-import { PreCheckIn, Stay, Cabin } from '@/types';
-import { Guest } from '@/types/guest';
+import { PreCheckIn, Stay, Cabin, Guest } from '@/types';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath } from 'next/cache';
 
@@ -60,7 +59,7 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
     batch.set(stayRef, newStay);
     batch.update(preCheckInRef, { stayId: stayRef.id });
     
-    // ++ INÍCIO DA ADIÇÃO: Lógica para criar/atualizar o Hóspede (Guest) ++
+    // Lógica para criar/atualizar o Hóspede (Guest)
     const numericCpf = data.leadGuestDocument.replace(/\D/g, '');
     const guestRef = adminDb.collection('guests').doc(numericCpf);
     const guestSnap = await guestRef.get();
@@ -69,9 +68,8 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
         // Hóspede já existe, atualiza o histórico
         const guestData = guestSnap.data() as Guest;
         batch.update(guestRef, {
-            stayHistory: [...guestData.stayHistory, stayRef.id],
+            stayHistory: [...(guestData.stayHistory || []), stayRef.id],
             updatedAt: checkInTimestamp,
-            // Opcional: atualizar os dados com os mais recentes do formulário
             name: data.leadGuestName,
             email: data.leadGuestEmail,
             phone: data.leadGuestPhone,
@@ -81,19 +79,18 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
         // Hóspede não existe, cria um novo
         const newGuest: Omit<Guest, 'id'> = {
             name: data.leadGuestName,
-            cpf: numericCpf,
+            document: numericCpf, // CORREÇÃO: Alterado de 'cpf' para 'document'
             email: data.leadGuestEmail,
             phone: data.leadGuestPhone,
             address: { ...data.address, country: data.address.country ?? (data.isForeigner ? (data.country || 'N/A') : 'Brasil') },
             isForeigner: data.isForeigner,
             country: data.country,
-            createdAt: checkInTimestamp, // ++ CORREÇÃO: Salva o objeto Timestamp
-            updatedAt: checkInTimestamp, // ++ CORREÇÃO: Salva o objeto Timestamp
+            createdAt: checkInTimestamp,
+            updatedAt: checkInTimestamp,
             stayHistory: [stayRef.id],
         };
         batch.set(guestRef, newGuest);
     }
-    // ++ FIM DA ADIÇÃO ++
 
     // 4. Adicionar Log de Atividade
     const logRef = adminDb.collection('activity_logs').doc();

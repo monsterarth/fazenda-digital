@@ -1,5 +1,3 @@
-//context/GuestProvider.tsx
-
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
@@ -89,7 +87,10 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
 
                     const db = await getFirebaseDb();
                     const stayRef = doc(db, 'stays', stayId);
-                    const propertyRef = doc(db, 'properties', 'default'); // Usando 'default' como no resto do app
+                    // ++ INÍCIO DA CORREÇÃO ++
+                    // Corrigindo a referência do documento da propriedade para "main_property".
+                    const propertyRef = doc(db, 'properties', 'main_property'); 
+                    // ++ FIM DA CORREÇÃO ++
                     
                     const [staySnap, propertySnap] = await Promise.all([getDoc(stayRef), getDoc(propertyRef)]);
 
@@ -103,7 +104,6 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
                         const cabinSnap = await getDoc(cabinRef);
                         if (cabinSnap.exists()) {
                            const cabinDataFromDb = cabinSnap.data();
-                           // CORREÇÃO APLICADA AQUI: Adicionado 'capacity' e o restante dos dados da cabana.
                            stayData.cabin = {
                              id: cabinSnap.id,
                              ...cabinDataFromDb

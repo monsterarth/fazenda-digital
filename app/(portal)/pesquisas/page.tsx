@@ -14,14 +14,14 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-function SurveyCard({ survey, isLocked, stayId }: { survey: Survey, isLocked: boolean, stayId: string }) {
-    const surveyUrl = `/s/${survey.id}?stayId=${stayId}`;
+function SurveyCard({ survey, isLocked, token }: { survey: Survey, isLocked: boolean, token: string }) {
+    const surveyUrl = `/s/${survey.id}?token=${token}`;
 
     const cardContent = (
         <Card className={cn(
             "flex flex-col h-full transition-all duration-200 border-2",
-            isLocked 
-                ? "bg-brand-mid-green/20 text-brand-mid-green cursor-not-allowed border-brand-mid-green/40" 
+            isLocked
+                ? "bg-brand-mid-green/20 text-brand-mid-green cursor-not-allowed border-brand-mid-green/40"
                 : "bg-white/80 hover:border-brand-primary hover:shadow-lg border-brand-mid-green/40"
         )}>
             <CardHeader className="p-4">
@@ -135,7 +135,7 @@ export default function GuestSurveysPage() {
                 <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {surveys.map(survey => (
-                            <SurveyCard key={survey.id} survey={survey} isLocked={isDefaultSurveyLocked(survey)} stayId={stay.id} />
+                            <SurveyCard key={survey.id} survey={survey} isLocked={isDefaultSurveyLocked(survey)} token={stay.token} />
                         ))}
                         {surveys.length === 0 && (
                             <div className="md:col-span-1 lg:col-span-3">

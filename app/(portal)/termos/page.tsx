@@ -1,4 +1,3 @@
-//app/(portal)/termos/page.tsx
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -57,7 +56,10 @@ export default function TermsAndPoliciesPage() {
         const fetchPropertyData = async () => {
             try {
                 const db = await getFirebaseDb();
-                const propertyRef = doc(db, "properties", "default"); // Corrigido para 'default'
+                // ++ INÍCIO DA CORREÇÃO ++
+                // Revertendo a busca para o documento correto "main_property".
+                const propertyRef = doc(db, "properties", "main_property"); 
+                // ++ FIM DA CORREÇÃO ++
                 const propertySnap = await getDoc(propertyRef);
                 if (propertySnap.exists()) {
                     setProperty(propertySnap.data() as Property);
@@ -117,7 +119,6 @@ export default function TermsAndPoliciesPage() {
         const ts = property?.policies?.general?.lastUpdatedAt;
         if (!ts) return 'Data não disponível';
         
-        // CORREÇÃO: Lógica robusta para tratar Date, number ou Firestore Timestamp
         if (ts instanceof Date) {
             return format(ts, 'dd/MM/yyyy');
         }

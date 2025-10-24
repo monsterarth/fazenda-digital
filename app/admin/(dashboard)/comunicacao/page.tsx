@@ -282,7 +282,9 @@ export default function CommunicationCenterPage() {
                             <div className={selectedItem ? 'hidden' : 'block'}>
                                 <Select onValueChange={handleStaySelect}>
                                     <SelectTrigger className="text-base h-12"> <SelectValue placeholder="Selecione uma estadia..." /> </SelectTrigger>
-                                    <SelectContent> {allStaysForSelect.length > 0 ? allStaysForSelect.map((stay) => ( <SelectItem key={stay.id} value={stay.id}> <span className='font-semibold'>{stay.guest.name}</span> <span className='text-muted-foreground ml-2'>({stay.cabin.name}) - {stay.status === 'active' ? 'Ativa' : 'Encerrada'}</span> </SelectItem> )) : ( <div className='p-4 text-center text-sm text-muted-foreground'>Nenhuma estadia encontrada.</div> )} </SelectContent>
+                                    <SelectContent className="max-h-[300px] overflow-y-auto"> {/* CORREÇÃO APLICADA AQUI */}
+                                        {allStaysForSelect.length > 0 ? allStaysForSelect.map((stay) => ( <SelectItem key={stay.id} value={stay.id}> <span className='font-semibold'>{stay.guest.name}</span> <span className='text-muted-foreground ml-2'>({stay.cabin.name}) - {stay.status === 'active' ? 'Ativa' : 'Encerrada'}</span> </SelectItem> )) : ( <div className='p-4 text-center text-sm text-muted-foreground'>Nenhuma estadia encontrada.</div> )}
+                                    </SelectContent>
                                 </Select>
                             </div>
                             

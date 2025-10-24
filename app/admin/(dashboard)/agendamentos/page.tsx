@@ -531,7 +531,7 @@ export default function AdminBookingsDashboard() {
                                 {activeGuests.length > 0 ? (
                                     <Select value={selectedStayId} onValueChange={setSelectedStayId}>
                                         <SelectTrigger><SelectValue placeholder="Selecione um hóspede..." /></SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="max-h-[300px] overflow-y-auto"> {/* CORREÇÃO APLICADA AQUI */}
                                             {activeGuests.sort((a, b) => a.guestName.localeCompare(b.guestName)).map(g => <SelectItem key={g.id} value={g.id}>{g.guestName} ({g.cabinName})</SelectItem>)}
                                         </SelectContent>
                                     </Select>

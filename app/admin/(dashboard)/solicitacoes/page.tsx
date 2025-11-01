@@ -7,6 +7,10 @@ import { useAuth } from '@/context/AuthContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+// ++ INÍCIO: Importar a Server Action que criamos ++
+import { manageRequest } from '@/app/actions/manage-request';
+// ++ FIM: Importar a Server Action ++
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -16,7 +20,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { toast, Toaster } from 'sonner';
 import { Loader2, ConciergeBell, MoreHorizontal, CheckCircle, Clock, Construction, ShoppingBag } from 'lucide-react';
 
-// Tipos que definimos para as solicitações. Idealmente, centralizados em /types/index.ts
+// Tipos
 export type RequestType = 'item' | 'cleaning' | 'maintenance';
 export type RequestStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -35,12 +39,14 @@ export interface Request {
   createdAt: firestore.Timestamp;
   updatedAt: firestore.Timestamp;
 }
-// Fim da definição de tipos
+// Fim dos tipos
 
 const REQUESTS_COLLECTION = 'requests';
 
 export default function ManageRequestsPage() {
-    const { isAdmin } = useAuth();
+    // ++ INÍCIO: Pegar o 'user' do AuthContext para obtermos o e-mail do admin ++
+    const { isAdmin, user } = useAuth();
+    // ++ FIM: Pegar o 'user' ++
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [requests, setRequests] = useState<Request[]>([]);
     const [loading, setLoading] = useState(true);
@@ -70,30 +76,61 @@ export default function ManageRequestsPage() {
         initializeApp();
     }, [isAdmin]);
 
-    const updateRequestStatus = async (requestId: string, newStatus: RequestStatus) => {
-        if (!db) return;
+    // ++ INÍCIO: Função 'updateRequestStatus' MODIFICADA para usar a Server Action ++
+    const updateRequestStatus = async (requestId: string, newStatus: 'in_progress' | 'completed') => {
+        if (!user || !user.email) {
+            toast.error("Autenticação do admin não encontrada. Faça login novamente.");
+            return;
+        }
+        
         const toastId = toast.loading("Atualizando status...");
         try {
-            const docRef = firestore.doc(db, REQUESTS_COLLECTION, requestId);
-            await firestore.updateDoc(docRef, { status: newStatus, updatedAt: firestore.Timestamp.now() });
-            toast.success("Status atualizado com sucesso!", { id: toastId });
+            // Chama a Server Action que criamos
+            const result = await manageRequest({
+                requestId,
+                adminEmail: user.email,
+                action: 'update_status',
+                newStatus,
+            });
+
+            if (result.success) {
+                toast.success("Status atualizado com sucesso!", { id: toastId });
+            } else {
+                toast.error("Falha ao atualizar status.", { id: toastId, description: result.message });
+            }
         } catch (error: any) {
             toast.error("Falha ao atualizar status.", { id: toastId, description: error.message });
         }
     };
+    // ++ FIM: Função 'updateRequestStatus' MODIFICADA ++
 
+    // ++ INÍCIO: Função 'deleteRequest' MODIFICADA para usar a Server Action ++
     const deleteRequest = async (requestId: string) => {
-        if (!db) return;
+        if (!user || !user.email) {
+            toast.error("Autenticação do admin não encontrada. Faça login novamente.");
+            return;
+        }
         if (!confirm("Tem certeza que deseja excluir esta solicitação?")) return;
         
         const toastId = toast.loading("Excluindo solicitação...");
         try {
-            await firestore.deleteDoc(firestore.doc(db, REQUESTS_COLLECTION, requestId));
-            toast.success("Solicitação excluída com sucesso!", { id: toastId });
+            // Chama a Server Action que criamos
+            const result = await manageRequest({
+                requestId,
+                adminEmail: user.email,
+                action: 'delete',
+            });
+
+            if (result.success) {
+                toast.success("Solicitação excluída com sucesso!", { id: toastId });
+            } else {
+                toast.error("Falha ao excluir.", { id: toastId, description: result.message });
+            }
         } catch (error: any) {
             toast.error("Falha ao excluir.", { id: toastId, description: error.message });
         }
     };
+    // ++ FIM: Função 'deleteRequest' MODIFICADA ++
 
     const filteredRequests = (status: RequestStatus) => requests.filter(r => r.status === status);
 

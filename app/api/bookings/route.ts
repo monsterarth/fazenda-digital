@@ -1,9 +1,11 @@
-//app/api/bookings/route.ts
+// src/app/api/portal/bookings/route.ts
 
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import { firestore } from 'firebase-admin';
 import { Booking } from '@/types/scheduling';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale'; 
 
 export async function POST(request: Request) {
     try {
@@ -21,22 +23,23 @@ export async function POST(request: Request) {
         const stayId = decodedToken.stayId;
         const { action, bookingData, bookingIdToCancel } = await request.json();
 
+        const stayDoc = await adminDb.collection('stays').doc(stayId).get();
+        const stayInfo = stayDoc.data();
+        if (!stayInfo) {
+            return NextResponse.json({ error: "Estadia não encontrada." }, { status: 404 });
+        }
+        const guestIdentifier = stayInfo.guestName || `Hóspede ${stayId.substring(0, 5)}`;
+        const guestActor = { type: 'guest' as const, identifier: guestIdentifier };
+
         // Operação de CRIAR/ATUALIZAR AGENDAMENTO
         if (action === 'create') {
             if (!bookingData || !bookingData.date || !bookingData.structureId || !bookingData.startTime) {
                 return NextResponse.json({ error: "Dados do agendamento não fornecidos." }, { status: 400 });
             }
 
-            const stayDoc = await adminDb.collection('stays').doc(stayId).get();
-            const stayInfo = stayDoc.data();
-            if (!stayInfo) {
-                return NextResponse.json({ error: "Estadia não encontrada." }, { status: 404 });
-            }
-
             return adminDb.runTransaction(async (transaction) => {
                 const normalizedUnitId = bookingData.unitId ?? null;
 
-                // 1. Verifica disponibilidade
                 const slotQuery = adminDb.collection('bookings')
                     .where('date', '==', bookingData.date)
                     .where('structureId', '==', bookingData.structureId)
@@ -51,7 +54,6 @@ export async function POST(request: Request) {
                     }
                 }
                 
-                // 2. Cancela agendamentos existentes do mesmo hóspede para o mesmo serviço/data
                 const userExistingBookingQuery = adminDb.collection('bookings')
                     .where('stayId', '==', stayId)
                     .where('date', '==', bookingData.date)
@@ -62,38 +64,31 @@ export async function POST(request: Request) {
                     transaction.delete(doc.ref);
                 });
 
-                // 3. Cria a nova reserva
                 const newBookingRef = adminDb.collection('bookings').doc();
-                
-                // Objeto do novo agendamento com a correção
-                const newBooking = {
+                const newBooking: Omit<Booking, 'id' | 'createdAt'> = {
                     ...bookingData,
                     unitId: normalizedUnitId,
                     stayId: stayId,
-                    guestId: stayId, // Ajustar se guestId for diferente de stayId
+                    guestId: stayId, 
                     guestName: stayInfo.guestName,
-                    cabinName: stayInfo.cabinName, // Corrigido de 'cabinId' para 'cabinName' para corresponder ao valor
-                    createdAt: firestore.FieldValue.serverTimestamp(),
-                    confirmationSentAt: null, // <-- CORREÇÃO APLICADA AQUI
+                    cabinId: stayInfo.cabinName, 
                 };
+                transaction.set(newBookingRef, {
+                    ...newBooking,
+                    createdAt: firestore.FieldValue.serverTimestamp(),
+                });
 
-                // Remove o campo 'id' se ele estiver vindo do frontend para evitar erro
-                if ('id' in newBooking) {
-                    delete newBooking.id;
-                }
-
-                transaction.set(newBookingRef, newBooking);
-
-                // ++ INÍCIO DA CORREÇÃO: Cria o log de atividade na mesma transação ++
+                const formattedDate = format(new Date(bookingData.date), "dd/MM 'às' HH:mm", { locale: ptBR });
+                const logDetails = `Hóspede ${guestIdentifier} (${stayInfo.cabinName}) agendou ${bookingData.structureName} para ${formattedDate}`;
+                
                 const logRef = adminDb.collection('activity_logs').doc();
                 transaction.set(logRef, {
+                    actor: guestActor,
                     type: 'booking_requested',
-                    actor: { type: 'guest', identifier: stayInfo.guestName },
-                    details: `Agendamento de ${bookingData.structureName} solicitado por ${stayInfo.guestName}.`,
+                    details: logDetails,
                     link: '/admin/agendamentos',
                     timestamp: firestore.FieldValue.serverTimestamp()
                 });
-                // ++ FIM DA CORREÇÃO ++
 
                 return NextResponse.json({ success: true, bookingId: newBookingRef.id });
             });
@@ -105,36 +100,49 @@ export async function POST(request: Request) {
             }
 
             const bookingRef = adminDb.collection('bookings').doc(bookingIdToCancel);
-            const bookingDoc = await bookingRef.get();
 
-            if (!bookingDoc.exists) {
-                return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
-            }
+            return adminDb.runTransaction(async (transaction) => {
+                const bookingDoc = await transaction.get(bookingRef);
 
-            const booking = bookingDoc.data() as Booking;
-            if (booking.stayId !== stayId) {
-                return NextResponse.json({ error: "Você não tem permissão para cancelar este agendamento." }, { status: 403 });
-            }
+                if (!bookingDoc.exists) {
+                    throw new Error("Agendamento não encontrado.");
+                }
 
-            // ++ INÍCIO DA CORREÇÃO: Cria o log antes de deletar ++
-            await adminDb.collection('activity_logs').add({
-                type: 'booking_cancelled_by_guest',
-                actor: { type: 'guest', identifier: booking.guestName },
-                details: `Agendamento de ${booking.structureName} foi cancelado pelo hóspede.`,
-                link: '/admin/agendamentos',
-                timestamp: firestore.FieldValue.serverTimestamp()
+                const booking = bookingDoc.data() as Booking;
+                if (booking.stayId !== stayId) {
+                    throw new Error("Você não tem permissão para cancelar este agendamento.");
+                }
+
+                transaction.delete(bookingRef);
+
+                const formattedDate = format(new Date(booking.date), "dd/MM 'às' HH:mm", { locale: ptBR });
+                const logDetails = `Hóspede ${guestIdentifier} cancelou o agendamento: ${booking.structureName} de ${formattedDate}`;
+
+                const logRef = adminDb.collection('activity_logs').doc();
+                transaction.set(logRef, {
+                    actor: guestActor,
+                    type: 'booking_cancelled_by_guest',
+                    details: logDetails,
+                    link: '/admin/agendamentos',
+                    timestamp: firestore.FieldValue.serverTimestamp()
+                });
+
+                return NextResponse.json({ success: true, message: "Agendamento cancelado com sucesso." });
             });
-            // ++ FIM DA CORREÇÃO ++
-
-            await bookingRef.delete();
-            return NextResponse.json({ success: true, message: "Agendamento cancelado com sucesso." });
 
         } else {
             return NextResponse.json({ error: "Ação desconhecida." }, { status: 400 });
         }
 
     } catch (error: any) {
-        console.error("API Booking Error:", error);
-        return NextResponse.json({ error: error.message || "Erro interno do servidor." }, { status: 500 });
+        console.error("ERRO [API /portal/bookings]:", error);
+        
+        // ++ INÍCIO DA MUDANÇA (DEBUG) ++
+        // Retorna a MENSAGEM DE ERRO REAL para o cliente
+        return NextResponse.json({ 
+            error: error.message || "Erro interno do servidor.",
+            details: error.stack || "Sem stack disponível"
+        }, { status: 500 });
+        // ++ FIM DA MUDANÇA (DEBUG) ++
     }
 }

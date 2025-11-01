@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; 
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, Timestamp, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, Timestamp, orderBy, limit } from 'firebase/firestore'; 
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Property } from '@/types';
+import { Property } from '@/types'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -14,7 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast, Toaster } from 'sonner';
-import { Utensils, CalendarCheck, UserPlus, Info, Loader2, Settings, ShieldX, UserCheck, Star, Trash2, CalendarX, KeyRound, LogOut } from 'lucide-react';
+// ++ INÍCIO: Ícones 'CheckCircle' e 'Clock' importados ++
+import { 
+    Utensils, CalendarCheck, UserPlus, Info, Loader2, Settings, ShieldX, 
+    UserCheck, Star, Trash2, CalendarX, KeyRound, LogOut, Send, XCircle,
+    CheckCircle, Clock // <-- NOVOS ÍCONES
+} from 'lucide-react';
+// ++ FIM: Ícones importados ++
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -27,7 +33,7 @@ const breakfastSettingsSchema = z.object({
 });
 type BreakfastSettingsFormValues = z.infer<typeof breakfastSettingsSchema>;
 
-// ++ INÍCIO DA CORREÇÃO: Adiciona os novos tipos de log ao tipo principal ++
+// ++ INÍCIO: Definição LOCAL do ActivityLog ATUALIZADA ++
 type ActivityLog = {
     id: string;
     timestamp: Timestamp;
@@ -45,14 +51,22 @@ type ActivityLog = {
       | 'survey_submitted' 
       | 'stay_created_manually'
       | 'stay_ended'
-      | 'stay_token_updated';
+      | 'stay_token_updated'
+      // Logs de Hóspede (Solicitações)
+      | 'request_created'     
+      | 'request_cancelled'
+      // Logs de Admin (Solicitações)
+      | 'request_in_progress' // <-- NOVO
+      | 'request_completed'   // <-- NOVO
+      | 'request_deleted';    // <-- NOVO
     actor: { type: 'guest' | 'admin'; identifier: string; };
     details: string;
     link: string;
 };
-// ++ FIM DA CORREÇÃO ++
+// ++ FIM: Definição LOCAL do ActivityLog ATUALIZADA ++
 
 const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boolean, onClose: () => void, propertyInfo: Property | null }) => {
+    // ... (Sem alterações neste componente, seu código original é mantido)
     if (!propertyInfo?.breakfast) return null;
     const form = useForm<BreakfastSettingsFormValues>({
         resolver: zodResolver(breakfastSettingsSchema),
@@ -86,7 +100,7 @@ const DashboardStatCard = ({ title, value, icon, link, description }: { title: s
     <Link href={link} className="block"><Card className="hover:border-primary transition-colors h-full"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">{title}</CardTitle>{icon}</CardHeader><CardContent><div className="text-2xl font-bold">{value}</div><p className="text-xs text-muted-foreground">{description}</p></CardContent></Card></Link>
 );
 
-// ++ INÍCIO DA CORREÇÃO: Mapa visual completo para os logs, incluindo os novos tipos ++
+// ++ INÍCIO DA CORREÇÃO: Mapa visual (activityTypeMap) ATUALIZADO ++
 const activityTypeMap: Record<ActivityLog['type'] | 'default', { icon: React.ReactNode; title: string; color: string; }> = {
     // Ações de Hóspedes (Azul/Amarelo)
     checkin_submitted: { icon: <UserPlus className="h-5 w-5" />, title: "Pré-Check-in Recebido", color: "bg-blue-100 text-blue-800" },
@@ -95,6 +109,15 @@ const activityTypeMap: Record<ActivityLog['type'] | 'default', { icon: React.Rea
     survey_submitted: { icon: <Star className="h-5 w-5" />, title: "Nova Avaliação", color: "bg-blue-100 text-blue-800" },
     booking_cancelled_by_guest: { icon: <CalendarX className="h-5 w-5" />, title: "Agend. Cancelado (Hósp.)", color: "bg-yellow-100 text-yellow-800" },
     
+    // SOLICITAÇÕES (Hóspede)
+    request_created: { icon: <Send className="h-5 w-5" />, title: "Nova Solicitação", color: "bg-blue-100 text-blue-800" },
+    request_cancelled: { icon: <XCircle className="h-5 w-5" />, title: "Solicitação Cancelada", color: "bg-yellow-100 text-yellow-800" },
+
+    // SOLICITAÇÕES (Admin)
+    request_in_progress: { icon: <Clock className="h-5 w-5" />, title: "Solicitação em Andamento", color: "bg-purple-100 text-purple-800" },
+    request_completed: { icon: <CheckCircle className="h-5 w-5" />, title: "Solicitação Concluída", color: "bg-green-100 text-green-800" },
+    request_deleted: { icon: <Trash2 className="h-5 w-5" />, title: "Solicitação Excluída", color: "bg-red-100 text-red-800" },
+
     // Ações de Admin - Positivas (Verde)
     checkin_validated: { icon: <UserCheck className="h-5 w-5" />, title: "Check-in Validado", color: "bg-green-100 text-green-800" },
     stay_created_manually: { icon: <UserPlus className="h-5 w-5" />, title: "Estadia Criada", color: "bg-green-100 text-green-800" },
@@ -116,26 +139,36 @@ const activityTypeMap: Record<ActivityLog['type'] | 'default', { icon: React.Rea
 // ++ FIM DA CORREÇÃO ++
 
 export default function DashboardPage() {
-    const [stats, setStats] = useState({ pendingOrders: 0, pendingBookings: 0, pendingCheckIns: 0 });
+    const [stats, setStats] = useState({ 
+        pendingOrders: 0, 
+        pendingBookings: 0, 
+        pendingCheckIns: 0,
+        pendingRequests: 0 
+    });
+
     const [propertyInfo, setPropertyInfo] = useState<Property | null>(null);
     const [activityFeed, setActivityFeed] = useState<ActivityLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [isBreakfastModalOpen, setIsBreakfastModalOpen] = useState(false);
 
     useEffect(() => {
+        // ... (Listeners de estatísticas não mudaram) ...
         const qOrders = query(collection(db, "breakfastOrders"), where("status", "==", "pending"));
         const qBookings = query(collection(db, "bookings"), where("status", "==", "solicitado"));
         const qCheckIns = query(collection(db, "preCheckIns"), where("status", "==", "pendente"));
+        const qRequests = query(collection(db, "requests"), where("status", "==", "pending"));
         
         const unsubOrdersStats = onSnapshot(qOrders, (snapshot) => setStats(prev => ({ ...prev, pendingOrders: snapshot.size })));
         const unsubBookingsStats = onSnapshot(qBookings, (snapshot) => setStats(prev => ({ ...prev, pendingBookings: snapshot.size })));
         const unsubCheckInsStats = onSnapshot(qCheckIns, (snapshot) => setStats(prev => ({ ...prev, pendingCheckIns: snapshot.size })));
+        const unsubRequestsStats = onSnapshot(qRequests, (snapshot) => setStats(prev => ({ ...prev, pendingRequests: snapshot.size })));
 
+        // Listener de Logs (sem alterações, ele lerá os novos tipos)
         const qLogs = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"), limit(20));
         const unsubLogs = onSnapshot(qLogs, (snapshot) => {
             const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog));
             setActivityFeed(logs);
-            if(loading) setLoading(false);
+            if(loading) setLoading(false); 
         });
         
         const unsubProp = onSnapshot(doc(db, 'properties', 'default'), (doc) => {
@@ -143,7 +176,10 @@ export default function DashboardPage() {
         });
         
         return () => {
-            unsubOrdersStats(); unsubBookingsStats(); unsubCheckInsStats();
+            unsubOrdersStats(); 
+            unsubBookingsStats(); 
+            unsubCheckInsStats();
+            unsubRequestsStats(); 
             unsubLogs();
             unsubProp();
         };
@@ -162,13 +198,40 @@ export default function DashboardPage() {
             <div className="space-y-6">
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <DashboardStatCard title="Novos Pedidos de Café" value={stats.pendingOrders} icon={<Utensils className="h-4 w-4 text-muted-foreground" />} link="/admin/pedidos/cafe" description="Pedidos pendentes de impressão" />
-                    <DashboardStatCard title="Novos Agendamentos" value={stats.pendingBookings} icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />} link="/admin/agendamentos" description="Serviços solicitados pelos hóspedes" />
-                    <DashboardStatCard title="Pré-Check-ins Pendentes" value={stats.pendingCheckIns} icon={<UserPlus className="h-4 w-4 text-muted-foreground" />} link="/admin/stays" description="Aguardando validação" />
+                {/* Grid de Estatísticas (Link para /admin/solicitacoes está correto) */}
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <DashboardStatCard 
+                        title="Novos Pedidos de Café" 
+                        value={stats.pendingOrders} 
+                        icon={<Utensils className="h-4 w-4 text-muted-foreground" />} 
+                        link="/admin/pedidos/cafe" 
+                        description="Pedidos pendentes de impressão" 
+                    />
+                    <DashboardStatCard 
+                        title="Novos Agendamentos" 
+                        value={stats.pendingBookings} 
+                        icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />} 
+                        link="/admin/agendamentos" 
+                        description="Serviços solicitados pelos hóspedes" 
+                    />
+                    <DashboardStatCard 
+                        title="Pré-Check-ins Pendentes" 
+                        value={stats.pendingCheckIns} 
+                        icon={<UserPlus className="h-4 w-4 text-muted-foreground" />} 
+                        link="/admin/stays" 
+                        description="Aguardando validação" 
+                    />
+                    <DashboardStatCard 
+                        title="Novas Solicitações" 
+                        value={stats.pendingRequests} 
+                        icon={<Send className="h-4 w-4 text-muted-foreground" />} 
+                        link="/admin/solicitacoes" // Link correto
+                        description="Pedidos de itens ou limpeza" 
+                    />
                 </div>
                 
                 <div className="grid gap-6 lg:grid-cols-3 items-start">
+                    {/* Card de Status do Café (Sem alterações) */}
                     <div className="lg:col-span-1 space-y-6">
                         <Card>
                             <CardHeader>
@@ -187,6 +250,7 @@ export default function DashboardPage() {
                         </Card>
                     </div>
 
+                    {/* Card de Atividade Recente (Sem alterações, mas agora VAI funcionar) */}
                     <div className="lg:col-span-2">
                         <Card>
                             <CardHeader>
@@ -197,7 +261,9 @@ export default function DashboardPage() {
                                 {activityFeed.length > 0 ? (
                                     <div className="space-y-4">
                                         {activityFeed.map(log => {
+                                            // Esta lógica agora encontrará os novos tipos
                                             const activityInfo = activityTypeMap[log.type] || activityTypeMap.default;
+                                            
                                             const description = log.actor.type === 'admin' 
                                                 ? `${log.details} por ${log.actor.identifier}`
                                                 : log.details;

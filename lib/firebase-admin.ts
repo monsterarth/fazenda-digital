@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { firestore } from 'firebase-admin'; // Importar firestore (útil em outros lugares)
 
 // Verifica se o app já foi inicializado para evitar erros durante o hot-reload no desenvolvimento
 if (!admin.apps.length) {
@@ -18,3 +19,5 @@ if (!admin.apps.length) {
 
 export const adminDb = admin.firestore();
 export const adminAuth = admin.auth();
+
+// A função 'createActivityLog' que eu havia adicionado foi REMOVIDA.

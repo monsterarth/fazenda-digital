@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react'; 
+import React, { useState, useEffect, useMemo, useRef } from 'react'; 
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, Timestamp, orderBy, limit } from 'firebase/firestore'; 
 import { useForm, SubmitHandler } from 'react-hook-form';
@@ -8,24 +8,30 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Property } from '@/types'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+// ++ INÍCIO: Importações do Dialog já existem para o BreakfastSettingsModal ++
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'; 
+// ++ FIM: Importações do Dialog ++
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast, Toaster } from 'sonner';
-// ++ INÍCIO: Ícones 'CheckCircle' e 'Clock' importados ++
+// ++ INÍCIO: Importar o ícone de 'TriangleAlert' (exclamação) ++
 import { 
     Utensils, CalendarCheck, UserPlus, Info, Loader2, Settings, ShieldX, 
     UserCheck, Star, Trash2, CalendarX, KeyRound, LogOut, Send, XCircle,
-    CheckCircle, Clock // <-- NOVOS ÍCONES
+    CheckCircle, Clock, TriangleAlert // <-- NOVO ÍCONE
 } from 'lucide-react';
-// ++ FIM: Ícones importados ++
+// ++ FIM: Importar o ícone ++
 import Link from 'next/link';
+// ++ INÍCIO: Importar 'useRouter' para o botão "Ver Solicitações" ++
+import { useRouter } from 'next/navigation'; 
+// ++ FIM: Importar 'useRouter' ++
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 
+// ... (schema 'breakfastSettingsSchema' e tipo 'ActivityLog' não mudam) ...
 const breakfastSettingsSchema = z.object({
     type: z.enum(['on-site', 'delivery']),
     orderingStartTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Formato inválido (HH:MM)"),
@@ -33,7 +39,6 @@ const breakfastSettingsSchema = z.object({
 });
 type BreakfastSettingsFormValues = z.infer<typeof breakfastSettingsSchema>;
 
-// ++ INÍCIO: Definição LOCAL do ActivityLog ATUALIZADA ++
 type ActivityLog = {
     id: string;
     timestamp: Timestamp;
@@ -52,21 +57,17 @@ type ActivityLog = {
       | 'stay_created_manually'
       | 'stay_ended'
       | 'stay_token_updated'
-      // Logs de Hóspede (Solicitações)
       | 'request_created'     
       | 'request_cancelled'
-      // Logs de Admin (Solicitações)
-      | 'request_in_progress' // <-- NOVO
-      | 'request_completed'   // <-- NOVO
-      | 'request_deleted';    // <-- NOVO
+      | 'request_in_progress' 
+      | 'request_completed'   
+      | 'request_deleted';    
     actor: { type: 'guest' | 'admin'; identifier: string; };
     details: string;
     link: string;
 };
-// ++ FIM: Definição LOCAL do ActivityLog ATUALIZADA ++
-
+// ... (Componente 'BreakfastSettingsModal' não muda) ...
 const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boolean, onClose: () => void, propertyInfo: Property | null }) => {
-    // ... (Sem alterações neste componente, seu código original é mantido)
     if (!propertyInfo?.breakfast) return null;
     const form = useForm<BreakfastSettingsFormValues>({
         resolver: zodResolver(breakfastSettingsSchema),
@@ -95,48 +96,33 @@ const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boo
         <Dialog open={isOpen} onOpenChange={onClose}><DialogContent><DialogHeader><DialogTitle>Configurações do Café da Manhã</DialogTitle><DialogDescription>Altere rapidamente a modalidade e horários para novos pedidos.</DialogDescription></DialogHeader><Form {...form}><form onSubmit={form.handleSubmit(handleSaveChanges)} className="space-y-4 pt-4"><FormField control={form.control} name="type" render={({ field }) => (<FormItem><FormLabel>Modalidade</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="on-site">Servido no Salão</SelectItem><SelectItem value="delivery">Entrega de Cestas</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} /><div className="grid grid-cols-2 gap-4"><FormField control={form.control} name="orderingStartTime" render={({ field }) => (<FormItem><FormLabel>Início dos Pedidos</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} /><FormField control={form.control} name="orderingEndTime" render={({ field }) => (<FormItem><FormLabel>Horário Limite</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} /></div><DialogFooter className="pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button><Button type="submit" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar</Button></DialogFooter></form></Form></DialogContent></Dialog>
     );
 };
-
+// ... (Componente 'DashboardStatCard' não muda) ...
 const DashboardStatCard = ({ title, value, icon, link, description }: { title: string, value: number, icon: React.ReactNode, link: string, description: string }) => (
     <Link href={link} className="block"><Card className="hover:border-primary transition-colors h-full"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">{title}</CardTitle>{icon}</CardHeader><CardContent><div className="text-2xl font-bold">{value}</div><p className="text-xs text-muted-foreground">{description}</p></CardContent></Card></Link>
 );
-
-// ++ INÍCIO DA CORREÇÃO: Mapa visual (activityTypeMap) ATUALIZADO ++
+// ... (Componente 'activityTypeMap' não muda) ...
 const activityTypeMap: Record<ActivityLog['type'] | 'default', { icon: React.ReactNode; title: string; color: string; }> = {
-    // Ações de Hóspedes (Azul/Amarelo)
     checkin_submitted: { icon: <UserPlus className="h-5 w-5" />, title: "Pré-Check-in Recebido", color: "bg-blue-100 text-blue-800" },
     cafe_ordered: { icon: <Utensils className="h-5 w-5" />, title: "Novo Pedido de Café", color: "bg-blue-100 text-blue-800" },
     booking_requested: { icon: <CalendarCheck className="h-5 w-5" />, title: "Novo Agendamento", color: "bg-blue-100 text-blue-800" },
     survey_submitted: { icon: <Star className="h-5 w-5" />, title: "Nova Avaliação", color: "bg-blue-100 text-blue-800" },
     booking_cancelled_by_guest: { icon: <CalendarX className="h-5 w-5" />, title: "Agend. Cancelado (Hósp.)", color: "bg-yellow-100 text-yellow-800" },
-    
-    // SOLICITAÇÕES (Hóspede)
     request_created: { icon: <Send className="h-5 w-5" />, title: "Nova Solicitação", color: "bg-blue-100 text-blue-800" },
     request_cancelled: { icon: <XCircle className="h-5 w-5" />, title: "Solicitação Cancelada", color: "bg-yellow-100 text-yellow-800" },
-
-    // SOLICITAÇÕES (Admin)
     request_in_progress: { icon: <Clock className="h-5 w-5" />, title: "Solicitação em Andamento", color: "bg-purple-100 text-purple-800" },
     request_completed: { icon: <CheckCircle className="h-5 w-5" />, title: "Solicitação Concluída", color: "bg-green-100 text-green-800" },
     request_deleted: { icon: <Trash2 className="h-5 w-5" />, title: "Solicitação Excluída", color: "bg-red-100 text-red-800" },
-
-    // Ações de Admin - Positivas (Verde)
     checkin_validated: { icon: <UserCheck className="h-5 w-5" />, title: "Check-in Validado", color: "bg-green-100 text-green-800" },
     stay_created_manually: { icon: <UserPlus className="h-5 w-5" />, title: "Estadia Criada", color: "bg-green-100 text-green-800" },
     booking_confirmed: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Confirmado", color: "bg-green-100 text-green-800" },
     booking_created_by_admin: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Criado", color: "bg-green-100 text-green-800" },
-
-    // Ações de Admin - Negativas (Vermelho)
     checkin_rejected: { icon: <ShieldX className="h-5 w-5" />, title: "Check-in Recusado", color: "bg-red-100 text-red-800" },
     booking_declined: { icon: <CalendarX className="h-5 w-5" />, title: "Agendamento Recusado", color: "bg-red-100 text-red-800" },
     booking_cancelled_by_admin: { icon: <Trash2 className="h-5 w-5" />, title: "Agend. Cancelado (Admin)", color: "bg-red-100 text-red-800" },
     stay_ended: { icon: <LogOut className="h-5 w-5" />, title: "Estadia Encerrada", color: "bg-red-100 text-red-800" },
-
-    // Ações de Admin - Informativas (Roxo)
     stay_token_updated: { icon: <KeyRound className="h-5 w-5" />, title: "Token Alterado", color: "bg-purple-100 text-purple-800" },
-
-    // Padrão
     default: { icon: <Info className="h-5 w-5" />, title: "Nova Atividade", color: "bg-muted text-muted-foreground" }
 };
-// ++ FIM DA CORREÇÃO ++
 
 export default function DashboardPage() {
     const [stats, setStats] = useState({ 
@@ -150,9 +136,17 @@ export default function DashboardPage() {
     const [activityFeed, setActivityFeed] = useState<ActivityLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [isBreakfastModalOpen, setIsBreakfastModalOpen] = useState(false);
+    
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const pendingRequestsRef = useRef(0); 
+    const [hasNewRequest, setHasNewRequest] = useState(false);
+    
+    // ++ INÍCIO: Novo state para o modal de alerta ++
+    const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
+    const router = useRouter(); // Hook para navegação
+    // ++ FIM: Novo state para o modal de alerta ++
 
     useEffect(() => {
-        // ... (Listeners de estatísticas não mudaram) ...
         const qOrders = query(collection(db, "breakfastOrders"), where("status", "==", "pending"));
         const qBookings = query(collection(db, "bookings"), where("status", "==", "solicitado"));
         const qCheckIns = query(collection(db, "preCheckIns"), where("status", "==", "pendente"));
@@ -161,9 +155,22 @@ export default function DashboardPage() {
         const unsubOrdersStats = onSnapshot(qOrders, (snapshot) => setStats(prev => ({ ...prev, pendingOrders: snapshot.size })));
         const unsubBookingsStats = onSnapshot(qBookings, (snapshot) => setStats(prev => ({ ...prev, pendingBookings: snapshot.size })));
         const unsubCheckInsStats = onSnapshot(qCheckIns, (snapshot) => setStats(prev => ({ ...prev, pendingCheckIns: snapshot.size })));
-        const unsubRequestsStats = onSnapshot(qRequests, (snapshot) => setStats(prev => ({ ...prev, pendingRequests: snapshot.size })));
 
-        // Listener de Logs (sem alterações, ele lerá os novos tipos)
+        // ++ INÍCIO: Lógica de Alerta ATUALIZADA ++
+        const unsubRequestsStats = onSnapshot(qRequests, (snapshot) => {
+            const newCount = snapshot.size;
+
+            if (newCount > pendingRequestsRef.current) {
+                audioRef.current?.play(); // Toca o som
+                setHasNewRequest(true);   // Ativa o brilho no card
+                setIsNewRequestModalOpen(true); // ABRE O MODAL DE ALERTA
+            }
+            
+            pendingRequestsRef.current = newCount;
+            setStats(prev => ({ ...prev, pendingRequests: newCount }));
+        });
+        // ++ FIM: Lógica de Alerta ATUALIZADA ++
+
         const qLogs = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"), limit(20));
         const unsubLogs = onSnapshot(qLogs, (snapshot) => {
             const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog));
@@ -193,12 +200,41 @@ export default function DashboardPage() {
 
     return (
         <>
+            <audio ref={audioRef} src="/sounds/notification.mp3" preload="auto" />
+            
+            {/* ++ INÍCIO: Modal de Alerta de Nova Solicitação (Exclamação) ++ */}
+            <Dialog open={isNewRequestModalOpen} onOpenChange={setIsNewRequestModalOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-xl">
+                    <TriangleAlert className="h-7 w-7 text-yellow-500 animate-pulse" />
+                    Nova Solicitação!
+                  </DialogTitle>
+                  <DialogDescription className="pt-2">
+                    Uma nova solicitação de hóspede acabou de chegar.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="gap-2 sm:justify-end pt-4">
+                  <Button variant="outline" onClick={() => setIsNewRequestModalOpen(false)}>
+                    Fechar
+                  </Button>
+                  <Button onClick={() => {
+                    router.push('/admin/solicitacoes');
+                    setIsNewRequestModalOpen(false);
+                    setHasNewRequest(false); // Também remove o brilho do card
+                  }}>
+                    Ver Solicitações
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            {/* ++ FIM: Modal de Alerta ++ */}
+
             <Toaster richColors position="top-center" />
             <BreakfastSettingsModal isOpen={isBreakfastModalOpen} onClose={() => setIsBreakfastModalOpen(false)} propertyInfo={propertyInfo} />
             <div className="space-y-6">
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 
-                {/* Grid de Estatísticas (Link para /admin/solicitacoes está correto) */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <DashboardStatCard 
                         title="Novos Pedidos de Café" 
@@ -221,17 +257,27 @@ export default function DashboardPage() {
                         link="/admin/stays" 
                         description="Aguardando validação" 
                     />
-                    <DashboardStatCard 
-                        title="Novas Solicitações" 
-                        value={stats.pendingRequests} 
-                        icon={<Send className="h-4 w-4 text-muted-foreground" />} 
-                        link="/admin/solicitacoes" // Link correto
-                        description="Pedidos de itens ou limpeza" 
-                    />
+                    
+                    {/* Card de Solicitações (ainda com o brilho) */}
+                    <div 
+                        className={cn(
+                            "rounded-lg transition-all", 
+                            hasNewRequest && "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg animate-pulse" // ++ Adicionado 'animate-pulse' ++
+                        )}
+                        onClick={() => setHasNewRequest(false)} // Desativa o brilho ao clicar
+                    >
+                        <DashboardStatCard 
+                            title="Novas Solicitações" 
+                            value={stats.pendingRequests} 
+                            icon={<Send className="h-4 w-4 text-muted-foreground" />} 
+                            link="/admin/solicitacoes" 
+                            description="Pedidos de itens ou limpeza" 
+                        />
+                    </div>
                 </div>
                 
                 <div className="grid gap-6 lg:grid-cols-3 items-start">
-                    {/* Card de Status do Café (Sem alterações) */}
+                    {/* Card de Status do Café */}
                     <div className="lg:col-span-1 space-y-6">
                         <Card>
                             <CardHeader>
@@ -250,7 +296,7 @@ export default function DashboardPage() {
                         </Card>
                     </div>
 
-                    {/* Card de Atividade Recente (Sem alterações, mas agora VAI funcionar) */}
+                    {/* Card de Atividade Recente */}
                     <div className="lg:col-span-2">
                         <Card>
                             <CardHeader>
@@ -261,7 +307,6 @@ export default function DashboardPage() {
                                 {activityFeed.length > 0 ? (
                                     <div className="space-y-4">
                                         {activityFeed.map(log => {
-                                            // Esta lógica agora encontrará os novos tipos
                                             const activityInfo = activityTypeMap[log.type] || activityTypeMap.default;
                                             
                                             const description = log.actor.type === 'admin' 

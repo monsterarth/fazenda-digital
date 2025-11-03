@@ -34,9 +34,12 @@ export default function AdminLoginPage() {
             toast.loading("Verificando permissões de administrador...", { id: toastId });
             const idTokenResult = await user.getIdTokenResult(true);
 
-            if (idTokenResult.claims.admin === true) {
+            // ++ ESTA É A CORREÇÃO ++
+            // Verifica se o usuário tem QUALQUER 'role' definida, em vez de 'admin: true'
+            if (!!idTokenResult.claims.role) {
+            // ++ FIM DA CORREÇÃO ++
                 toast.success("Login realizado com sucesso!", { id: toastId });
-                router.push('/admin/stays');
+                router.push('/admin/stays'); // Redireciona para a página inicial do admin
             } else {
                 await signOut(auth);
                 throw new Error("Você não tem permissão para acessar esta área.");

@@ -6,9 +6,20 @@ import React, { createContext, useContext, useEffect, useState, ReactNode, useCa
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { app } from '@/lib/firebase';
 
+// ++ ADICIONADO: Definição das novas roles
+export type UserRole = 
+  | "super_admin"
+  | "recepcao"
+  | "marketing"
+  | "cafe"
+  | "manutencao"
+  | "guarita"
+  | null;
+
 interface AuthContextType {
     user: User | null;
-    isAdmin: boolean;
+    isAdmin: boolean; // Mantido para compatibilidade com AuthGuard
+    userRole: UserRole; // ++ ADICIONADO: A role granular
     loading: boolean;
     getIdToken: () => Promise<string | null>;
 }
@@ -19,6 +30,7 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [userRole, setUserRole] = useState<UserRole>(null); // ++ ADICIONADO
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -28,14 +40,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             
             if (currentUser) {
                 try {
+                    // Força a atualização do token para pegar claims recentes
                     const idTokenResult = await currentUser.getIdTokenResult(true);
-                    setIsAdmin(idTokenResult.claims.admin === true);
+                    
+                    // ++ LÓGICA DE ROLE ATUALIZADA ++
+                    // Lê a nova claim 'role'
+                    const role = (idTokenResult.claims.role as UserRole) || null;
+                    setUserRole(role);
+
+                    // O usuário é considerado "admin" (para acesso ao painel)
+                    // se ele tiver CIMAQUER role definida.
+                    // Isso substitui a antiga claim 'admin: true'
+                    setIsAdmin(!!role);
+                    // -- FIM DA LÓGICA ATUALIZADA --
+
                 } catch (error) {
                     console.error("Erro ao verificar permissões de admin:", error);
                     setIsAdmin(false);
+                    setUserRole(null); // ++ ADICIONADO
                 }
             } else {
                 setIsAdmin(false);
+                setUserRole(null); // ++ ADICIONADO
             }
             setLoading(false);
         });
@@ -57,7 +83,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
     return (
-        <AuthContext.Provider value={{ user, isAdmin, loading, getIdToken }}>
+        // ++ ATUALIZADO: Passa 'userRole' no value
+        <AuthContext.Provider value={{ user, isAdmin, userRole, loading, getIdToken }}>
             {children}
         </AuthContext.Provider>
     );

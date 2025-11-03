@@ -45,11 +45,10 @@ export default function ManutencaoArquivoPage() {
       setLoading(true);
       const db = await getFirebaseDb();
       
-      // Query para buscar APENAS tarefas arquivadas
       const q = query(
         collection(db, 'maintenance_tasks'), 
-        where('status', '==', 'archived'), // Apenas 'archived'
-        orderBy('reviewedAt', 'desc') // Ordena pelas mais recentes
+        where('status', '==', 'archived'), 
+        orderBy('reviewedAt', 'desc')
       );
 
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -61,10 +60,7 @@ export default function ManutencaoArquivoPage() {
         setLoading(false);
       }, (error) => {
         console.error("Erro ao buscar tarefas arquivadas:", error);
-        // NOTA: Se o 'reviewedAt' não existir em todas as tarefas 'archived', 
-        // a query pode falhar. Pode ser necessário criar o índice no Firebase.
-        // O erro no console do navegador dará o link para criar o índice.
-        toast.error("Não foi possível carregar o arquivo.", { description: error.message });
+        toast.error("Não foi possível carregar o arquivo.", { description: "Pode ser necessário criar um índice no Firestore. Verifique o console." });
         setLoading(false);
       });
 
@@ -103,6 +99,7 @@ export default function ManutencaoArquivoPage() {
             <EmptyState message="Nenhuma tarefa foi arquivada ainda." />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* ++ CORREÇÃO: Erro TS2741 resolvido pois 'onDelegateClick' é opcional ++ */}
               {tasks.map(task => <TaskCard key={task.id} task={task} />)}
             </div>
           )}

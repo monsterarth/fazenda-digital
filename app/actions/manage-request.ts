@@ -123,6 +123,6 @@ export async function manageRequest(data: ManageRequestData) {
     if (error instanceof Error) {
         errorMessage = `Ocorreu um erro: ${error.message}`;
     }
-  	 return { success: false, message: errorMessage };
+  	 return { success: false, message: errorMessage };
   }
 }

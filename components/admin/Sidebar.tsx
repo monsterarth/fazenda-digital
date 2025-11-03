@@ -36,6 +36,7 @@ const mainNavItems = [
     { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },
 ];
 
+// ++ ATUALIZADO: Adicionado 'Gerenciar Equipe'
 const settingsNavItems = [
     { href: '/admin/settings/cabanas', label: 'Cabanas', icon: Home },
     { href: '/admin/settings/personalizacao', label: 'Personalização', icon: Paintbrush },
@@ -43,8 +44,9 @@ const settingsNavItems = [
     { href: '/admin/settings/agendamentos', label: 'Gerenciar Agend.', icon: CalendarCheck },
     { href: '/admin/settings/pesquisas', label: 'Gerenciar Pesquisas', icon: FileText },
     { href: '/admin/settings/servicos', label: 'Itens', icon: Wrench },
-    { href: '/admin/settings/guias', label: 'Guias e Manuais', icon: Book }, // Novo link adicionado
+    { href: '/admin/settings/guias', label: 'Guias e Manuais', icon: Book }, 
     { href: '/admin/settings/politicas', label: 'Políticas', icon: Shield },
+    { href: '/admin/settings/equipe', label: 'Gerenciar Equipe', icon: Users }, // ++ NOVO LINK
 ];
 
 // ++ NOVO: Mapa de Permissões (quem pode ver o quê)
@@ -71,6 +73,7 @@ const permissions: Record<string, (Role)[]> = {
     '/admin/settings/servicos': ['recepcao'],
     '/admin/settings/guias': ['recepcao'],
     '/admin/settings/politicas': [], // Apenas super_admin
+    '/admin/settings/equipe': [], // ++ NOVO: Apenas super_admin
 };
 
 // ++ NOVO: Helper de verificação

@@ -1,3 +1,5 @@
+//app\admin\(dashboard)\settings\personalizacao\page.tsx
+
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -26,6 +28,7 @@ const propertySchema = z.object({
     name: z.string().min(1, "O nome da propriedade é obrigatório."),
     logoUrl: z.string().url().or(z.literal('')),
     logoFile: z.instanceof(File).optional(),
+    googleReviewLink: z.string().url("Por favor, insira uma URL válida (ex: http://...)").or(z.literal('')).optional(), // <-- ADICIONADO
     colors: z.object({
         primary: z.string(),
         secondary: z.string(),
@@ -81,6 +84,7 @@ export default function PersonalizationPage() {
             return {
                 name: data.name || 'Minha Pousada',
                 logoUrl: data.logoUrl || '',
+                googleReviewLink: data.googleReviewLink || '', // <-- ADICIONADO
                 colors: data.colors || { primary: '#000000', secondary: '#64748b', accent: '#f59e0b', background: '#f8fafc', card: '#ffffff', text: '#0d172a', textOnPrimary: '#ffffff' },
                 messages: {
                     preCheckInWelcomeTitle: data.messages?.preCheckInWelcomeTitle || 'Bem-vindo(a)!',
@@ -184,16 +188,16 @@ export default function PersonalizationPage() {
                                 <CardTitle>Identidade da Marca</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                               <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Nome da Pousada</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                               <FormField control={form.control} name="logoFile" render={({ field }) => (
-                                   <FormItem>
-                                       <FormLabel>Logo</FormLabel>
-                                       {form.getValues('logoUrl') && <Image src={form.getValues('logoUrl')} alt="Logo" width={128} height={128} className="my-2 border rounded-md object-contain" />}
-                                       <FormControl>
-                                           <Input type="file" accept="image/png, image/jpeg, image/svg+xml" onChange={(e) => field.onChange(e.target.files?.[0])} />
-                                       </FormControl>
-                                   </FormItem>
-                               )} />
+                                <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Nome da Pousada</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                                <FormField control={form.control} name="logoFile" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Logo</FormLabel>
+                                        {form.getValues('logoUrl') && <Image src={form.getValues('logoUrl')} alt="Logo" width={128} height={128} className="my-2 border rounded-md object-contain" />}
+                                        <FormControl>
+                                            <Input type="file" accept="image/png, image/jpeg, image/svg+xml" onChange={(e) => field.onChange(e.target.files?.[0])} />
+                                        </FormControl>
+                                    </FormItem>
+                                )} />
                             </CardContent>
                         </Card>
                     </TabsContent>
@@ -264,6 +268,24 @@ export default function PersonalizationPage() {
                                 <h3 className="font-semibold text-lg border-b pb-2 pt-4">Pesquisa de Satisfação</h3>
                                 <FormField control={form.control} name="messages.surveySuccessTitle" render={({ field }) => ( <FormItem><FormLabel>Título de Sucesso</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
                                 <FormField control={form.control} name="messages.surveySuccessSubtitle" render={({ field }) => ( <FormItem><FormLabel>Subtítulo de Sucesso</FormLabel><FormControl><Input {...field} /></FormControl></FormItem> )} />
+                                
+                                {/* NOVO CAMPO ADICIONADO AQUI */}
+                                <FormField
+                                    control={form.control}
+                                    name="googleReviewLink"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Link de Avaliação do Google</FormLabel>
+                                            <FormControl>
+                                                <Input {...field} placeholder="https://g.page/r/..." />
+                                            </FormControl>
+                                            <FormDescription>
+                                                Este link será exibido na tela de agradecimento após uma avaliação NPS positiva (nota 9 ou 10).
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
                             </CardContent>
                         </Card>
                     </TabsContent>

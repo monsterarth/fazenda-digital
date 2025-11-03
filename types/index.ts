@@ -281,6 +281,7 @@ export interface PropertyMessages {
 }
 
 export interface Property {
+    googleReviewLink: string | undefined;
     contact: any;
     id: string;
     name: string;

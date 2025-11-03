@@ -1,3 +1,5 @@
+//app\s\[surveyId]\page.tsx
+
 "use client";
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -6,6 +8,7 @@ import * as firestore from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
 import { getAuth, signInWithCustomToken } from "firebase/auth";
 import { Survey, SurveyQuestion, SurveyResponse, SurveyResponseAnswer } from "@/types/survey";
+import { Property } from "@/types"; // <-- ADICIONADO
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +17,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from '@/components/ui/label';
 import { toast, Toaster } from 'sonner';
-import { Loader2, Send, Star, CheckCircle } from 'lucide-react';
+import { Loader2, Send, Star, CheckCircle, Award } from 'lucide-react'; // <-- ÍCONE 'Award' ADICIONADO
 import { Input } from '@/components/ui/input';
 
 const Rating5Stars = ({ onChange, value }: { value: number; onChange: (value: number) => void; }) => {
@@ -54,10 +57,12 @@ function SurveyComponent() {
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [stayId, setStayId] = useState<string | null>(null);
     const [survey, setSurvey] = useState<Survey | null>(null);
+    const [property, setProperty] = useState<Property | null>(null); // <-- ADICIONADO
     const [loading, setLoading] = useState(true);
     const [answers, setAnswers] = useState<Record<string, any>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSubmitSuccessful, setIsSubmitSuccessful] = useState(false);
+    const [isPromoter, setIsPromoter] = useState(false); // <-- ADICIONADO
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -132,8 +137,25 @@ function SurveyComponent() {
             }
         };
 
+        // NOVA FUNÇÃO PARA BUSCAR DADOS DA PROPRIEDADE
+        const fetchProperty = async () => {
+            if (!db) return;
+            try {
+                const propRef = firestore.doc(db, 'properties', 'default');
+                const propSnap = await firestore.getDoc(propRef);
+                if (propSnap.exists()) {
+                    setProperty(propSnap.data() as Property);
+                }
+            } catch (err) {
+                console.error("Failed to fetch property settings:", err);
+                // Não é um erro crítico para bloquear a pesquisa
+            }
+        };
+
         fetchSurvey();
-    }, [db, surveyId, stayId, loading]);
+        fetchProperty(); // <-- CHAMADA ADICIONADA
+
+    }, [db, surveyId, stayId]); // Removido 'loading' da dependência, pois é setado internamente
     
     const handleAnswerChange = (questionId: string, answer: any) => {
         setAnswers(prev => ({ ...prev, [questionId]: answer }));
@@ -148,6 +170,21 @@ function SurveyComponent() {
             toast.error("Não foi possível enviar. Sessão inválida ou dados faltando.");
             return;
         }
+
+        // <-- LÓGICA DE VERIFICAÇÃO NPS ADICIONADA AQUI -->
+        let promoter = false;
+        if (survey?.questions) {
+            const npsQuestion = survey.questions.find(q => q.type === 'nps_0_10');
+            if (npsQuestion) {
+                const npsAnswer = answers[npsQuestion.id];
+                // Verifica se a resposta é um número e é 9 ou 10
+                if (typeof npsAnswer === 'number' && npsAnswer >= 9) {
+                    promoter = true;
+                }
+            }
+        }
+        setIsPromoter(promoter); // Define o estado para a tela de sucesso
+        // <-- FIM DA LÓGICA NPS -->
 
         setIsSubmitting(true);
         const toastId = toast.loading("Enviando suas respostas...");
@@ -198,23 +235,42 @@ function SurveyComponent() {
         return <div className="flex h-screen w-full items-center justify-center text-red-500">Pesquisa não encontrada.</div>;
     }
     
+    // <-- TELA DE SUCESSO MODIFICADA -->
     if (isSubmitSuccessful) {
         return (
              <div className="bg-gray-50 min-h-screen flex items-center justify-center p-4">
-                <Card className="w-full max-w-2xl shadow-xl text-center">
-                    <CardHeader>
+                <Card className="w-full max-w-2xl shadow-xl">
+                    <CardHeader className="text-center">
                         <div className="mx-auto bg-green-100 rounded-full p-3 w-fit">
                             <CheckCircle className="h-10 w-10 text-green-600" />
                         </div>
-                        <CardTitle className="text-3xl mt-4">Agradecemos sua contribuição!</CardTitle>
+                        <CardTitle className="text-3xl mt-4">
+                            {property?.messages?.surveySuccessTitle || "Agradecemos sua contribuição!"}
+                        </CardTitle>
                         <CardDescription>
-                            Sua opinião é muito valiosa para nós e nos ajudará a melhorar continuamente.
+                            {property?.messages?.surveySuccessSubtitle || "Sua opinião é muito valiosa para nós e nos ajudará a melhorar continuamente."}
                         </CardDescription>
                     </CardHeader>
+
+                    {/* NOVO BLOCO CONDICIONAL PARA GOOGLE REVIEW */}
+                    {isPromoter && property?.googleReviewLink && (
+                        <CardContent className="pt-6 border-t">
+                            <p className="text-sm text-muted-foreground mb-4 text-center">
+                                Seu feedback positivo ilumina o nosso dia! Que tal compartilhá-lo com outros viajantes?
+                            </p>
+                            <Button asChild size="lg" className="w-full">
+                                <a href={property.googleReviewLink} target="_blank" rel="noopener noreferrer">
+                                    <Award className="mr-2 h-5 w-5" />
+                                    Avaliar no Google
+                                </a>
+                            </Button>
+                        </CardContent>
+                    )}
                 </Card>
             </div>
         )
     }
+    // <-- FIM DA TELA DE SUCESSO MODIFICADA -->
 
     return (
         <div className="min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8">
@@ -259,7 +315,7 @@ function SurveyComponent() {
                                                             ) : (
                                                                 <div className="flex items-center space-x-2">
                                                                     <RadioGroup value={answers[question.id]} onValueChange={(val) => handleAnswerChange(question.id, val)}>
-                                                                       <div className="flex items-center space-x-2">
+                                                                        <div className="flex items-center space-x-2">
                                                                             <RadioGroupItem value={option} id={`${question.id}-${option}`} />
                                                                             <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
                                                                         </div>

@@ -6,22 +6,28 @@ import { z } from 'zod';
 import { StaffMember } from '@/types/maintenance';
 import { UserRole } from '@/context/AuthContext';
 
+// Schema principal (usado no POST)
 const staffSchema = z.object({
   email: z.string().email(),
   name: z.string().min(2),
   role: z.enum(["recepcao", "marketing", "cafe", "manutencao", "guarita", "super_admin"]),
+  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres.").optional(),
 });
 
-// ## INÍCIO DA CORREÇÃO (GET) ##
+// ++ NOVO: Schema para o PUT (todos os campos são opcionais)
+const staffUpdateSchema = z.object({
+  name: z.string().min(2).optional(),
+  role: z.enum(["recepcao", "marketing", "cafe", "manutencao", "guarita", "super_admin"]).optional(),
+  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres.").optional(),
+});
+
+
 // GET: Buscar toda a equipe COM ROLES
 export async function GET(req: NextRequest) {
   try {
-    // Lista os usuários básicos
-    const listUsersResult = await adminAuth.listUsers(1000); // Limite de 1000
+    const listUsersResult = await adminAuth.listUsers(1000); 
     
-    // Para obter 'customClaims', precisamos buscar cada usuário individualmente.
     const staffPromises = listUsersResult.users.map(async (user) => {
-      // Busca o registro completo do usuário para acessar 'customClaims'
       const userRecord = await adminAuth.getUser(user.uid);
       const role = (userRecord.customClaims?.role as UserRole) || null;
 
@@ -29,42 +35,44 @@ export async function GET(req: NextRequest) {
         uid: user.uid,
         email: user.email || 'N/A',
         name: user.displayName || user.email || 'N/A',
-        role: role, // <-- Retorna a role!
+        role: role,
       };
     });
 
     const staff = await Promise.all(staffPromises);
-
     return NextResponse.json({ staff });
 
   } catch (error: any) {
     return NextResponse.json({ message: `Erro ao buscar equipe: ${error.message}` }, { status: 500 });
   }
 }
-// ## FIM DA CORREÇÃO (GET) ##
 
-// POST: Criar um novo membro (convite)
+// POST: Criar um novo membro (com senha)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    // Usa o schema principal que exige 'email', 'name', 'role'
     const validation = staffSchema.safeParse(body);
 
     if (!validation.success) {
       return NextResponse.json({ message: validation.error.errors[0].message }, { status: 400 });
     }
     
-    const { email, name, role } = validation.data;
+    const { email, name, role, password } = validation.data;
 
-    // 1. Cria o usuário no Firebase Auth
+    if (!password) {
+      return NextResponse.json({ message: "A senha é obrigatória para criar um novo usuário." }, { status: 400 });
+    }
+
     const userRecord = await adminAuth.createUser({
       email,
+      password: password,
       displayName: name,
     });
 
-    // 2. Define a Custom Claim (Role)
     await adminAuth.setCustomUserClaims(userRecord.uid, { role });
 
-    return NextResponse.json({ message: "Usuário criado e role definida!", uid: userRecord.uid });
+    return NextResponse.json({ message: "Usuário criado com senha e role definida!", uid: userRecord.uid });
 
   } catch (error: any) {
     if (error.code === 'auth/email-already-exists') {
@@ -74,7 +82,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PUT: Atualizar a role de um membro existente
+// ++ ATUALIZADO: PUT agora pode atualizar 'name', 'role' ou 'password'
 export async function PUT(req: NextRequest) {
   try {
     const uid = req.nextUrl.searchParams.get('uid');
@@ -83,29 +91,50 @@ export async function PUT(req: NextRequest) {
     }
     
     const body = await req.json();
-    // Para 'PUT', só precisamos da 'role' e 'name'
-    const validation = staffSchema.pick({ role: true, name: true }).safeParse(body);
+    // Usa o novo schema de atualização (campos opcionais)
+    const validation = staffUpdateSchema.safeParse(body);
 
     if (!validation.success) {
       return NextResponse.json({ message: validation.error.errors[0].message }, { status: 400 });
     }
     
-    const { role, name } = validation.data;
+    const { role, name, password } = validation.data;
 
-    // 1. Atualiza a Custom Claim (Role)
-    await adminAuth.setCustomUserClaims(uid, { role });
+    // Se nenhum dado foi enviado, retorna erro.
+    if (!role && !name && !password) {
+      return NextResponse.json({ message: "Nenhum dado fornecido para atualização." }, { status: 400 });
+    }
+
+    // Objeto para armazenar atualizações do usuário
+    let userUpdate: { displayName?: string; password?: string } = {};
+
+    // 1. Atualiza a Custom Claim (Role) se fornecida
+    if (role) {
+      await adminAuth.setCustomUserClaims(uid, { role });
+    }
     
-    // 2. Atualiza o nome
-    await adminAuth.updateUser(uid, { displayName: name });
+    // 2. Adiciona o nome ao objeto de atualização, se fornecido
+    if (name) {
+      userUpdate.displayName = name;
+    }
 
-    return NextResponse.json({ message: "Role e nome atualizados com sucesso!" });
+    // 3. Adiciona a senha ao objeto de atualização, se fornecida
+    if (password) {
+      userUpdate.password = password;
+    }
+
+    // 4. Executa a atualização no Auth (se houver nome ou senha)
+    if (Object.keys(userUpdate).length > 0) {
+      await adminAuth.updateUser(uid, userUpdate);
+    }
+
+    return NextResponse.json({ message: "Usuário atualizado com sucesso!" });
 
   } catch (error: any) {
     return NextResponse.json({ message: `Erro ao atualizar usuário: ${error.message}` }, { status: 500 });
   }
 }
 
-// ## INÍCIO DA ADIÇÃO (DELETE) ##
 // DELETE: Excluir um usuário
 export async function DELETE(req: NextRequest) {
   try {
@@ -114,7 +143,6 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ message: "UID do usuário é obrigatório." }, { status: 400 });
     }
 
-    // Exclui o usuário do Firebase Authentication
     await adminAuth.deleteUser(uid);
 
     return NextResponse.json({ message: "Usuário excluído com sucesso!" });
@@ -124,4 +152,3 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ message: `Erro ao excluir usuário: ${error.message}` }, { status: 500 });
   }
 }
-// ## FIM DA ADIÇÃO (DELETE) ##

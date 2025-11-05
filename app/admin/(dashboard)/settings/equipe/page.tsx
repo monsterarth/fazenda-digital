@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -13,13 +13,25 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { toast, Toaster } from 'sonner';
-import { Loader2, UserPlus, Trash2, Edit } from 'lucide-react';
-// ## INÍCIO DA CORREÇÃO ##
-// Substituído 'StaffProfile' e 'StaffRole' por 'StaffMember'
+import { Loader2, UserPlus, Trash2, Edit, UserX } from 'lucide-react';
 import { StaffMember } from '@/types/maintenance'; 
-// E importa o UserRole do AuthContext
 import { UserRole } from '@/context/AuthContext';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+// ## INÍCIO DA CORREÇÃO ##
+import { Label } from '@/components/ui/label'; // <-- Label importado
 // ## FIM DA CORREÇÃO ##
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // Esquema para o formulário de convite/atualização
 const staffFormSchema = z.object({
@@ -30,11 +42,22 @@ const staffFormSchema = z.object({
 
 type StaffFormValues = z.infer<typeof staffFormSchema>;
 
+// Mapeia as roles para nomes amigáveis
+const roleNames: Record<UserRole & string, string> = {
+  super_admin: "Super Admin",
+  recepcao: "Recepção",
+  marketing: "Marketing",
+  cafe: "Café",
+  manutencao: "Manutenção",
+  guarita: "Guarita",
+};
+
 export default function ManageEquipePage() {
-  const [staffList, setStaffList] = useState<StaffMember[]>([]); // <-- CORRIGIDO
+  const [staffList, setStaffList] = useState<StaffMember[]>([]); 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editMode, setEditMode] = useState<string | null>(null); // Armazena o UID
+  const [hideGuests, setHideGuests] = useState(true); // Estado do filtro
 
   const form = useForm<StaffFormValues>({
     resolver: zodResolver(staffFormSchema),
@@ -60,6 +83,14 @@ export default function ManageEquipePage() {
   useEffect(() => {
     fetchStaff();
   }, []);
+
+  // Filtra a lista com base no switch
+  const filteredStaffList = useMemo(() => {
+    if (hideGuests) {
+      return staffList.filter(staff => staff.role !== null);
+    }
+    return staffList;
+  }, [staffList, hideGuests]);
 
   const onSubmit = async (values: StaffFormValues) => {
     setIsSubmitting(true);
@@ -90,19 +121,34 @@ export default function ManageEquipePage() {
     setIsSubmitting(false);
   };
 
+  // Agora preenche a role no formulário de edição
   const handleEdit = (staff: StaffMember) => {
-    // A API/Auth não nos dá a role facilmente,
-    // então o 'edit' só preenche nome/email. A role deve ser re-selecionada.
     setEditMode(staff.uid);
     form.reset({
       email: staff.email,
       name: staff.name,
-      role: undefined, // Força a re-seleção da role por segurança
+      role: staff.role || undefined, // <-- PREENCHE A ROLE!
     });
   };
-  
-  // (A função de 'handleDelete' precisaria de um endpoint de API,
-  // vamos focar no 'create' e 'update' por enquanto)
+
+  // Nova função para deletar
+  const handleDelete = async (uid: string) => {
+    const toastId = toast.loading("Excluindo usuário...");
+    try {
+      const response = await fetch(`/api/admin/staff?uid=${uid}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (response.ok) {
+        toast.success(data.message, { id: toastId });
+        fetchStaff(); // Atualiza a lista
+      } else {
+        toast.error(data.message, { id: toastId });
+      }
+    } catch (error: any) {
+      toast.error(`Falha: ${error.message}`, { id: toastId });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -146,24 +192,73 @@ export default function ManageEquipePage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Equipe Atual</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Equipe Atual</CardTitle>
+            <CardDescription>Lista de todos os usuários com acesso ao sistema.</CardDescription>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="hide-guests"
+              checked={hideGuests}
+              onCheckedChange={setHideGuests}
+            />
+            {/* ## INÍCIO DA CORREÇÃO ## */}
+            <Label htmlFor="hide-guests">Ocultar hóspedes (sem função)</Label>
+            {/* ## FIM DA CORREÇÃO ## */}
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
             <Loader2 className="animate-spin" />
           ) : (
             <Table>
-              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Email</TableHead><TableHead>UID</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow>
+                <TableHead>Nome</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Função (Role)</TableHead>
+                <TableHead>UID</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow></TableHeader>
               <TableBody>
-                {staffList.map((staff) => (
+                {filteredStaffList.map((staff) => (
                   <TableRow key={staff.uid}>
                     <TableCell>{staff.name}</TableCell>
                     <TableCell>{staff.email}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{staff.uid}</TableCell>
                     <TableCell>
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(staff)}><Edit className="mr-2 h-4 w-4" /> Editar</Button>
-                      {/* <Button variant="destructive" size="sm" className="ml-2"><Trash2 className="mr-2 h-4 w-4" /> Excluir</Button> */}
+                      {staff.role ? (
+                        <Badge>{roleNames[staff.role] || staff.role}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">Hóspede</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{staff.uid}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="icon" onClick={() => handleEdit(staff)} className="mr-2">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                           {/* Só permite excluir se não for 'super_admin' (segurança) */}
+                          <Button variant="destructive" size="icon" disabled={staff.role === 'super_admin'}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir {staff.name}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esta ação é permanente e removerá o usuário ({staff.email}) do sistema.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(staff.uid)}>
+                              Sim, excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}

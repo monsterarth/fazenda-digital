@@ -1,6 +1,10 @@
 // types/maintenance.ts
 
-import { Timestamp } from 'firebase/firestore'; // <-- USANDO O TIMESTAMP DO CLIENTE
+import { Timestamp } from 'firebase/firestore';
+// ++ INÍCIO DA ADIÇÃO ++
+// Importa o tipo 'UserRole' do seu AuthContext
+import { UserRole } from '@/context/AuthContext';
+// ++ FIM DA ADIÇÃO ++
 
 // Status unificado para o Kanban
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'archived';
@@ -8,7 +12,7 @@ export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'archived';
 // Regra de recorrência
 export interface RecurrenceRule {
   frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
-  interval: number;
+  interval: number; // Ex: a cada 2 (semanas, meses, etc.)
   endDate?: Timestamp; // Opcional: quando parar de repetir
 }
 
@@ -20,16 +24,27 @@ export interface MaintenanceTask {
   status: TaskStatus;
   priority: 'low' | 'medium' | 'high';
   
+  // Localização (ex: "Piscina", "Cabana 5", "Geral")
   location: string; 
   
-  createdAt: Timestamp; // <-- Timestamp do cliente
-  createdBy: string; 
+  createdAt: Timestamp;
+  createdBy: string; // Email do admin/gestor que criou
   
+  // --- Nossas Novas Features ---
+  
+  // 1. Delegação: Array de UIDs ou emails de funcionários
   assignedTo: string[]; 
+  
+  // 2. Dependências: Array de IDs de outras tarefas
+  // Esta tarefa não pode começar até que todas estas estejam 'completed'.
   dependsOn: string[]; 
+  
+  // 3. Recorrência: Se preenchido, gera a próxima tarefa ao ser concluída
   recurrence?: RecurrenceRule; 
-  parentTaskId?: string; 
-  nextTaskId?: string;   
+  
+  // 4. Rastreamento: Link para a tarefa "mãe" ou "filha" na série
+  parentTaskId?: string; // ID da tarefa que gerou esta
+  nextTaskId?: string;   // ID da próxima tarefa na série (adicionado ao completar)
 }
 
 // Tipo para o formulário de criação (usa string para datas)
@@ -44,4 +59,7 @@ export interface StaffMember {
     uid: string;
     email: string;
     name: string;
+    // ++ INÍCIO DA ADIÇÃO ++
+    role: UserRole; // <-- Adiciona a role ao tipo
+    // ++ FIM DA ADIÇÃO ++
 }

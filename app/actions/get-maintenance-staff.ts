@@ -17,25 +17,26 @@ export async function getMaintenanceStaff(): Promise<StaffMember[]> {
         const listUsersResult = await adminAuth.listUsers();
 
         listUsersResult.users.forEach(user => {
-            const role = user.customClaims?.role as UserRole;
+            const role = (user.customClaims?.role as UserRole) || null; // Pega a role
 
+            // Vamos incluir todos que têm uma role de staff
             if (role === 'manutencao' || role === 'super_admin' || role === 'recepcao') {
+                // ## INÍCIO DA CORREÇÃO ##
+                // Adicionamos o campo 'role' que estava faltando
                 staff.push({
                     uid: user.uid,
                     email: user.email || 'Email não disponível',
                     name: user.displayName || user.email || user.uid,
+                    role: role, // <-- PROPRIEDADE ADICIONADA
                 });
+                // ## FIM DA CORREÇÃO ##
             }
         });
 
         const sortedStaff = staff.sort((a, b) => a.name.localeCompare(b.name));
 
-        // ## INÍCIO DA CORREÇÃO ##
         // Força a serialização para um objeto "plano" (plain object)
-        // para que possa ser passado com segurança de Server Components
-        // para Client Components.
         return JSON.parse(JSON.stringify(sortedStaff));
-        // ## FIM DA CORREÇÃO ##
 
     } catch (error: any) {
         console.error("Erro ao buscar equipe de manutenção:", error.message);

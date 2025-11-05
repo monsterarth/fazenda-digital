@@ -2,7 +2,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react'; // Importa useState
 import {
   Sheet,
   SheetContent,
@@ -14,6 +14,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription, // Importado
   FormField,
   FormItem,
   FormLabel,
@@ -53,6 +54,10 @@ import { toast } from 'sonner';
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+// ++ INÍCIO DA ADIÇÃO ++
+import { Checkbox } from '@/components/ui/checkbox'; // Importa o Checkbox
+import { Separator } from '@/components/ui/separator'; // Importa o Separator
+// ++ FIM DA ADIÇÃO ++
 
 // Esquema Zod para o formulário (do lado do cliente)
 const taskFormSchema = z.object({
@@ -61,21 +66,36 @@ const taskFormSchema = z.object({
   location: z.string().min(1, "A localização é obrigatória."),
   description: z.string().optional(),
   dependsOn: z.array(z.string()).optional(), // Array de IDs
+  // ++ INÍCIO DA ADIÇÃO ++
+  // Define o campo 'isRecurring' no schema (apenas para o formulário)
+  isRecurring: z.boolean().default(false),
+  // ++ FIM DA ADIÇÃO ++
   recurrence: z
     .object({
       frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
-      interval: z.coerce.number().min(1),
+      interval: z.coerce.number().min(1, "O intervalo deve ser 1 ou maior."),
       endDate: z.string().optional(),
     })
     .optional(),
+})
+// Validação refinada: se isRecurring for true, recurrence deve estar definido
+.refine(data => {
+    if (data.isRecurring && !data.recurrence) {
+        return false;
+    }
+    return true;
+}, {
+    message: "Detalhes da recorrência são obrigatórios.",
+    path: ["recurrence"],
 });
+
 
 type TaskFormValues = z.infer<typeof taskFormSchema>;
 
 export const CreateTaskSheet = ({ staff }: { staff: StaffMember[] }) => {
   const { isOpen, onClose, type, data } = useModalStore();
   const { user } = useAuth();
-  const { allTasks } = data; // Pega as tarefas do store para o 'dependsOn'
+  const { allTasks } = data; 
 
   const isModalOpen = isOpen && type === 'createMaintenanceTask';
 
@@ -87,8 +107,21 @@ export const CreateTaskSheet = ({ staff }: { staff: StaffMember[] }) => {
       location: '',
       description: '',
       dependsOn: [],
+      // ++ INÍCIO DA ADIÇÃO ++
+      isRecurring: false, // Padrão
+      recurrence: {
+        frequency: 'weekly',
+        interval: 1,
+        endDate: '',
+      }
+      // ++ FIM DA ADIÇÃO ++
     },
   });
+
+  // ++ INÍCIO DA ADIÇÃO ++
+  // Observa o valor do checkbox 'isRecurring'
+  const isRecurring = form.watch('isRecurring');
+  // ++ FIM DA ADIÇÃO ++
 
   const { isSubmitting } = form.formState;
 
@@ -98,7 +131,19 @@ export const CreateTaskSheet = ({ staff }: { staff: StaffMember[] }) => {
       return;
     }
 
-    const response = await createMaintenanceTask(values, user.email);
+    // ## INÍCIO DA CORREÇÃO ##
+    // Prepara os dados para a Server Action
+    const dataToSubmit: any = { ...values };
+    
+    // Se não for recorrente, remove o objeto 'recurrence'
+    if (!dataToSubmit.isRecurring) {
+      delete dataToSubmit.recurrence;
+    }
+    // Remove o 'isRecurring' pois ele não existe no schema do backend
+    delete dataToSubmit.isRecurring;
+    // ## FIM DA CORREÇÃO ##
+
+    const response = await createMaintenanceTask(dataToSubmit, user.email);
 
     if (response.success) {
       toast.success("Tarefa criada com sucesso!");
@@ -113,12 +158,11 @@ export const CreateTaskSheet = ({ staff }: { staff: StaffMember[] }) => {
     onClose();
   };
 
-  // Filtra tarefas que podem ser dependências (não concluídas)
   const availableDependencies = allTasks?.filter(t => t.status !== 'completed') || [];
 
   return (
     <Sheet open={isModalOpen} onOpenChange={handleClose}>
-      <SheetContent className="flex flex-col">
+      <SheetContent className="flex flex-col sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>Criar Nova Tarefa</SheetTitle>
           <SheetDescription>
@@ -210,7 +254,7 @@ export const CreateTaskSheet = ({ staff }: { staff: StaffMember[] }) => {
                               variant="outline"
                               role="combobox"
                               className={cn(
-                                "justify-between",
+                                "justify-between w-full", // Garante largura total
                                 !field.value || field.value.length === 0
                                   ? "text-muted-foreground"
                                   : ""
@@ -264,7 +308,90 @@ export const CreateTaskSheet = ({ staff }: { staff: StaffMember[] }) => {
                   )}
                 />
                 
-                {/* (Opcional: Adicionar campos de Recorrência aqui) */}
+                {/* ++ INÍCIO DA ADIÇÃO: CAMPOS DE RECORRÊNCIA ++ */}
+                <Separator />
+                
+                <FormField
+                  control={form.control}
+                  name="isRecurring"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Tarefa Recorrente?</FormLabel>
+                        <FormDescription>
+                          Esta tarefa será recriada automaticamente.
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                {isRecurring && (
+                  <div className="grid grid-cols-2 gap-4 p-4 border rounded-md">
+                    {/* Frequência */}
+                    <FormField
+                      control={form.control}
+                      name="recurrence.frequency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Frequência</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="daily">Diária</SelectItem>
+                              <SelectItem value="weekly">Semanal</SelectItem>
+                              <SelectItem value="monthly">Mensal</SelectItem>
+                              <SelectItem value="yearly">Anual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {/* Intervalo */}
+                    <FormField
+                      control={form.control}
+                      name="recurrence.interval"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Intervalo</FormLabel>
+                          <FormControl>
+                            <Input type="number" min={1} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {/* Data Final (Opcional) */}
+                    <FormField
+                      control={form.control}
+                      name="recurrence.endDate"
+                      render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel>Data Final (Opcional)</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            Deixe em branco para repetir indefinidamente.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
+                {/* ++ FIM DA ADIÇÃO ++ */}
               </div>
             </ScrollArea>
             <SheetFooter>

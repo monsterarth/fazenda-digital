@@ -3,10 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { z } from 'zod';
-// ## INÍCIO DA CORREÇÃO ##
-// Substituído 'StaffProfile' por 'StaffMember'
 import { StaffMember } from '@/types/maintenance';
-// ## FIM DA CORREÇÃO ##
 import { UserRole } from '@/context/AuthContext';
 
 const staffSchema = z.object({
@@ -15,28 +12,36 @@ const staffSchema = z.object({
   role: z.enum(["recepcao", "marketing", "cafe", "manutencao", "guarita", "super_admin"]),
 });
 
-// GET: Buscar toda a equipe
+// ## INÍCIO DA CORREÇÃO (GET) ##
+// GET: Buscar toda a equipe COM ROLES
 export async function GET(req: NextRequest) {
   try {
-    const listUsersResult = await adminAuth.listUsers();
+    // Lista os usuários básicos
+    const listUsersResult = await adminAuth.listUsers(1000); // Limite de 1000
     
-    // ## INÍCIO DA CORREÇÃO ##
-    // Mapeia para o tipo 'StaffMember'
-    const staff: StaffMember[] = listUsersResult.users.map(user => ({
-    // ## FIM DA CORREÇÃO ##
-      uid: user.uid,
-      email: user.email || 'N/A',
-      name: user.displayName || user.email || 'N/A',
-      // Note: A role não é facilmente acessível aqui em massa,
-      // mas o 'get-maintenance-staff' (action) faz isso.
-      // Esta API é mais para gerenciamento.
-    }));
+    // Para obter 'customClaims', precisamos buscar cada usuário individualmente.
+    const staffPromises = listUsersResult.users.map(async (user) => {
+      // Busca o registro completo do usuário para acessar 'customClaims'
+      const userRecord = await adminAuth.getUser(user.uid);
+      const role = (userRecord.customClaims?.role as UserRole) || null;
+
+      return {
+        uid: user.uid,
+        email: user.email || 'N/A',
+        name: user.displayName || user.email || 'N/A',
+        role: role, // <-- Retorna a role!
+      };
+    });
+
+    const staff = await Promise.all(staffPromises);
 
     return NextResponse.json({ staff });
+
   } catch (error: any) {
     return NextResponse.json({ message: `Erro ao buscar equipe: ${error.message}` }, { status: 500 });
   }
 }
+// ## FIM DA CORREÇÃO (GET) ##
 
 // POST: Criar um novo membro (convite)
 export async function POST(req: NextRequest) {
@@ -54,13 +59,10 @@ export async function POST(req: NextRequest) {
     const userRecord = await adminAuth.createUser({
       email,
       displayName: name,
-      // (Opcional) Gerar senha temporária ou enviar link de redefinição
     });
 
     // 2. Define a Custom Claim (Role)
     await adminAuth.setCustomUserClaims(userRecord.uid, { role });
-
-    // (Opcional) Enviar email de "boas-vindas" ou "defina sua senha"
 
     return NextResponse.json({ message: "Usuário criado e role definida!", uid: userRecord.uid });
 
@@ -102,3 +104,24 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ message: `Erro ao atualizar usuário: ${error.message}` }, { status: 500 });
   }
 }
+
+// ## INÍCIO DA ADIÇÃO (DELETE) ##
+// DELETE: Excluir um usuário
+export async function DELETE(req: NextRequest) {
+  try {
+    const uid = req.nextUrl.searchParams.get('uid');
+    if (!uid) {
+      return NextResponse.json({ message: "UID do usuário é obrigatório." }, { status: 400 });
+    }
+
+    // Exclui o usuário do Firebase Authentication
+    await adminAuth.deleteUser(uid);
+
+    return NextResponse.json({ message: "Usuário excluído com sucesso!" });
+
+  } catch (error: any) {
+    console.error("Erro ao excluir usuário:", error);
+    return NextResponse.json({ message: `Erro ao excluir usuário: ${error.message}` }, { status: 500 });
+  }
+}
+// ## FIM DA ADIÇÃO (DELETE) ##

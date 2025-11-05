@@ -11,7 +11,8 @@ export type ModalType =
   | 'createStay' 
   | 'editStay' 
   | 'createMaintenanceTask'
-  | 'delegateMaintenanceTask';
+  | 'delegateMaintenanceTask'
+  | 'editMaintenanceTask'; // ++ ADICIONADO ++
 
 // ## INÍCIO DA CORREÇÃO ##
 // A interface ModalData deve conter todas as propriedades

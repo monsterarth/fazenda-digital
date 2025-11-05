@@ -5,12 +5,13 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { z } from 'zod';
 import { FieldValue } from 'firebase-admin/firestore';
 
-// Schema para validação da atualização
+// Schema para validação (baseado nos campos do seu TaskCard)
 const updateTaskSchema = z.object({
   title: z.string().min(3, "O título é obrigatório."),
+  description: z.string().optional(),
   location: z.string().min(3, "A localização é obrigatória."),
   priority: z.enum(['low', 'medium', 'high']),
-  weight: z.number().min(1, "Os pontos devem ser ao menos 1."),
+  // Adicione outros campos que você deseja editar (ex: 'dependsOn', 'assignedTo')
 });
 
 /**
@@ -31,9 +32,18 @@ export async function PUT(req: NextRequest, { params }: { params: { taskId: stri
     if (!validation.success) {
       return NextResponse.json({ message: validation.error.errors[0].message }, { status: 400 });
     }
+    
+    // Filtra apenas os campos definidos (para não enviar 'undefined' ao Firestore)
+    const dataToUpdate = Object.fromEntries(
+      Object.entries(validation.data).filter(([_, v]) => v !== undefined)
+    );
+
+    if (Object.keys(dataToUpdate).length === 0) {
+        return NextResponse.json({ message: "Nenhum dado válido fornecido." }, { status: 400 });
+    }
 
     const taskRef = adminDb.collection('maintenance_tasks').doc(taskId);
-    await taskRef.update(validation.data);
+    await taskRef.update(dataToUpdate);
 
     return NextResponse.json({ message: "Tarefa atualizada com sucesso!" });
 
@@ -53,10 +63,13 @@ export async function DELETE(req: NextRequest, { params }: { params: { taskId: s
       return NextResponse.json({ message: "ID da tarefa é obrigatório." }, { status: 400 });
     }
     
-    // TODO: Adicionar verificação de role (ex: 'super_admin' ou 'recepcao')
+    // TODO: Adicionar verificação de role
 
     const taskRef = adminDb.collection('maintenance_tasks').doc(taskId);
     await taskRef.delete();
+
+    // NOTA: Idealmente, você também removeria este 'taskId' 
+    // de qualquer array 'dependsOn' em outras tarefas.
 
     return NextResponse.json({ message: "Tarefa excluída com sucesso!" });
 

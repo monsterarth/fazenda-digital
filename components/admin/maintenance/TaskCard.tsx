@@ -73,6 +73,12 @@ export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
     onOpen('delegateMaintenanceTask', { task, staff });
   };
 
+  // ++ NOVO: Função para abrir o modal de EDIÇÃO ++
+  const openEditModal = () => {
+    // Passa todos os dados que o modal possa precisar
+    onOpen('editMaintenanceTask', { task, staff, allTasks });
+  };
+
   return (
     <TooltipProvider delayDuration={200}>
       <Draggable
@@ -86,6 +92,7 @@ export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             className="w-full"
+            onClick={openEditModal} // ++ ADICIONADO: onClick no card principal ++
           >
             <Card
               className={cn(

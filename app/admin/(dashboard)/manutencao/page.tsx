@@ -11,6 +11,8 @@ import { MaintenanceKanbanClient } from '@/components/admin/maintenance/Maintena
 // ## FIM DA CORREÇÃO ##
 import { Wrench, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+// ++ ADICIONADO: Importar o novo modal ++
+import { EditTaskDialog } from '@/components/admin/maintenance/EditTaskDialog';
 
 export default async function ManutencaoPage() {
   
@@ -18,9 +20,12 @@ export default async function ManutencaoPage() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Modais que escutam o useModalStore */}
       <CreateTaskSheet staff={staff} />
       <DelegateTaskDialog staff={staff} />
+      <EditTaskDialog /> {/* ++ ADICIONADO: Renderiza o modal de edição ++ */}
 
+      {/* Componente principal do Kanban */}
       <MaintenanceKanbanClient staff={staff} />
     </div>
   );

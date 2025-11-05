@@ -18,7 +18,9 @@ import { Separator } from '@/components/ui/separator';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useAuth } from '@/context/AuthContext';
 import { createActivityLog } from '@/lib/activity-logger';
-import { useModal } from '@/hooks/use-modal-store';
+// ## INÍCIO DA CORREÇÃO ##
+import { useModalStore } from '@/hooks/use-modal-store'; // Alterado de useModal
+// ## FIM DA CORREÇÃO ##
 import { getFirebaseDb } from '@/lib/firebase';
 
 interface EditStayDialogProps {
@@ -27,7 +29,9 @@ interface EditStayDialogProps {
 }
 
 export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property }) => {
-    const { isOpen, onClose, type, data } = useModal();
+    // ## INÍCIO DA CORREÇÃO ##
+    const { isOpen, onClose, type, data } = useModalStore(); // Alterado de useModal
+    // ## FIM DA CORREÇÃO ##
     const { user } = useAuth();
     const { stay } = data;
 
@@ -40,6 +44,7 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
         resolver: zodResolver(fullStaySchema),
     });
 
+    // (Resto do componente sem alterações)
     useEffect(() => {
         const fetchPreCheckIn = async () => {
             if (!stay || !stay.preCheckInId) {
@@ -148,7 +153,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
         }
     };
     
-    // Na edição, a busca por CPF não é necessária
     const handleCpfBlur = () => {}; 
 
     if (!isModalOpen) {
@@ -172,7 +176,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                     <Form {...form}>
                         <form id="edit-stay-form" onSubmit={form.handleSubmit(handleUpdateStay)}>
                             <div className="py-4 max-h-[75vh] overflow-y-auto pr-4 space-y-6">
-                                {/* CORREÇÃO APLICADA AQUI: Adicionando as props que faltavam com valores padrão */}
                                <StayFormFields 
                                    form={form} 
                                    cabins={cabins} 

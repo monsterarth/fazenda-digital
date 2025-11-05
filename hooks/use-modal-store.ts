@@ -1,15 +1,34 @@
 // hooks/use-modal-store.ts
 
 import { create } from 'zustand';
-import { Guest } from '@/types';
-import { Stay } from '@/types'; // ++ ADICIONADO ++
+// ## INÍCIO DA CORREÇÃO ##
+// Importar todos os tipos necessários
+import { Stay, Cabin, Property, Guest } from '@/types'; 
+import { MaintenanceTask, StaffMember } from '@/types/maintenance';
+// ## FIM DA CORREÇÃO ##
 
-export type ModalType = 'createStay' | 'editStay'; // ++ ADICIONADO: 'editStay' ++
+export type ModalType = 
+  | 'createStay' 
+  | 'editStay' 
+  | 'createMaintenanceTask'
+  | 'delegateMaintenanceTask';
 
+// ## INÍCIO DA CORREÇÃO ##
+// A interface ModalData deve conter todas as propriedades
+// que qualquer modal possa precisar.
 interface ModalData {
-  guest?: Guest;
-  stay?: Stay; // ++ ADICIONADO: para passar a estadia para o diálogo de edição ++
+  // --- Para Stays ('createStay' e 'editStay') ---
+  stay?: Stay;
+  cabins?: Cabin[];
+  property?: Property;
+  guest?: Guest; // <-- Esta era a propriedade que faltava
+
+  // --- Para Manutenção ('createMaintenanceTask' e 'delegateMaintenanceTask') ---
+  task?: MaintenanceTask;
+  allTasks?: MaintenanceTask[];
+  staff?: StaffMember[];
 }
+// ## FIM DA CORREÇÃO ##
 
 interface ModalStore {
   type: ModalType | null;
@@ -19,7 +38,7 @@ interface ModalStore {
   onClose: () => void;
 }
 
-export const useModal = create<ModalStore>((set) => ({
+export const useModalStore = create<ModalStore>((set) => ({
   type: null,
   data: {},
   isOpen: false,

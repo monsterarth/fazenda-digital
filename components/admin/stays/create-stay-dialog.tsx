@@ -6,8 +6,10 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { fullStaySchema, FullStayFormValues } from '@/lib/schemas/stay-schema';
-import { useModal } from '@/hooks/use-modal-store';
-import { Cabin, Guest } from '@/types'; // CORREÇÃO: Importando Guest do local correto e unificado
+// ## INÍCIO DA CORREÇÃO ##
+import { useModalStore } from '@/hooks/use-modal-store'; // Alterado de useModal
+// ## FIM DA CORREÇÃO ##
+import { Cabin, Guest } from '@/types'; 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
@@ -22,10 +24,10 @@ interface CreateStayDialogProps {
     cabins: Cabin[];
 }
 
-// Função auxiliar para mapear dados de Guest para os valores do formulário
+// Função auxiliar (sem alterações)
 const mapGuestToFormValues = (guest: Guest): Partial<FullStayFormValues> => ({
     leadGuestName: guest.name,
-    leadGuestDocument: guest.document, // CORREÇÃO: Alterado de guest.cpf para guest.document
+    leadGuestDocument: guest.document, 
     leadGuestEmail: guest.email,
     leadGuestPhone: guest.phone,
     isForeigner: guest.isForeigner,
@@ -34,7 +36,9 @@ const mapGuestToFormValues = (guest: Guest): Partial<FullStayFormValues> => ({
 });
 
 export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) => {
-    const { isOpen, onClose, type, data } = useModal();
+    // ## INÍCIO DA CORREÇÃO ##
+    const { isOpen, onClose, type, data } = useModalStore(); // Alterado de useModal
+    // ## FIM DA CORREÇÃO ##
     const { user } = useAuth();
     const { guest } = data;
     const isModalOpen = isOpen && type === 'createStay';
@@ -63,21 +67,20 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) =>
         },
     });
 
-    // Efeito para preencher ou limpar o formulário
+    // (Resto do componente sem alterações)
     useEffect(() => {
         if (isModalOpen) {
-            if (guest) { // Se o modal foi aberto a partir da lista de hóspedes
+            if (guest) { 
                 form.reset(mapGuestToFormValues(guest));
                 setFoundGuest(guest);
-            } else { // Se foi aberto pelo botão "Criar Estadia"
-                form.reset(); // Limpa para o estado padrão
+            } else { 
+                form.reset(); 
                 setFoundGuest(null);
             }
         }
     }, [isModalOpen, guest, form]);
 
 
-    // Busca silenciosa de hóspede pelo CPF
     const handleCpfBlur = useCallback(async (cpf: string) => {
         if (!cpf || cpf.length < 11 || foundGuest) return;
         

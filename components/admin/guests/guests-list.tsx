@@ -29,7 +29,7 @@ import {
   PlusCircle 
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { useModal } from '@/hooks/use-modal-store';
+import { useModalStore } from '@/hooks/use-modal-store';
 // ++ INÍCIO DA CORREÇÃO ++
 import { getMillisFromTimestamp } from '@/lib/utils'; // Importa a nossa função auxiliar
 // ++ FIM DA CORREÇÃO ++
@@ -42,7 +42,7 @@ interface GuestsListProps {
 export const GuestsList: React.FC<GuestsListProps> = ({ initialGuests }) => {
   const [guests, setGuests] = useState<Guest[]>(initialGuests);
   const [searchTerm, setSearchTerm] = useState('');
-  const { onOpen } = useModal();
+  const { onOpen } = useModalStore();
 
   const filteredGuests = useMemo(() => {
     const lowercasedFilter = searchTerm.toLowerCase();

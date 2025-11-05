@@ -30,7 +30,9 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { ThermalCoupon } from './thermal-coupon';
-import { useModal } from '@/hooks/use-modal-store';
+// ## INÍCIO DA CORREÇÃO ##
+import { useModalStore } from '@/hooks/use-modal-store'; // Alterado de useModal
+// ## FIM DA CORREÇÃO ##
 
 interface StaysListProps {
     stays: Stay[];
@@ -38,11 +40,14 @@ interface StaysListProps {
 
 export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
     const { user, getIdToken } = useAuth();
-    const { onOpen } = useModal();
+    // ## INÍCIO DA CORREÇÃO ##
+    const { onOpen } = useModalStore(); // Alterado de useModal
+    // ## FIM DA CORREÇÃO ##
     const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [stayToEnd, setStayToEnd] = useState<Stay | null>(null);
     const [isEnding, setIsEnding] = useState(false);
 
+    // (Resto do componente sem alterações)
     const handleOpenEndStayDialog = (stay: Stay) => {
         setStayToEnd(stay);
         setIsAlertOpen(true);
@@ -130,12 +135,10 @@ export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
                                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                            {/* ++ INÍCIO DA CORREÇÃO ++ */}
                                             <DropdownMenuItem onClick={() => onOpen('editStay', { stay })}>
                                                 <Edit className="mr-2 h-4 w-4" />
                                                 <span>Detalhes / Editar</span>
                                             </DropdownMenuItem>
-                                            {/* ++ FIM DA CORREÇÃO ++ */}
                                             <DropdownMenuItem onClick={() => handlePrintCoupon(stay)}><Printer className="mr-2 h-4 w-4" /><span>Imprimir Cupom</span></DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50" onClick={() => handleOpenEndStayDialog(stay)}><LogOut className="mr-2 h-4 w-4" /><span>Encerrar Estadia</span></DropdownMenuItem>

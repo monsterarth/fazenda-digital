@@ -5,299 +5,173 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { getFirebaseDb } from '@/lib/firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { useAuth } from '@/context/AuthContext';
-import { StaffProfile, StaffRole } from '@/types/maintenance';
-import { toast } from 'sonner';
-
+import { z } from 'zod';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, UserPlus, Send } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { toast, Toaster } from 'sonner';
+import { Loader2, UserPlus, Trash2, Edit } from 'lucide-react';
+// ## INÍCIO DA CORREÇÃO ##
+// Substituído 'StaffProfile' e 'StaffRole' por 'StaffMember'
+import { StaffMember } from '@/types/maintenance'; 
+// E importa o UserRole do AuthContext
+import { UserRole } from '@/context/AuthContext';
+// ## FIM DA CORREÇÃO ##
 
-// Schema para convidar novo funcionário
+// Esquema para o formulário de convite/atualização
 const staffFormSchema = z.object({
-  name: z.string().min(3, "O nome é obrigatório."),
-  email: z.string().email("E-mail inválido."),
-  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres."),
-  role: z.enum(["recepcao", "marketing", "cafe", "manutencao", "guarita"], {
-    required_error: "A função é obrigatória."
-  }),
+  email: z.string().email("Email inválido."),
+  name: z.string().min(2, "Nome é obrigatório."),
+  role: z.enum(["recepcao", "marketing", "cafe", "manutencao", "guarita", "super_admin"]),
 });
 
-type StaffFormData = z.infer<typeof staffFormSchema>;
+type StaffFormValues = z.infer<typeof staffFormSchema>;
 
-const roleNames: Record<StaffRole, string> = {
-  super_admin: 'Super Admin',
-  recepcao: 'Recepção',
-  marketing: 'Marketing',
-  cafe: 'Café',
-  manutencao: 'Manutenção',
-  guarita: 'Guarita',
-};
-
-export default function StaffManagementPage() {
-  const { getIdToken } = useAuth();
-  const [staffList, setStaffList] = useState<StaffProfile[]>([]);
+export default function ManageEquipePage() {
+  const [staffList, setStaffList] = useState<StaffMember[]>([]); // <-- CORRIGIDO
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editMode, setEditMode] = useState<string | null>(null); // Armazena o UID
 
-  const form = useForm<StaffFormData>({
+  const form = useForm<StaffFormValues>({
     resolver: zodResolver(staffFormSchema),
-    defaultValues: {
-      name: '',
-      email: '',
-      password: '',
-    },
   });
 
-  // Buscar a lista de funcionários existentes
+  // Busca a lista de staff
+  const fetchStaff = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/admin/staff');
+      const data = await response.json();
+      if (response.ok) {
+        setStaffList(data.staff);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error("Falha ao buscar equipe.");
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchStaff = async () => {
-      setLoading(true);
-      const db = await getFirebaseDb();
-      const q = query(collection(db, 'staff_profiles'), orderBy('createdAt', 'desc'));
-
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const list = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as StaffProfile));
-        setStaffList(list);
-        setLoading(false);
-      }, (error) => {
-        console.error("Erro ao buscar funcionários:", error);
-        toast.error("Falha ao carregar a lista de funcionários.", { description: error.message });
-        setLoading(false);
-      });
-
-      return () => unsubscribe();
-    };
     fetchStaff();
   }, []);
 
-  // Função para chamar nossa API e criar o usuário
-  const onSubmit = async (data: StaffFormData) => {
+  const onSubmit = async (values: StaffFormValues) => {
     setIsSubmitting(true);
-    const toastId = toast.loading("Criando novo funcionário...");
+    const method = editMode ? 'PUT' : 'POST';
+    const endpoint = editMode ? `/api/admin/staff?uid=${editMode}` : '/api/admin/staff';
+    const toastId = toast.loading(editMode ? "Atualizando membro..." : "Criando convite...");
 
     try {
-      const idToken = await getIdToken();
-      if (!idToken) {
-        throw new Error("Token de autenticação não encontrado.");
-      }
-
-      const response = await fetch('/api/admin/staff', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
-        body: JSON.stringify(data),
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
       });
 
-      const result = await response.json();
+      const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Falha na resposta da API.');
+      if (response.ok) {
+        toast.success(data.message, { id: toastId });
+        form.reset({ email: '', name: '', role: undefined });
+        setEditMode(null);
+        fetchStaff(); // Atualiza a lista
+      } else {
+        toast.error(data.message, { id: toastId });
       }
-
-      toast.success(result.message || "Funcionário criado com sucesso!", { id: toastId });
-      form.reset();
-
-    } catch (error) {
-      console.error(error);
-      toast.error("Falha ao criar funcionário.", { id: toastId, description: (error as Error).message });
-    } finally {
-      setIsSubmitting(false);
+    } catch (error: any) {
+      toast.error(`Falha: ${error.message}`, { id: toastId });
     }
+    setIsSubmitting(false);
   };
 
+  const handleEdit = (staff: StaffMember) => {
+    // A API/Auth não nos dá a role facilmente,
+    // então o 'edit' só preenche nome/email. A role deve ser re-selecionada.
+    setEditMode(staff.uid);
+    form.reset({
+      email: staff.email,
+      name: staff.name,
+      role: undefined, // Força a re-seleção da role por segurança
+    });
+  };
+  
+  // (A função de 'handleDelete' precisaria de um endpoint de API,
+  // vamos focar no 'create' e 'update' por enquanto)
+
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gerenciar Equipe</h1>
-          <p className="text-muted-foreground">
-            Convide novos funcionários e gerencie as permissões de acesso.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Coluna 1: Formulário de Convidar */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              Convidar Novo Funcionário
-            </CardTitle>
-            <CardDescription>
-              Isso criará um novo usuário e definirá suas permissões.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nome Completo</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Nome do funcionário" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>E-mail</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="email@dominio.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Senha Temporária</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        O funcionário poderá alterar esta senha depois.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="role"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Função (Role)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione uma permissão..." />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="recepcao">Recepção</SelectItem>
-                          <SelectItem value="manutencao">Manutenção</SelectItem>
-                          <SelectItem value="cafe">Café</SelectItem>
-                          <SelectItem value="marketing">Marketing</SelectItem>
-                          <SelectItem value="guarita">Guarita</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                  Enviar Convite
+    <div className="space-y-6">
+      <Toaster richColors position="top-center" />
+      <Card>
+        <CardHeader>
+          <CardTitle>{editMode ? "Editar Membro" : "Adicionar Novo Membro"}</CardTitle>
+          <CardDescription>
+            {editMode ? "Atualize a role e nome do membro." : "Envie um convite e defina a role para um novo membro da equipe."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <FormField control={form.control} name="name" render={({ field }) => (
+                <FormItem><FormLabel>Nome</FormLabel><FormControl><Input {...field} placeholder="Nome Sobrenome" /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="email" render={({ field }) => (
+                <FormItem><FormLabel>Email</FormLabel><FormControl><Input {...field} placeholder="email@dominio.com" disabled={!!editMode} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="role" render={({ field }) => (
+                <FormItem><FormLabel>Função (Role)</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione a função" /></SelectTrigger></FormControl><SelectContent>
+                  <SelectItem value="recepcao">Recepção</SelectItem>
+                  <SelectItem value="manutencao">Manutenção</SelectItem>
+                  <SelectItem value="cafe">Café</SelectItem>
+                  <SelectItem value="marketing">Marketing</SelectItem>
+                  <SelectItem value="guarita">Guarita</SelectItem>
+                  <SelectItem value="super_admin">Super Admin</SelectItem>
+                </SelectContent></Select><FormMessage /></FormItem>
+              )} />
+              <div className="flex items-end">
+                <Button type="submit" disabled={isSubmitting} className="w-full">
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editMode ? <Edit className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />)}
+                  {editMode ? "Atualizar" : "Salvar"}
                 </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-
-        {/* Coluna 2: Lista de Funcionários */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Equipe Atual</CardTitle>
-            <CardDescription>
-              Lista de todos os usuários com acesso ao painel de admin.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+                {editMode && <Button variant="ghost" onClick={() => { setEditMode(null); form.reset(); }} className="ml-2">Cancelar</Button>}
               </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Função</TableHead>
-                    <TableHead>Status</TableHead>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Equipe Atual</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Table>
+              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Email</TableHead><TableHead>UID</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {staffList.map((staff) => (
+                  <TableRow key={staff.uid}>
+                    <TableCell>{staff.name}</TableCell>
+                    <TableCell>{staff.email}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{staff.uid}</TableCell>
+                    <TableCell>
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(staff)}><Edit className="mr-2 h-4 w-4" /> Editar</Button>
+                      {/* <Button variant="destructive" size="sm" className="ml-2"><Trash2 className="mr-2 h-4 w-4" /> Excluir</Button> */}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {staffList.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center">
-                        Nenhum funcionário encontrado.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    staffList.map((staff) => (
-                      <TableRow key={staff.id}>
-                        <TableCell className="font-medium">{staff.name}</TableCell>
-                        <TableCell>{staff.email}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {roleNames[staff.role] || staff.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={staff.isActive ? "default" : "outline"}>
-                            {staff.isActive ? "Ativo" : "Inativo"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

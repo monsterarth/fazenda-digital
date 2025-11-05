@@ -3,131 +3,173 @@
 "use client";
 
 import React from 'react';
-import { MaintenanceTask } from '@/types/maintenance';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { Award, Clock, MapPin, Tag, UserCheck, Hand, CheckSquare, Archive } from 'lucide-react';
+import { 
+  Draggable,
+  DraggableProvided,
+  DraggableStateSnapshot
+} from '@hello-pangea/dnd';
+import { MaintenanceTask, StaffMember } from '@/types/maintenance';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@/components/ui/avatar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
+import { Lock, RefreshCw, ArrowUp, ArrowRight, ArrowDown } from 'lucide-react';
+import { useModalStore } from '@/hooks/use-modal-store';
 
 interface TaskCardProps {
-  task: MaintenanceTask;
-  // ++ ESTA É A CORREÇÃO: Propriedade agora é opcional (?) ++
-  onDelegateClick?: (task: MaintenanceTask) => void;
-  // TODO: Adicionar onReviewClick opcional
+  task: MaintenanceTask;
+  index: number;
+  allTasks: MaintenanceTask[];
+  staff: StaffMember[];
 }
 
-export function TaskCard({ task, onDelegateClick }: TaskCardProps) {
-// ++ FIM DA CORREÇÃO ++
-  
-  const getPriorityProps = (priority: 'low' | 'medium' | 'high'): { 
-    variant: "destructive" | "secondary" | "outline", 
-    text: string 
-  } => {
-    switch (priority) {
-      case 'high':
-        return { variant: 'destructive', text: 'Alta' };
-      case 'medium':
-        return { variant: 'secondary', text: 'Média' };
-      case 'low':
-      default:
-        return { variant: 'outline', text: 'Baixa' };
-    }
-  };
+const getInitials = (name: string) => {
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
+};
 
-  const priorityProps = getPriorityProps(task.priority);
-  
-  const timeAgo = formatDistanceToNow(task.createdAt.toDate(), {
-    addSuffix: true,
-    locale: ptBR,
-  });
+export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
+  const { onOpen } = useModalStore();
 
-  return (
-    <Card className="flex flex-col h-full">
-      <CardHeader>
-        <div className="flex justify-between items-start gap-2">
-          {/* Título */}
-          <CardTitle className="text-lg">{task.title}</CardTitle>
-          
-          {/* Prioridade */}
-          <Badge
-            variant={priorityProps.variant} 
-            className={cn(priorityProps.variant === 'destructive' ? 'bg-destructive' : '')}
-          >
-            {priorityProps.text}
-          </Badge>
-        </div>
-        
-        {/* Localização */}
-        <CardDescription className="flex items-center gap-2 pt-2">
-          <MapPin className="h-4 w-4" />
-          {task.location}
-        </CardDescription>
-      </CardHeader>
-      
-      <CardContent className="flex-grow space-y-3">
-        {/* Pontos */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Award className="h-4 w-4" />
-          <span>Vale {task.weight} pontos</span>
-        </div>
-        
-        {/* Criado Por */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <UserCheck className="h-4 w-4" />
-          <span>Criado por {task.createdBy}</span>
-        </div>
-        
-        {/* Tempo */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Clock className="h-4 w-4" />
-          <span>{timeAgo}</span>
-        </div>
+  // ## INÍCIO DA CORREÇÃO ##
+  // Adicionamos '|| []' para garantir que, se 'task.dependsOn' for undefined,
+  // usaremos um array vazio, o que previne o crash do .map()
+  const incompleteDependencies = (task.dependsOn || []).map(depId => {
+  // ## FIM DA CORREÇÃO ##
+      const depTask = allTasks.find(t => t.id === depId);
+      return depTask && depTask.status !== 'completed' ? depTask.title : null;
+    }).filter(Boolean);
+  
+  const isBlocked = incompleteDependencies.length > 0;
 
-        {/* Delegado Para (se existir) */}
-        {task.assignedToName && (
-           <div className="flex items-center gap-2 text-sm font-semibold text-primary">
-            <Tag className="h-4 w-4" />
-            <span>Delegado para: {task.assignedToName}</span>
-          </div>
-        )}
-      </CardContent>
-      
-      {/* ++ BOTÃO DE DELEGAR ATUALIZADO ++ */}
-      <CardFooter>
-        {task.status === 'backlog' && (
-          <Button 
-            variant="outline" 
-            className="w-full" 
-            // ++ CORREÇÃO: Verifica se a função existe antes de chamar ++
-            onClick={() => onDelegateClick && onDelegateClick(task)}
-            // ++ CORREÇÃO: Desabilita se a função não for passada ++
-            disabled={!onDelegateClick} 
+  // ## INÍCIO DA CORREÇÃO PROATIVA ##
+  // Aplicando a mesma lógica defensiva para 'assignedTo'
+  const assignedStaff = staff.filter(s => (task.assignedTo || []).includes(s.email));
+  // ## FIM DA CORREÇÃO PROATIVA ##
+
+  const priorityInfo = {
+    high: { icon: <ArrowUp className="h-4 w-4 text-red-500" />, label: "Alta" },
+    medium: { icon: <ArrowRight className="h-4 w-4 text-yellow-500" />, label: "Média" },
+    low: { icon: <ArrowDown className="h-4 w-4 text-green-500" />, label: "Baixa" },
+  };
+
+  const openDelegateModal = (e: React.MouseEvent) => {
+    e.stopPropagation(); 
+    onOpen('delegateMaintenanceTask', { task, staff });
+  };
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Draggable
+        draggableId={task.id}
+        index={index}
+        isDragDisabled={isBlocked && task.status === 'pending'}
+      >
+        {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            {...provided.dragHandleProps}
+            className="w-full"
           >
-            <Hand className="mr-2 h-4 w-4" />
-            {onDelegateClick ? "Delegar" : "Delegar (em breve)"}
-          </Button>
-        )}
-        {task.status === 'in_progress' && (
-          <span className="text-sm text-blue-600 font-medium w-full text-center">
-            Em andamento...
-          </span>
-        )}
-        {task.status === 'awaiting_review' && (
-          <Button variant="default" className="w-full" disabled>
-            <CheckSquare className="mr-2 h-4 w-4" />
-            Revisar (em breve)
-          </Button>
-        )}
-        {task.status === 'archived' && (
-          <span className="flex items-center justify-center text-sm text-green-600 font-medium w-full text-center">
-            <Archive className="mr-2 h-4 w-4" />
-            Arquivada
-          </span>
-        )}
-      </CardFooter>
-    </Card>
-  );
-}
+            <Card
+              className={cn(
+                'hover:shadow-md transition-shadow cursor-pointer',
+                snapshot.isDragging ? 'shadow-lg' : '',
+                isBlocked ? 'opacity-70 border-dashed border-red-500' : ''
+              )}
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">{task.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {task.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {task.description}
+                  </p>
+                )}
+                
+                <div className="flex items-center justify-between">
+                  {/* Avatares e Delegação */}
+                  <div 
+                    className="flex items-center -space-x-2 cursor-pointer hover:opacity-80"
+                    onClick={openDelegateModal}
+                  >
+                    {assignedStaff.length > 0 ? (
+                      assignedStaff.map(s => (
+                        <Tooltip key={s.uid}>
+                          <TooltipTrigger>
+                            <Avatar className="h-7 w-7 border-2 border-background">
+                              <AvatarFallback>{getInitials(s.name)}</AvatarFallback>
+                            </Avatar>
+                          </TooltipTrigger>
+                          <TooltipContent>{s.name}</TooltipContent>
+                        </Tooltip>
+                      ))
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Avatar className="h-7 w-7 border-2 border-dashed border-muted-foreground">
+                            <AvatarFallback>?</AvatarFallback>
+                          </Avatar>
+                        </TooltipTrigger>
+                        <TooltipContent>Delegar tarefa</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+
+                  {/* Ícones de Status */}
+                  <div className="flex items-center gap-2">
+                    {isBlocked && (
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Lock className="h-4 w-4 text-red-500" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Bloqueado por: {incompleteDependencies.join(', ')}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {task.recurrence && (
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <RefreshCw className="h-4 w-4 text-blue-500" />
+                        </TooltipTrigger>
+                        <TooltipContent>Tarefa recorrente</TooltipContent>
+                      </Tooltip>
+                    )}
+                    <Tooltip>
+                      <TooltipTrigger>
+                        {priorityInfo[task.priority].icon}
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Prioridade: {priorityInfo[task.priority].label}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+                
+                <Badge variant="outline">{task.location}</Badge>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </Draggable>
+    </TooltipProvider>
+  );
+};

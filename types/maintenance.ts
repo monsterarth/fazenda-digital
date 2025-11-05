@@ -1,65 +1,47 @@
 // types/maintenance.ts
 
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from 'firebase/firestore'; // <-- USANDO O TIMESTAMP DO CLIENTE
 
-// ++ NOVO: Tipo para as roles de staff (espelhado do AuthContext)
-export type StaffRole = 
-  | "super_admin"
-  | "recepcao"
-  | "marketing"
-  | "cafe"
-  | "manutencao"
-  | "guarita";
+// Status unificado para o Kanban
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'archived';
 
-/**
- * ++ NOVO: Perfil de Funcionário (Mestre)
- * Armazena os dados da conta de todos os funcionários.
- * (Coleção: 'staff_profiles')
- */
-export interface StaffProfile {
-  id: string; // UID do Firebase Auth
-  name: string;
-  email: string;
-  role: StaffRole;
-  isActive: boolean;
-  createdAt: Timestamp;
+// Regra de recorrência
+export interface RecurrenceRule {
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  interval: number;
+  endDate?: Timestamp; // Opcional: quando parar de repetir
 }
 
-
-/**
- * Armazena dados de performance e metadados de um funcionário
- * da manutenção. O ID deste documento é o UID do Firebase Auth
- * do usuário (que deve ter a role 'manutencao').
- * (Coleção: 'maintenance_staff')
- */
-export interface MaintenanceStaff {
-  id: string; // UID do Firebase Auth
-  name: string; // Nome de exibição
-  isActive: boolean; // Se o funcionário está ativo na plataforma
-  totalPoints: number; // A soma dos 'weight' de todas as tarefas concluídas
-}
-
-/**
-* A Ordem de Serviço (O.S.)
-* Baseado no nosso brainstorm de MVP (simples e mobile).
-* (Coleção: 'maintenance_tasks')
-*/
+// O modelo de dados principal para uma tarefa de manutenção
 export interface MaintenanceTask {
-  id: string;
-  title: string;       
-  location: string;    
-  priority: 'low' | 'medium' | 'high';
-  weight: number;         
+  id: string;
+  title: string;
+  description?: string;
+  status: TaskStatus;
+  priority: 'low' | 'medium' | 'high';
+  
+  location: string; 
+  
+  createdAt: Timestamp; // <-- Timestamp do cliente
+  createdBy: string; 
+  
+  assignedTo: string[]; 
+  dependsOn: string[]; 
+  recurrence?: RecurrenceRule; 
+  parentTaskId?: string; 
+  nextTaskId?: string;   
+}
 
-  status: 'backlog' | 'in_progress' | 'awaiting_review' | 'archived';
+// Tipo para o formulário de criação (usa string para datas)
+export type MaintenanceTaskFormValues = Omit<MaintenanceTask, 'id' | 'createdAt' | 'recurrence'> & {
+    recurrence?: Omit<RecurrenceRule, 'endDate'> & {
+        endDate?: string;
+    }
+};
 
-  assignedToId?: string; // UID do funcionário ('manutencao')
-  assignedToName?: string;
-
-  createdAt: Timestamp;
-  createdById: string; // UID do gestor ('super_admin' ou 'recepcao')
-  createdBy: string;   // Nome do gestor
-  
-  completedAt?: Timestamp; // Quando o *funcionário* marcou como 'awaiting_review'
-  reviewedAt?: Timestamp;  // Quando o *gestor* marcou como 'archived'
+// Tipo para os funcionários (para o formulário de delegação)
+export interface StaffMember {
+    uid: string;
+    email: string;
+    name: string;
 }

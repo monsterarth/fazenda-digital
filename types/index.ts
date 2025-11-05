@@ -413,3 +413,54 @@ export interface AppConfig {
   surveySuccessSubtitle?: string;
   surveySuccessFooter?: string;
 }
+
+// 9. LOG DE ATIVIDADES
+// ========================================================================
+export type ActivityLogActor = {
+  type: 'guest' | 'admin' | 'system';
+  identifier: string; // guestId, adminEmail, ou 'system'
+};
+
+export type ActivityLogType =
+  // Check-in
+  | 'checkin_submitted'
+  | 'checkin_validated'
+  | 'checkin_rejected'
+  // Estadia
+  | 'stay_created_manually'
+  | 'stay_ended'
+  | 'stay_token_updated'
+  // Café
+  | 'cafe_ordered'
+  | 'cafe_order_updated'
+  // Agendamentos
+  | 'booking_requested'
+  | 'booking_confirmed'
+  | 'booking_declined'
+  | 'booking_created_by_admin'
+  | 'booking_cancelled_by_admin'
+  | 'booking_cancelled_by_guest'
+  // Solicitações
+  | 'request_created'
+  | 'request_cancelled'
+  | 'request_in_progress'
+  | 'request_completed'
+  | 'request_deleted'
+  // Manutenção
+  | 'maintenance_task_created'
+  | 'maintenance_task_status_changed'
+  | 'maintenance_task_assigned'
+  // Pesquisas
+  | 'survey_submitted'
+  // Comunicação
+  | 'message_sent';
+
+export interface ActivityLog {
+  id: string;
+  timestamp: Timestamp;
+  type: ActivityLogType | string; // Permite strings customizadas
+  actor: ActivityLogActor;
+  details: string; // Ex: "Agendamento de Piscina para Hóspede X aprovado"
+  link?: string; // Ex: /admin/agendamentos
+}
+// ## FIM DA CORREÇÃO ##

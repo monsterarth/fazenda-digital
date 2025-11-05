@@ -1,15 +1,18 @@
+// app/admin/(dashboard)/solicitacoes/page.tsx
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from 'firebase/firestore';
 import { useAuth } from '@/context/AuthContext';
+// ++ INÍCIO DA ADIÇÃO ++
+import { useNotification } from '@/context/NotificationContext';
+// ++ FIM DA ADIÇÃO ++
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// ++ INÍCIO: Importar a Server Action que criamos ++
 import { manageRequest } from '@/app/actions/manage-request';
-// ++ FIM: Importar a Server Action ++
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -44,12 +47,21 @@ export interface Request {
 const REQUESTS_COLLECTION = 'requests';
 
 export default function ManageRequestsPage() {
-    // ++ INÍCIO: Pegar o 'user' do AuthContext para obtermos o e-mail do admin ++
     const { isAdmin, user } = useAuth();
-    // ++ FIM: Pegar o 'user' ++
+    // ++ INÍCIO DA ADIÇÃO ++
+    // Consome o hook de notificação para limpar o alerta
+    const { clearRequestsNotification } = useNotification();
+    // ++ FIM DA ADIÇÃO ++
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [requests, setRequests] = useState<Request[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // ++ INÍCIO DA ADIÇÃO ++
+    // Limpa a notificação assim que o componente é montado
+    useEffect(() => {
+        clearRequestsNotification();
+    }, [clearRequestsNotification]);
+    // ++ FIM DA ADIÇÃO ++
 
     useEffect(() => {
         if (!isAdmin) return;
@@ -76,7 +88,7 @@ export default function ManageRequestsPage() {
         initializeApp();
     }, [isAdmin]);
 
-    // ++ INÍCIO: Função 'updateRequestStatus' MODIFICADA para usar a Server Action ++
+    // (resto do código sem alterações...)
     const updateRequestStatus = async (requestId: string, newStatus: 'in_progress' | 'completed') => {
         if (!user || !user.email) {
             toast.error("Autenticação do admin não encontrada. Faça login novamente.");
@@ -102,9 +114,7 @@ export default function ManageRequestsPage() {
             toast.error("Falha ao atualizar status.", { id: toastId, description: error.message });
         }
     };
-    // ++ FIM: Função 'updateRequestStatus' MODIFICADA ++
-
-    // ++ INÍCIO: Função 'deleteRequest' MODIFICADA para usar a Server Action ++
+    
     const deleteRequest = async (requestId: string) => {
         if (!user || !user.email) {
             toast.error("Autenticação do admin não encontrada. Faça login novamente.");
@@ -130,7 +140,6 @@ export default function ManageRequestsPage() {
             toast.error("Falha ao excluir.", { id: toastId, description: error.message });
         }
     };
-    // ++ FIM: Função 'deleteRequest' MODIFICADA ++
 
     const filteredRequests = (status: RequestStatus) => requests.filter(r => r.status === status);
 

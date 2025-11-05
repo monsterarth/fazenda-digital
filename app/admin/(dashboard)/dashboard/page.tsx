@@ -1,32 +1,32 @@
+// app/admin/(dashboard)/dashboard/page.tsx
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react'; 
 import { db } from '@/lib/firebase';
+// ## INÍCIO DA CORREÇÃO ##
+// Removido 'subHours', Adicionado 'format' de date-fns
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, Timestamp, orderBy, limit } from 'firebase/firestore'; 
+import { format } from 'date-fns'; // <-- ADICIONADO
+// ## FIM DA CORREÇÃO ##
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Property } from '@/types'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-// ++ INÍCIO: Importações do Dialog já existem para o BreakfastSettingsModal ++
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'; 
-// ++ FIM: Importações do Dialog ++
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast, Toaster } from 'sonner';
-// ++ INÍCIO: Importar o ícone de 'TriangleAlert' (exclamação) ++
 import { 
     Utensils, CalendarCheck, UserPlus, Info, Loader2, Settings, ShieldX, 
     UserCheck, Star, Trash2, CalendarX, KeyRound, LogOut, Send, XCircle,
-    CheckCircle, Clock, TriangleAlert // <-- NOVO ÍCONE
+    CheckCircle, Clock, TriangleAlert 
 } from 'lucide-react';
-// ++ FIM: Importar o ícone ++
 import Link from 'next/link';
-// ++ INÍCIO: Importar 'useRouter' para o botão "Ver Solicitações" ++
 import { useRouter } from 'next/navigation'; 
-// ++ FIM: Importar 'useRouter' ++
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -141,35 +141,48 @@ export default function DashboardPage() {
     const pendingRequestsRef = useRef(0); 
     const [hasNewRequest, setHasNewRequest] = useState(false);
     
-    // ++ INÍCIO: Novo state para o modal de alerta ++
     const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
-    const router = useRouter(); // Hook para navegação
-    // ++ FIM: Novo state para o modal de alerta ++
+    const router = useRouter(); 
 
     useEffect(() => {
         const qOrders = query(collection(db, "breakfastOrders"), where("status", "==", "pending"));
-        const qBookings = query(collection(db, "bookings"), where("status", "==", "solicitado"));
         const qCheckIns = query(collection(db, "preCheckIns"), where("status", "==", "pendente"));
         const qRequests = query(collection(db, "requests"), where("status", "==", "pending"));
+
+        // ## INÍCIO DA CORREÇÃO (AGENDAMENTOS) ##
+        // 1. Pega a data de "hoje" no formato yyyy-MM-dd
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+        // 2. Cria a consulta por 'date' (agendamentos do dia)
+        const qBookings = query(
+            collection(db, "bookings"), 
+            where("date", "==", todayStr)
+        );
+        // ## FIM DA CORREÇÃO (AGENDAMENTOS) ##
         
         const unsubOrdersStats = onSnapshot(qOrders, (snapshot) => setStats(prev => ({ ...prev, pendingOrders: snapshot.size })));
-        const unsubBookingsStats = onSnapshot(qBookings, (snapshot) => setStats(prev => ({ ...prev, pendingBookings: snapshot.size })));
         const unsubCheckInsStats = onSnapshot(qCheckIns, (snapshot) => setStats(prev => ({ ...prev, pendingCheckIns: snapshot.size })));
 
-        // ++ INÍCIO: Lógica de Alerta ATUALIZADA ++
+        // ## INÍCIO DA CORREÇÃO (AGENDAMENTOS) ##
+        // 3. O listener agora apenas conta o total de agendamentos do dia
+        const unsubBookingsStats = onSnapshot(qBookings, (snapshot) => {
+            // Atualiza o estado com o total de agendamentos para hoje
+            setStats(prev => ({ ...prev, pendingBookings: snapshot.size }));
+        });
+        // ## FIM DA CORREÇÃO (AGENDAMENTOS) ##
+
+        // (Lógica de Alerta de Solicitações - sem alterações)
         const unsubRequestsStats = onSnapshot(qRequests, (snapshot) => {
             const newCount = snapshot.size;
-
             if (newCount > pendingRequestsRef.current) {
-                audioRef.current?.play(); // Toca o som
-                setHasNewRequest(true);   // Ativa o brilho no card
-                setIsNewRequestModalOpen(true); // ABRE O MODAL DE ALERTA
+                audioRef.current?.play(); 
+                setHasNewRequest(true);   
+                setIsNewRequestModalOpen(true); 
             }
-            
             pendingRequestsRef.current = newCount;
             setStats(prev => ({ ...prev, pendingRequests: newCount }));
         });
-        // ++ FIM: Lógica de Alerta ATUALIZADA ++
+        // (Fim da lógica de Solicitações)
 
         const qLogs = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"), limit(20));
         const unsubLogs = onSnapshot(qLogs, (snapshot) => {
@@ -184,7 +197,7 @@ export default function DashboardPage() {
         
         return () => {
             unsubOrdersStats(); 
-            unsubBookingsStats(); 
+            unsubBookingsStats(); // <-- Listener corrigido
             unsubCheckInsStats();
             unsubRequestsStats(); 
             unsubLogs();
@@ -202,7 +215,7 @@ export default function DashboardPage() {
         <>
             <audio ref={audioRef} src="/sounds/notification.mp3" preload="auto" />
             
-            {/* ++ INÍCIO: Modal de Alerta de Nova Solicitação (Exclamação) ++ */}
+            {/* Modal de Alerta de Nova Solicitação (sem alterações) */}
             <Dialog open={isNewRequestModalOpen} onOpenChange={setIsNewRequestModalOpen}>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
@@ -221,14 +234,14 @@ export default function DashboardPage() {
                   <Button onClick={() => {
                     router.push('/admin/solicitacoes');
                     setIsNewRequestModalOpen(false);
-                    setHasNewRequest(false); // Também remove o brilho do card
+                    setHasNewRequest(false); 
                   }}>
                     Ver Solicitações
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            {/* ++ FIM: Modal de Alerta ++ */}
+            {/* Fim do Modal */}
 
             <Toaster richColors position="top-center" />
             <BreakfastSettingsModal isOpen={isBreakfastModalOpen} onClose={() => setIsBreakfastModalOpen(false)} propertyInfo={propertyInfo} />
@@ -243,13 +256,17 @@ export default function DashboardPage() {
                         link="/admin/pedidos/cafe" 
                         description="Pedidos pendentes de impressão" 
                     />
+                    
+                    {/* ## INÍCIO DA CORREÇÃO (CARD DE AGENDAMENTOS) ## */}
                     <DashboardStatCard 
-                        title="Novos Agendamentos" 
-                        value={stats.pendingBookings} 
+                        title="Agendamentos de Hoje" // <-- Título atualizado
+                        value={stats.pendingBookings} // <-- Valor agora reflete o total do dia
                         icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />} 
                         link="/admin/agendamentos" 
-                        description="Serviços solicitados pelos hóspedes" 
+                        description="Total de reservas para hoje" // <-- Descrição atualizada
                     />
+                    {/* ## FIM DA CORREÇÃO (CARD DE AGENDAMENTOS) ## */}
+
                     <DashboardStatCard 
                         title="Pré-Check-ins Pendentes" 
                         value={stats.pendingCheckIns} 
@@ -258,13 +275,13 @@ export default function DashboardPage() {
                         description="Aguardando validação" 
                     />
                     
-                    {/* Card de Solicitações (ainda com o brilho) */}
+                    {/* Card de Solicitações (sem alterações) */}
                     <div 
                         className={cn(
                             "rounded-lg transition-all", 
-                            hasNewRequest && "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg animate-pulse" // ++ Adicionado 'animate-pulse' ++
+                            hasNewRequest && "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg animate-pulse"
                         )}
-                        onClick={() => setHasNewRequest(false)} // Desativa o brilho ao clicar
+                        onClick={() => setHasNewRequest(false)} 
                     >
                         <DashboardStatCard 
                             title="Novas Solicitações" 
@@ -277,7 +294,7 @@ export default function DashboardPage() {
                 </div>
                 
                 <div className="grid gap-6 lg:grid-cols-3 items-start">
-                    {/* Card de Status do Café */}
+                    {/* Card de Status do Café (sem alterações) */}
                     <div className="lg:col-span-1 space-y-6">
                         <Card>
                             <CardHeader>
@@ -296,7 +313,7 @@ export default function DashboardPage() {
                         </Card>
                     </div>
 
-                    {/* Card de Atividade Recente */}
+                    {/* Card de Atividade Recente (sem alterações) */}
                     <div className="lg:col-span-2">
                         <Card>
                             <CardHeader>

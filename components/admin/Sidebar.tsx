@@ -10,8 +10,10 @@ import {
     Home, Paintbrush, Utensils, CalendarCheck, MessageSquare, FileText, Wrench, Shield, Users,
     ConciergeBell, Book // Ícone para Guias
 } from 'lucide-react';
-// ++ ATUALIZADO: Importa useAuth e o novo UserRole
 import { useAuth, UserRole } from '@/context/AuthContext';
+// ++ INÍCIO DA ADIÇÃO ++
+import { useNotification } from '@/context/NotificationContext';
+// ++ FIM DA ADIÇÃO ++
 import { getAuth, signOut } from 'firebase/auth';
 import { toast } from 'sonner';
 import Image from 'next/image';
@@ -23,7 +25,7 @@ import {
 } from "@/components/ui/accordion"
 import { useProperty } from '@/context/PropertyContext';
 
-// ++ ATUALIZADO: Adicionado 'Manutenção'
+// (definições de mainNavItems e settingsNavItems sem alterações)
 const mainNavItems = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/stays', label: 'Estadias', icon: BedDouble },
@@ -32,11 +34,10 @@ const mainNavItems = [
     { href: '/admin/pedidos/cafe', label: 'Pedidos Café', icon: Coffee },
     { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
     { href: '/admin/solicitacoes', label: 'Solicitações', icon: ConciergeBell },
-    { href: '/admin/manutencao', label: 'Manutenção', icon: Wrench }, // ++ NOVO LINK
+    { href: '/admin/manutencao', label: 'Manutenção', icon: Wrench },
     { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },
 ];
 
-// ++ ATUALIZADO: Adicionado 'Gerenciar Equipe'
 const settingsNavItems = [
     { href: '/admin/settings/cabanas', label: 'Cabanas', icon: Home },
     { href: '/admin/settings/personalizacao', label: 'Personalização', icon: Paintbrush },
@@ -46,11 +47,11 @@ const settingsNavItems = [
     { href: '/admin/settings/servicos', label: 'Itens', icon: Wrench },
     { href: '/admin/settings/guias', label: 'Guias e Manuais', icon: Book }, 
     { href: '/admin/settings/politicas', label: 'Políticas', icon: Shield },
-    { href: '/admin/settings/equipe', label: 'Gerenciar Equipe', icon: Users }, // ++ NOVO LINK
+    { href: '/admin/settings/equipe', label: 'Gerenciar Equipe', icon: Users },
 ];
 
-// ++ NOVO: Mapa de Permissões (quem pode ver o quê)
-type Role = UserRole; // 'super_admin' | 'recepcao' | 'marketing' | 'cafe' | 'manutencao' | 'guarita' | null
+// (definições de permissions e checkPermission sem alterações)
+type Role = UserRole; 
 
 const permissions: Record<string, (Role)[]> = {
     // === Main Nav ===
@@ -73,14 +74,9 @@ const permissions: Record<string, (Role)[]> = {
     '/admin/settings/servicos': ['recepcao'],
     '/admin/settings/guias': ['recepcao'],
     '/admin/settings/politicas': [], // Apenas super_admin
-    '/admin/settings/equipe': [], // ++ NOVO: Apenas super_admin
+    '/admin/settings/equipe': [], // Apenas super_admin
 };
 
-// ++ NOVO: Helper de verificação
-/**
- * Verifica se o usuário tem permissão para acessar uma rota.
- * 'super_admin' sempre tem permissão.
- */
 const checkPermission = (role: Role, href: string): boolean => {
     if (role === 'super_admin') {
         return true;
@@ -88,17 +84,26 @@ const checkPermission = (role: Role, href: string): boolean => {
     if (!role) {
         return false;
     }
-    // Verifica se a rota está no mapa de permissões e se a role está incluída
     return permissions[href]?.includes(role) ?? false;
 };
+
+// ++ INÍCIO DA ADIÇÃO ++
+/** Um simples ponto visual para notificações */
+const NotificationDot = () => (
+    <span className="ml-auto h-2 w-2 rounded-full bg-red-500" />
+);
+// ++ FIM DA ADIÇÃO ++
 
 
 export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
-    // ++ ATUALIZADO: Puxa 'user' e 'userRole'
     const { user, userRole } = useAuth();
     const { property } = useProperty();
+    // ++ INÍCIO DA ADIÇÃO ++
+    // Consome o estado de notificação
+    const { hasNewRequests, hasNewBookings } = useNotification();
+    // ++ FIM DA ADIÇÃO ++
 
     const handleLogout = async () => {
         const auth = getAuth();
@@ -112,21 +117,21 @@ export function Sidebar() {
         }
     };
 
-    // ++ ATUALIZADO: NavLink agora aceita 'disabled'
-    const NavLink = ({ href, label, icon: Icon, disabled }: {
+    // ++ ATUALIZADO: NavLink agora aceita 'showDot'
+    const NavLink = ({ href, label, icon: Icon, disabled, showDot }: {
         href: string,
         label: string,
         icon: React.ElementType,
-        disabled?: boolean
+        disabled?: boolean,
+        showDot?: boolean // ++ ADICIONADO
     }) => {
         const isActive = pathname.startsWith(href);
 
-        // Se estiver desabilitado, renderiza um <span>
         if (disabled) {
             return (
                 <span className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-gray-400 cursor-not-allowed opacity-70",
-                    isActive && "text-gray-400" // Garante que mesmo ativo, pareça desabilitado
+                    isActive && "text-gray-400"
                 )}>
                     <Icon className="h-4 w-4" />
                     {label}
@@ -134,7 +139,6 @@ export function Sidebar() {
             );
         }
 
-        // Se estiver habilitado, renderiza um <Link>
         return (
             <Link href={href} className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-gray-500 transition-all hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50",
@@ -142,11 +146,13 @@ export function Sidebar() {
             )}>
                 <Icon className="h-4 w-4" />
                 {label}
+                {/* ++ INÍCIO DA ADIÇÃO ++ */}
+                {showDot && <NotificationDot />}
+                {/* ++ FIM DA ADIÇÃO ++ */}
             </Link>
         );
     };
 
-    // ++ NOVO: Verifica permissão para o grupo de Configurações
     const canAccessSettings = settingsNavItems.some(item => checkPermission(userRole, item.href));
 
     return (
@@ -161,16 +167,26 @@ export function Sidebar() {
                 <div className="flex-1 overflow-auto py-2">
                     <nav className="grid items-start px-4 text-sm font-medium">
                         
-                        {/* ++ ATUALIZADO: Mapeamento com verificação de permissão */}
+                        {/* ++ ATUALIZADO: Mapeamento com verificação de permissão e 'showDot' */}
                         {mainNavItems.map(item => {
                             const hasPermission = checkPermission(userRole, item.href);
-                            return <NavLink key={item.href} {...item} disabled={!hasPermission} />
+                            
+                            // ++ INÍCIO DA LÓGICA DO PONTO ++
+                            const showDot = (item.href === '/admin/solicitacoes' && hasNewRequests) ||
+                                            (item.href === '/admin/agendamentos' && hasNewBookings);
+                            // ++ FIM DA LÓGICA DO PONTO ++
+
+                            return <NavLink 
+                                key={item.href} 
+                                {...item} 
+                                disabled={!hasPermission} 
+                                showDot={showDot} // Passa a propriedade
+                            />
                         })}
 
                         <Accordion type="single" collapsible className="w-full mt-2" defaultValue={settingsNavItems.some(item => pathname.startsWith(item.href)) ? "settings" : undefined}>
                             <AccordionItem value="settings" className="border-b-0">
                                 
-                                {/* ++ ATUALIZADO: Trigger desabilitado se não houver acesso a NENHUM item */}
                                 <AccordionTrigger
                                     disabled={!canAccessSettings}
                                     className={cn(
@@ -184,7 +200,6 @@ export function Sidebar() {
                                 <AccordionContent className="pl-7 pt-2">
                                     <nav className="grid gap-1">
                                         
-                                        {/* ++ ATUALIZADO: Mapeamento com verificação de permissão */}
                                         {settingsNavItems.map(item => {
                                              const hasPermission = checkPermission(userRole, item.href);
                                              return <NavLink key={item.href} {...item} disabled={!hasPermission} />

@@ -20,18 +20,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast, Toaster } from 'sonner';
+// ++ ATUALIZADO: Importa 'Filter' e 'Wrench' (Manutenção) ++
 import { 
     Utensils, CalendarCheck, UserPlus, Info, Loader2, Settings, ShieldX, 
     UserCheck, Star, Trash2, CalendarX, KeyRound, LogOut, Send, XCircle,
-    CheckCircle, Clock, TriangleAlert 
+    CheckCircle, Clock, TriangleAlert, Filter, Wrench
 } from 'lucide-react';
+// ++ ATUALIZADO: Importa DropdownMenu para o filtro ++
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation'; 
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 
-// ... (schema 'breakfastSettingsSchema' e tipo 'ActivityLog' não mudam) ...
+// ... (schema 'breakfastSettingsSchema' não muda) ...
 const breakfastSettingsSchema = z.object({
     type: z.enum(['on-site', 'delivery']),
     orderingStartTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Formato inválido (HH:MM)"),
@@ -39,6 +49,7 @@ const breakfastSettingsSchema = z.object({
 });
 type BreakfastSettingsFormValues = z.infer<typeof breakfastSettingsSchema>;
 
+// ++ ATUALIZADO: Tipo ActivityLog agora inclui 'maintenance_task_deleted' ++
 type ActivityLog = {
     id: string;
     timestamp: Timestamp;
@@ -57,15 +68,22 @@ type ActivityLog = {
       | 'stay_created_manually'
       | 'stay_ended'
       | 'stay_token_updated'
-      | 'request_created'     
+      | 'request_created'       
       | 'request_cancelled'
       | 'request_in_progress' 
       | 'request_completed'   
-      | 'request_deleted';    
+      | 'request_deleted'
+      | 'maintenance_task_created'
+      | 'maintenance_task_assigned'
+      | 'maintenance_task_status_changed'
+      | 'maintenance_task_completed'
+      | 'maintenance_task_archived'
+      | 'maintenance_task_deleted'; // <-- ADIÇÃO DA ÚLTIMA RESPOSTA
     actor: { type: 'guest' | 'admin'; identifier: string; };
     details: string;
     link: string;
 };
+
 // ... (Componente 'BreakfastSettingsModal' não muda) ...
 const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boolean, onClose: () => void, propertyInfo: Property | null }) => {
     if (!propertyInfo?.breakfast) return null;
@@ -96,82 +114,148 @@ const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boo
         <Dialog open={isOpen} onOpenChange={onClose}><DialogContent><DialogHeader><DialogTitle>Configurações do Café da Manhã</DialogTitle><DialogDescription>Altere rapidamente a modalidade e horários para novos pedidos.</DialogDescription></DialogHeader><Form {...form}><form onSubmit={form.handleSubmit(handleSaveChanges)} className="space-y-4 pt-4"><FormField control={form.control} name="type" render={({ field }) => (<FormItem><FormLabel>Modalidade</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="on-site">Servido no Salão</SelectItem><SelectItem value="delivery">Entrega de Cestas</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} /><div className="grid grid-cols-2 gap-4"><FormField control={form.control} name="orderingStartTime" render={({ field }) => (<FormItem><FormLabel>Início dos Pedidos</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} /><FormField control={form.control} name="orderingEndTime" render={({ field }) => (<FormItem><FormLabel>Horário Limite</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} /></div><DialogFooter className="pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button><Button type="submit" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar</Button></DialogFooter></form></Form></DialogContent></Dialog>
     );
 };
+
 // ... (Componente 'DashboardStatCard' não muda) ...
 const DashboardStatCard = ({ title, value, icon, link, description }: { title: string, value: number, icon: React.ReactNode, link: string, description: string }) => (
     <Link href={link} className="block"><Card className="hover:border-primary transition-colors h-full"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">{title}</CardTitle>{icon}</CardHeader><CardContent><div className="text-2xl font-bold">{value}</div><p className="text-xs text-muted-foreground">{description}</p></CardContent></Card></Link>
 );
-// ... (Componente 'activityTypeMap' não muda) ...
+
+// ++ ATUALIZADO: 'activityTypeMap' agora inclui 'maintenance_task_deleted' ++
 const activityTypeMap: Record<ActivityLog['type'] | 'default', { icon: React.ReactNode; title: string; color: string; }> = {
+    // Check-in
     checkin_submitted: { icon: <UserPlus className="h-5 w-5" />, title: "Pré-Check-in Recebido", color: "bg-blue-100 text-blue-800" },
+    checkin_validated: { icon: <UserCheck className="h-5 w-5" />, title: "Check-in Validado", color: "bg-green-100 text-green-800" },
+    checkin_rejected: { icon: <ShieldX className="h-5 w-5" />, title: "Check-in Recusado", color: "bg-red-100 text-red-800" },
+    // Café
     cafe_ordered: { icon: <Utensils className="h-5 w-5" />, title: "Novo Pedido de Café", color: "bg-blue-100 text-blue-800" },
+    // Agendamentos
     booking_requested: { icon: <CalendarCheck className="h-5 w-5" />, title: "Novo Agendamento", color: "bg-blue-100 text-blue-800" },
-    survey_submitted: { icon: <Star className="h-5 w-5" />, title: "Nova Avaliação", color: "bg-blue-100 text-blue-800" },
     booking_cancelled_by_guest: { icon: <CalendarX className="h-5 w-5" />, title: "Agend. Cancelado (Hósp.)", color: "bg-yellow-100 text-yellow-800" },
+    booking_confirmed: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Confirmado", color: "bg-green-100 text-green-800" },
+    booking_created_by_admin: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Criado", color: "bg-green-100 text-green-800" },
+    booking_declined: { icon: <CalendarX className="h-5 w-5" />, title: "Agendamento Recusado", color: "bg-red-100 text-red-800" },
+    booking_cancelled_by_admin: { icon: <Trash2 className="h-5 w-5" />, title: "Agend. Cancelado (Admin)", color: "bg-red-100 text-red-800" },
+    // Pesquisas
+    survey_submitted: { icon: <Star className="h-5 w-5" />, title: "Nova Avaliação", color: "bg-blue-100 text-blue-800" },
+    // Solicitações
     request_created: { icon: <Send className="h-5 w-5" />, title: "Nova Solicitação", color: "bg-blue-100 text-blue-800" },
     request_cancelled: { icon: <XCircle className="h-5 w-5" />, title: "Solicitação Cancelada", color: "bg-yellow-100 text-yellow-800" },
     request_in_progress: { icon: <Clock className="h-5 w-5" />, title: "Solicitação em Andamento", color: "bg-purple-100 text-purple-800" },
     request_completed: { icon: <CheckCircle className="h-5 w-5" />, title: "Solicitação Concluída", color: "bg-green-100 text-green-800" },
     request_deleted: { icon: <Trash2 className="h-5 w-5" />, title: "Solicitação Excluída", color: "bg-red-100 text-red-800" },
-    checkin_validated: { icon: <UserCheck className="h-5 w-5" />, title: "Check-in Validado", color: "bg-green-100 text-green-800" },
+    // Estadias
     stay_created_manually: { icon: <UserPlus className="h-5 w-5" />, title: "Estadia Criada", color: "bg-green-100 text-green-800" },
-    booking_confirmed: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Confirmado", color: "bg-green-100 text-green-800" },
-    booking_created_by_admin: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Criado", color: "bg-green-100 text-green-800" },
-    checkin_rejected: { icon: <ShieldX className="h-5 w-5" />, title: "Check-in Recusado", color: "bg-red-100 text-red-800" },
-    booking_declined: { icon: <CalendarX className="h-5 w-5" />, title: "Agendamento Recusado", color: "bg-red-100 text-red-800" },
-    booking_cancelled_by_admin: { icon: <Trash2 className="h-5 w-5" />, title: "Agend. Cancelado (Admin)", color: "bg-red-100 text-red-800" },
     stay_ended: { icon: <LogOut className="h-5 w-5" />, title: "Estadia Encerrada", color: "bg-red-100 text-red-800" },
     stay_token_updated: { icon: <KeyRound className="h-5 w-5" />, title: "Token Alterado", color: "bg-purple-100 text-purple-800" },
+    // Manutenção
+    maintenance_task_created: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Criada", color: "bg-gray-100 text-gray-800" },
+    maintenance_task_assigned: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Delegada", color: "bg-gray-100 text-gray-800" },
+    maintenance_task_status_changed: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Atualizada", color: "bg-gray-100 text-gray-800" },
+    maintenance_task_completed: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Concluída", color: "bg-gray-100 text-gray-800" },
+    maintenance_task_archived: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Arquivada", color: "bg-gray-100 text-gray-800" },
+    maintenance_task_deleted: { icon: <Trash2 className="h-5 w-5" />, title: "Tarefa Excluída", color: "bg-red-100 text-red-800" }, // <-- ADIÇÃO DA ÚLTIMA RESPOSTA
+    // Default
     default: { icon: <Info className="h-5 w-5" />, title: "Nova Atividade", color: "bg-muted text-muted-foreground" }
 };
 
+// ... (FilterCategory não muda) ...
+type FilterCategory = 'checkin' | 'cafe' | 'booking' | 'survey' | 'request' | 'stay' | 'task' | 'other';
+
+// ++ ATUALIZADO: 'activityCategoryMap' agora inclui 'maintenance_task_deleted' ++
+const activityCategoryMap: Record<ActivityLog['type'], FilterCategory> = {
+    checkin_submitted: 'checkin',
+    checkin_validated: 'checkin',
+    checkin_rejected: 'checkin',
+    cafe_ordered: 'cafe',
+    booking_requested: 'booking',
+    booking_confirmed: 'booking',
+    booking_declined: 'booking',
+    booking_created_by_admin: 'booking',
+    booking_cancelled_by_admin: 'booking',
+    booking_cancelled_by_guest: 'booking',
+    survey_submitted: 'survey',
+    request_created: 'request',
+    request_cancelled: 'request',
+    request_in_progress: 'request',
+    request_completed: 'request',
+    request_deleted: 'request',
+    stay_created_manually: 'stay',
+    stay_ended: 'stay',
+    stay_token_updated: 'stay',
+    maintenance_task_created: 'task',
+    maintenance_task_assigned: 'task',
+    maintenance_task_status_changed: 'task',
+    maintenance_task_completed: 'task',
+    maintenance_task_archived: 'task',
+    maintenance_task_deleted: 'task', // <-- ADIÇÃO DA ÚLTIMA RESPOSTA
+};
+
+// ... (filterConfig não muda) ...
+const filterConfig: Record<FilterCategory, string> = {
+    checkin: "Check-ins",
+    cafe: "Pedidos de Café",
+    booking: "Agendamentos",
+    survey: "Pesquisas",
+    request: "Solicitações",
+    stay: "Estadias",
+    task: "Manutenção",
+    other: "Outros", 
+};
+
+
 export default function DashboardPage() {
+    // ... (Hooks de estado, stats, propertyInfo, etc. não mudam) ...
     const [stats, setStats] = useState({ 
         pendingOrders: 0, 
         pendingBookings: 0, 
         pendingCheckIns: 0,
         pendingRequests: 0 
     });
-
     const [propertyInfo, setPropertyInfo] = useState<Property | null>(null);
     const [activityFeed, setActivityFeed] = useState<ActivityLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [isBreakfastModalOpen, setIsBreakfastModalOpen] = useState(false);
-    
     const audioRef = useRef<HTMLAudioElement>(null);
     const pendingRequestsRef = useRef(0); 
     const [hasNewRequest, setHasNewRequest] = useState(false);
-    
     const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
     const router = useRouter(); 
 
+    // ... (Estado dos filtros não muda) ...
+    const [filters, setFilters] = useState({
+        checkin: true,
+        cafe: true,
+        booking: true,
+        survey: true,
+        request: true,
+        stay: true,
+        task: false, // <-- Desativado por padrão
+        other: true,
+    });
+
+    // ... (handleFilterChange não muda) ...
+    const handleFilterChange = (category: FilterCategory, checked: boolean) => {
+        setFilters(prev => ({
+            ...prev,
+            [category]: checked,
+        }));
+    };
+
+    // ... (useEffect para buscar dados não muda) ...
     useEffect(() => {
         const qOrders = query(collection(db, "breakfastOrders"), where("status", "==", "pending"));
         const qCheckIns = query(collection(db, "preCheckIns"), where("status", "==", "pendente"));
         const qRequests = query(collection(db, "requests"), where("status", "==", "pending"));
-
-        // ## INÍCIO DA CORREÇÃO (AGENDAMENTOS) ##
-        // 1. Pega a data de "hoje" no formato yyyy-MM-dd
         const todayStr = format(new Date(), 'yyyy-MM-dd');
-
-        // 2. Cria a consulta por 'date' (agendamentos do dia)
         const qBookings = query(
             collection(db, "bookings"), 
             where("date", "==", todayStr)
         );
-        // ## FIM DA CORREÇÃO (AGENDAMENTOS) ##
-        
         const unsubOrdersStats = onSnapshot(qOrders, (snapshot) => setStats(prev => ({ ...prev, pendingOrders: snapshot.size })));
         const unsubCheckInsStats = onSnapshot(qCheckIns, (snapshot) => setStats(prev => ({ ...prev, pendingCheckIns: snapshot.size })));
-
-        // ## INÍCIO DA CORREÇÃO (AGENDAMENTOS) ##
-        // 3. O listener agora apenas conta o total de agendamentos do dia
         const unsubBookingsStats = onSnapshot(qBookings, (snapshot) => {
-            // Atualiza o estado com o total de agendamentos para hoje
             setStats(prev => ({ ...prev, pendingBookings: snapshot.size }));
         });
-        // ## FIM DA CORREÇÃO (AGENDAMENTOS) ##
-
-        // (Lógica de Alerta de Solicitações - sem alterações)
         const unsubRequestsStats = onSnapshot(qRequests, (snapshot) => {
             const newCount = snapshot.size;
             if (newCount > pendingRequestsRef.current) {
@@ -182,22 +266,18 @@ export default function DashboardPage() {
             pendingRequestsRef.current = newCount;
             setStats(prev => ({ ...prev, pendingRequests: newCount }));
         });
-        // (Fim da lógica de Solicitações)
-
         const qLogs = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"), limit(20));
         const unsubLogs = onSnapshot(qLogs, (snapshot) => {
             const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog));
             setActivityFeed(logs);
             if(loading) setLoading(false); 
         });
-        
         const unsubProp = onSnapshot(doc(db, 'properties', 'default'), (doc) => {
             if (doc.exists()) setPropertyInfo(doc.data() as Property);
         });
-        
         return () => {
             unsubOrdersStats(); 
-            unsubBookingsStats(); // <-- Listener corrigido
+            unsubBookingsStats(); 
             unsubCheckInsStats();
             unsubRequestsStats(); 
             unsubLogs();
@@ -205,17 +285,24 @@ export default function DashboardPage() {
         };
     }, []); 
     
+    // ... (useMemo para filtrar não muda) ...
+    const filteredActivityFeed = useMemo(() => {
+        return activityFeed.filter(log => {
+            const category = activityCategoryMap[log.type] || 'other';
+            return filters[category as keyof typeof filters];
+        });
+    }, [activityFeed, filters]); 
+
+    // ... (Renderização do return, loading, breakfastMode, etc. não mudam) ...
     if (loading) {
         return <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin"/></div>
     }
-
     const breakfastMode = propertyInfo?.breakfast?.type === 'on-site' ? 'Servido no Salão' : 'Entrega de Cestas';
 
     return (
         <>
             <audio ref={audioRef} src="/sounds/notification.mp3" preload="auto" />
             
-            {/* Modal de Alerta de Nova Solicitação (sem alterações) */}
             <Dialog open={isNewRequestModalOpen} onOpenChange={setIsNewRequestModalOpen}>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
@@ -241,7 +328,6 @@ export default function DashboardPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            {/* Fim do Modal */}
 
             <Toaster richColors position="top-center" />
             <BreakfastSettingsModal isOpen={isBreakfastModalOpen} onClose={() => setIsBreakfastModalOpen(false)} propertyInfo={propertyInfo} />
@@ -256,17 +342,13 @@ export default function DashboardPage() {
                         link="/admin/pedidos/cafe" 
                         description="Pedidos pendentes de impressão" 
                     />
-                    
-                    {/* ## INÍCIO DA CORREÇÃO (CARD DE AGENDAMENTOS) ## */}
                     <DashboardStatCard 
-                        title="Agendamentos de Hoje" // <-- Título atualizado
-                        value={stats.pendingBookings} // <-- Valor agora reflete o total do dia
+                        title="Agendamentos de Hoje" 
+                        value={stats.pendingBookings}
                         icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />} 
                         link="/admin/agendamentos" 
-                        description="Total de reservas para hoje" // <-- Descrição atualizada
+                        description="Total de reservas para hoje"
                     />
-                    {/* ## FIM DA CORREÇÃO (CARD DE AGENDAMENTOS) ## */}
-
                     <DashboardStatCard 
                         title="Pré-Check-ins Pendentes" 
                         value={stats.pendingCheckIns} 
@@ -274,8 +356,6 @@ export default function DashboardPage() {
                         link="/admin/stays" 
                         description="Aguardando validação" 
                     />
-                    
-                    {/* Card de Solicitações (sem alterações) */}
                     <div 
                         className={cn(
                             "rounded-lg transition-all", 
@@ -294,7 +374,6 @@ export default function DashboardPage() {
                 </div>
                 
                 <div className="grid gap-6 lg:grid-cols-3 items-start">
-                    {/* Card de Status do Café (sem alterações) */}
                     <div className="lg:col-span-1 space-y-6">
                         <Card>
                             <CardHeader>
@@ -313,19 +392,43 @@ export default function DashboardPage() {
                         </Card>
                     </div>
 
-                    {/* Card de Atividade Recente (sem alterações) */}
                     <div className="lg:col-span-2">
                         <Card>
                             <CardHeader>
-                                <CardTitle>Atividade Recente</CardTitle>
-                                <CardDescription>Últimas ações realizadas na plataforma.</CardDescription>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle>Atividade Recente</CardTitle>
+                                        <CardDescription>Últimas ações realizadas na plataforma.</CardDescription>
+                                    </div>
+                                    
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" size="sm">
+                                                <Filter className="mr-2 h-4 w-4" />
+                                                Filtros
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent className="w-56" align="end">
+                                            <DropdownMenuLabel>Exibir Atividades</DropdownMenuLabel>
+                                            <DropdownMenuSeparator />
+                                            {(Object.keys(filters) as FilterCategory[]).map(category => (
+                                                <DropdownMenuCheckboxItem
+                                                    key={category}
+                                                    checked={filters[category]}
+                                                    onCheckedChange={(checked) => handleFilterChange(category, !!checked)}
+                                                >
+                                                    {filterConfig[category]}
+                                                </DropdownMenuCheckboxItem>
+                                            ))}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
                             </CardHeader>
                             <CardContent>
-                                {activityFeed.length > 0 ? (
+                                {filteredActivityFeed.length > 0 ? (
                                     <div className="space-y-4">
-                                        {activityFeed.map(log => {
+                                        {filteredActivityFeed.map(log => {
                                             const activityInfo = activityTypeMap[log.type] || activityTypeMap.default;
-                                            
                                             const description = log.actor.type === 'admin' 
                                                 ? `${log.details} por ${log.actor.identifier}`
                                                 : log.details;
@@ -347,7 +450,9 @@ export default function DashboardPage() {
                                         })}
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-center text-muted-foreground py-8">Nenhuma atividade recente para exibir.</p>
+                                    <p className="text-sm text-center text-muted-foreground py-8">
+                                        {activityFeed.length > 0 ? "Nenhuma atividade corresponde aos filtros." : "Nenhuma atividade recente para exibir."}
+                                    </p>
                                 )}
                             </CardContent>
                         </Card>

@@ -4,15 +4,16 @@
 
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase-admin";
-import { Timestamp as AdminTimestamp, FieldPath } from "firebase-admin/firestore";
+import { Timestamp as AdminTimestamp, FieldPath, FieldValue } from "firebase-admin/firestore";
 import { revalidatePath } from "next/cache";
 import { MaintenanceTask, RecurrenceRule, TaskStatus } from "@/types/maintenance";
 import { ActivityLog } from '@/types'; 
 import { add, set } from "date-fns";
+import { convertAdminTimestamps } from "@/lib/firestore-utils";
 
 const TASKS_COLLECTION = "maintenance_tasks";
 
-// Helper de Log no Servidor (das etapas anteriores)
+// Helper de Log no Servidor
 async function addAdminActivityLog(log: Omit<ActivityLog, 'id' | 'timestamp'>) {
   try {
     await adminDb.collection("activity_logs").add({
@@ -24,28 +25,7 @@ async function addAdminActivityLog(log: Omit<ActivityLog, 'id' | 'timestamp'>) {
   }
 }
 
-// ## INÍCIO DA ADIÇÃO ##
-// Helper de conversão de Timestamp (copiado de get-property.ts)
-// Esta função irá "limpar" nosso objeto de retorno.
-function convertAdminTimestamps(obj: any): any {
-  if (obj instanceof AdminTimestamp) {
-    return obj.toDate().toISOString();
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(convertAdminTimestamps);
-  }
-  if (obj && typeof obj === 'object' && obj.constructor === Object) {
-    const newObj: { [key: string]: any } = {};
-    for (const key in obj) {
-      newObj[key] = convertAdminTimestamps(obj[key]);
-    }
-    return newObj;
-  }
-  return obj;
-}
-// ## FIM DA ADIÇÃO ##
-
-// Esquema Zod (sem alterações)
+// Esquema Zod
 const taskSchema = z.object({
   title: z.string().min(3, "O título é obrigatório."),
   priority: z.enum(["low", "medium", "high"]),
@@ -56,9 +36,9 @@ const taskSchema = z.object({
     .object({
       frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
       interval: z.coerce.number().min(1),
-      endDate: z.string().optional(),
+      endDate: z.string(), 
     })
-    .optional(),
+    .optional(), 
 });
 
 type ActionResponse<T> = {
@@ -84,7 +64,6 @@ export async function createMaintenanceTask(
     const { title, recurrence, ...rest } = validation.data;
     const newTaskRef = adminDb.collection(TASKS_COLLECTION).doc();
     
-    // 1. Cria o objeto base (corrigido na etapa anterior)
     const newTaskData: any = {
       title,
       ...rest,
@@ -94,14 +73,14 @@ export async function createMaintenanceTask(
       assignedTo: [],
       dependsOn: rest.dependsOn || [], 
     };
+
     if (recurrence) {
       newTaskData.recurrence = {
           ...recurrence,
-          endDate: recurrence.endDate ? AdminTimestamp.fromDate(new Date(recurrence.endDate)) : undefined
+          endDate: AdminTimestamp.fromDate(new Date(recurrence.endDate))
       };
     }
 
-    // 2. Salva no DB
     await newTaskRef.set(newTaskData);
     const taskWithId = { ...newTaskData, id: newTaskRef.id };
 
@@ -113,23 +92,90 @@ export async function createMaintenanceTask(
     });
 
     revalidatePath("/admin/manutencao");
-
-    // ## INÍCIO DA CORREÇÃO ##
-    // 3. Limpa o objeto de retorno
-    // Converte 'AdminTimestamp' para string ISO antes de retornar ao cliente.
     const plainTaskData = convertAdminTimestamps(taskWithId);
-    
-    // 4. Retorna o objeto "plano"
     return { success: true, data: plainTaskData as MaintenanceTask };
-    // ## FIM DA CORREÇÃO ##
 
   } catch (error: any) {
     return { success: false, message: `Falha ao criar tarefa: ${error.message}` };
   }
 }
 
+// --- AÇÃO: ATUALIZAR TAREFA ---
+export async function updateMaintenanceTask(
+  taskId: string,
+  formData: z.infer<typeof taskSchema>,
+  adminEmail: string
+): Promise<ActionResponse<string>> {
+  
+  const validation = taskSchema.safeParse(formData);
+  if (!validation.success) {
+    return { success: false, message: validation.error.errors[0].message };
+  }
+
+  try {
+    const { title, recurrence, ...rest } = validation.data;
+    const taskRef = adminDb.collection(TASKS_COLLECTION).doc(taskId);
+
+    const dataToUpdate: any = {
+      title,
+      ...rest,
+      dependsOn: rest.dependsOn || [],
+    };
+
+    if (recurrence) {
+      dataToUpdate.recurrence = {
+        ...recurrence,
+        endDate: AdminTimestamp.fromDate(new Date(recurrence.endDate))
+      };
+    } else {
+      dataToUpdate.recurrence = FieldValue.delete();
+    }
+
+    await taskRef.update(dataToUpdate);
+
+    await addAdminActivityLog({
+      type: "maintenance_task_status_changed", 
+      actor: { type: "admin", identifier: adminEmail },
+      details: `Tarefa '${title}' foi atualizada.`,
+      link: "/admin/manutencao",
+    });
+
+    revalidatePath("/admin/manutencao");
+    return { success: true, data: taskId };
+
+  } catch (error: any) {
+    return { success: false, message: `Falha ao atualizar tarefa: ${error.message}` };
+  }
+}
+
+// --- AÇÃO: EXCLUIR TAREFA ---
+export async function deleteMaintenanceTask(
+  taskId: string,
+  taskTitle: string,
+  adminEmail: string
+): Promise<ActionResponse<string>> {
+  
+  try {
+    const taskRef = adminDb.collection(TASKS_COLLECTION).doc(taskId);
+    await taskRef.delete();
+
+    await addAdminActivityLog({
+      type: 'maintenance_task_deleted',
+      actor: { type: 'admin', identifier: adminEmail },
+      details: `Tarefa '${taskTitle}' foi excluída.`,
+      link: '/admin/manutencao'
+    });
+
+    revalidatePath("/admin/manutencao");
+    return { success: true, data: taskId };
+
+  } catch (error: any) {
+    return { success: false, message: `Falha ao excluir tarefa: ${error.message}` };
+  }
+}
+
+
 // --- AÇÃO: ATUALIZAR STATUS (DRAG-AND-DROP) ---
-// (Esta ação retorna apenas 'string', então está segura - sem alterações)
 export async function updateTaskStatus(
   taskId: string,
   newStatus: TaskStatus,
@@ -141,7 +187,7 @@ export async function updateTaskStatus(
   if (!taskDoc.exists) {
     return { success: false, message: "Tarefa não encontrada." };
   }
-  const taskData = taskDoc.data() as MaintenanceTask;
+  const taskData = taskDoc.data() as MaintenanceTask; 
 
   // 1. VALIDAÇÃO DE DEPENDÊNCIA
   if (newStatus === "in_progress" && (taskData.dependsOn || []).length > 0) {
@@ -161,7 +207,13 @@ export async function updateTaskStatus(
     // 2. VALIDAÇÃO DE RECORRÊNCIA
     if (newStatus === "completed" && taskData.recurrence) {
       const taskDataWithAdminTimestamp = taskDoc.data() as MaintenanceTask & { createdAt: AdminTimestamp };
-      const nextTask = await createNextRecurrentTask(taskDataWithAdminTimestamp, adminEmail);
+      
+      const nextTask = await createNextRecurrentTask(
+        taskDataWithAdminTimestamp, 
+        adminEmail, 
+        taskId 
+      );
+      
       await taskRef.update({
         status: "completed",
         nextTaskId: nextTask?.id || null, 
@@ -186,7 +238,6 @@ export async function updateTaskStatus(
 }
 
 // --- AÇÃO: DELEGAR TAREFA ---
-// (Esta ação retorna 'string[]', então está segura - sem alterações)
 export async function delegateMaintenanceTask(
   taskId: string,
   assignedEmails: string[],
@@ -220,10 +271,10 @@ export async function delegateMaintenanceTask(
 
 
 // --- LÓGICA AUXILIAR: GERAR PRÓXIMA TAREFA ---
-// (Sem alterações)
 async function createNextRecurrentTask(
     parentTask: MaintenanceTask & { recurrence?: RecurrenceRule & { endDate?: AdminTimestamp } },
-    adminEmail: string
+    adminEmail: string,
+    parentTaskId: string 
 ): Promise<{ id: string } | null> {
     
     if (!parentTask.recurrence) return null;
@@ -250,7 +301,7 @@ async function createNextRecurrentTask(
         status: "pending",
         createdAt: AdminTimestamp.fromDate(nextDate), 
         createdBy: adminEmail,
-        parentTaskId: parentTask.id,
+        parentTaskId: parentTaskId, 
         nextTaskId: undefined,
         dependsOn: [], 
         assignedTo: parentTask.assignedTo || [], 
@@ -262,4 +313,42 @@ async function createNextRecurrentTask(
 
     await newTaskRef.set(newTaskData);
     return { id: newTaskRef.id };
+}
+
+// --- ++ NOVA AÇÃO: ARQUIVAR TAREFA ++ ---
+export async function archiveMaintenanceTask(
+  taskId: string,
+  adminEmail: string
+): Promise<ActionResponse<string>> {
+  
+  const taskRef = adminDb.collection(TASKS_COLLECTION).doc(taskId);
+
+  try {
+    const taskDoc = await taskRef.get();
+    if (!taskDoc.exists) {
+      return { success: false, message: "Tarefa não encontrada." };
+    }
+    const taskData = taskDoc.data();
+    
+    // Altera o status para 'archived'
+    await taskRef.update({
+      status: "archived",
+    });
+
+    await addAdminActivityLog({
+      type: "maintenance_task_archived", 
+      actor: { type: "admin", identifier: adminEmail },
+      details: `Tarefa '${taskData?.title}' foi arquivada.`,
+      link: "/admin/manutencao/arquivo",
+    });
+    
+    // Revalida ambas as páginas (Kanban e Arquivo)
+    revalidatePath("/admin/manutencao");
+    revalidatePath("/admin/manutencao/arquivo");
+    
+    return { success: true, data: taskId };
+
+  } catch (error: any) {
+    return { success: false, message: `Falha ao arquivar tarefa: ${error.message}` };
+  }
 }

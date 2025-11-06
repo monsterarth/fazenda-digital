@@ -1,35 +1,28 @@
 // hooks/use-modal-store.ts
 
 import { create } from 'zustand';
-// ## INÍCIO DA CORREÇÃO ##
-// Importar todos os tipos necessários
 import { Stay, Cabin, Property, Guest } from '@/types'; 
 import { MaintenanceTask, StaffMember } from '@/types/maintenance';
-// ## FIM DA CORREÇÃO ##
 
 export type ModalType = 
   | 'createStay' 
   | 'editStay' 
-  | 'createMaintenanceTask'
-  | 'delegateMaintenanceTask'
-  | 'editMaintenanceTask'; // ++ ADICIONADO ++
+  // ++ ATUALIZADO: Consolidado em um único tipo ++
+  | 'upsertMaintenanceTask' // Substitui 'createMaintenanceTask'
+  | 'delegateMaintenanceTask';
 
-// ## INÍCIO DA CORREÇÃO ##
-// A interface ModalData deve conter todas as propriedades
-// que qualquer modal possa precisar.
 interface ModalData {
   // --- Para Stays ('createStay' e 'editStay') ---
   stay?: Stay;
   cabins?: Cabin[];
   property?: Property;
-  guest?: Guest; // <-- Esta era a propriedade que faltava
+  guest?: Guest; 
 
-  // --- Para Manutenção ('createMaintenanceTask' e 'delegateMaintenanceTask') ---
-  task?: MaintenanceTask;
-  allTasks?: MaintenanceTask[];
-  staff?: StaffMember[];
+  // --- Para Manutenção ---
+  task?: MaintenanceTask;       // Usado por 'upsertMaintenanceTask' (edição) e 'delegate'
+  allTasks?: MaintenanceTask[]; // Usado por 'upsertMaintenanceTask' (para dependências)
+  staff?: StaffMember[];      // Usado por 'upsertMaintenanceTask' e 'delegate'
 }
-// ## FIM DA CORREÇÃO ##
 
 interface ModalStore {
   type: ModalType | null;

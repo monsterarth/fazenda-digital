@@ -9,7 +9,7 @@ import {
   DraggableStateSnapshot
 } from '@hello-pangea/dnd';
 import { MaintenanceTask, StaffMember } from '@/types/maintenance';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // ++ Adicionado CardFooter ++
 import { cn } from '@/lib/utils';
 import {
   Avatar,
@@ -23,14 +23,17 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { Lock, RefreshCw, ArrowUp, ArrowRight, ArrowDown } from 'lucide-react';
+// ++ ATUALIZADO: Importa 'Archive' ++
+import { Lock, RefreshCw, ArrowUp, ArrowRight, ArrowDown, Archive } from 'lucide-react';
 import { useModalStore } from '@/hooks/use-modal-store';
+import { Button } from '@/components/ui/button'; // ++ Adicionado Button ++
 
 interface TaskCardProps {
   task: MaintenanceTask;
   index: number;
   allTasks: MaintenanceTask[];
   staff: StaffMember[];
+  onArchiveClick?: (taskId: string) => void; // ++ ADICIONADO: Prop para arquivar ++
 }
 
 const getInitials = (name: string) => {
@@ -43,24 +46,16 @@ const getInitials = (name: string) => {
     .toUpperCase();
 };
 
-export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
+export const TaskCard = ({ task, index, allTasks, staff, onArchiveClick }: TaskCardProps) => {
   const { onOpen } = useModalStore();
 
-  // ## INÍCIO DA CORREÇÃO ##
-  // Adicionamos '|| []' para garantir que, se 'task.dependsOn' for undefined,
-  // usaremos um array vazio, o que previne o crash do .map()
   const incompleteDependencies = (task.dependsOn || []).map(depId => {
-  // ## FIM DA CORREÇÃO ##
       const depTask = allTasks.find(t => t.id === depId);
       return depTask && depTask.status !== 'completed' ? depTask.title : null;
     }).filter(Boolean);
   
   const isBlocked = incompleteDependencies.length > 0;
-
-  // ## INÍCIO DA CORREÇÃO PROATIVA ##
-  // Aplicando a mesma lógica defensiva para 'assignedTo'
   const assignedStaff = staff.filter(s => (task.assignedTo || []).includes(s.email));
-  // ## FIM DA CORREÇÃO PROATIVA ##
 
   const priorityInfo = {
     high: { icon: <ArrowUp className="h-4 w-4 text-red-500" />, label: "Alta" },
@@ -73,10 +68,16 @@ export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
     onOpen('delegateMaintenanceTask', { task, staff });
   };
 
-  // ++ NOVO: Função para abrir o modal de EDIÇÃO ++
   const openEditModal = () => {
-    // Passa todos os dados que o modal possa precisar
-    onOpen('editMaintenanceTask', { task, staff, allTasks });
+    onOpen('upsertMaintenanceTask', { task, staff, allTasks });
+  };
+
+  // ++ NOVO: Handler para o botão de arquivar ++
+  const handleArchiveClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Impede que o modal de edição abra
+    if (onArchiveClick) {
+      onArchiveClick(task.id);
+    }
   };
 
   return (
@@ -92,11 +93,11 @@ export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             className="w-full"
-            onClick={openEditModal} // ++ ADICIONADO: onClick no card principal ++
+            onClick={openEditModal} 
           >
             <Card
               className={cn(
-                'hover:shadow-md transition-shadow cursor-pointer',
+                'hover:shadow-md transition-shadow cursor-pointer flex flex-col', // ++ Adicionado flex flex-col ++
                 snapshot.isDragging ? 'shadow-lg' : '',
                 isBlocked ? 'opacity-70 border-dashed border-red-500' : ''
               )}
@@ -104,7 +105,7 @@ export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base font-semibold">{task.title}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-3 flex-grow"> {/* ++ Adicionado flex-grow ++ */}
                 {task.description && (
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {task.description}
@@ -112,7 +113,6 @@ export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
                 )}
                 
                 <div className="flex items-center justify-between">
-                  {/* Avatares e Delegação */}
                   <div 
                     className="flex items-center -space-x-2 cursor-pointer hover:opacity-80"
                     onClick={openDelegateModal}
@@ -139,8 +139,6 @@ export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
                       </Tooltip>
                     )}
                   </div>
-
-                  {/* Ícones de Status */}
                   <div className="flex items-center gap-2">
                     {isBlocked && (
                       <Tooltip>
@@ -173,6 +171,22 @@ export const TaskCard = ({ task, index, allTasks, staff }: TaskCardProps) => {
                 
                 <Badge variant="outline">{task.location}</Badge>
               </CardContent>
+
+              {/* ++ NOVO: CardFooter com o botão de Arquivar ++ */}
+              {task.status === 'completed' && (
+                <CardFooter className="pt-2 pb-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={handleArchiveClick}
+                    disabled={!onArchiveClick}
+                  >
+                    <Archive className="mr-2 h-4 w-4" />
+                    Arquivar Tarefa
+                  </Button>
+                </CardFooter>
+              )}
             </Card>
           </div>
         )}

@@ -2,17 +2,13 @@
 
 import React from 'react';
 import { getMaintenanceStaff } from '@/app/actions/get-maintenance-staff';
-import { CreateTaskSheet } from '@/components/admin/maintenance/CreateTaskSheet';
+// ++ REMOVIDO: CreateTaskSheet (não existe mais) ++
+// import { CreateTaskSheet } from '@/components/admin/maintenance/CreateTaskSheet';
 import { DelegateTaskDialog } from '@/components/admin/maintenance/DelegateTaskDialog';
-// ## INÍCIO DA CORREÇÃO ##
-// Verifique se o arquivo em 'components/admin/maintenance/' 
-// se chama EXATAMENTE 'MaintenanceKanbanClient.tsx'
 import { MaintenanceKanbanClient } from '@/components/admin/maintenance/MaintenanceKanbanClient';
-// ## FIM DA CORREÇÃO ##
-import { Wrench, PlusCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-// ++ ADICIONADO: Importar o novo modal ++
-import { EditTaskDialog } from '@/components/admin/maintenance/EditTaskDialog';
+// ++ REMOVIDO: EditTaskDialog (não existe mais) ++
+// import { EditTaskDialog } from '@/components/admin/maintenance/EditTaskDialog';
+import { MaintenanceTaskDialog } from '@/components/admin/maintenance/MaintenanceTaskDialog'; // ++ ADICIONADO: O novo modal unificado
 
 export default async function ManutencaoPage() {
   
@@ -21,9 +17,10 @@ export default async function ManutencaoPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Modais que escutam o useModalStore */}
-      <CreateTaskSheet staff={staff} />
       <DelegateTaskDialog staff={staff} />
-      <EditTaskDialog /> {/* ++ ADICIONADO: Renderiza o modal de edição ++ */}
+      
+      {/* ++ ATUALIZADO: Renderiza o novo modal unificado ++ */}
+      <MaintenanceTaskDialog /> 
 
       {/* Componente principal do Kanban */}
       <MaintenanceKanbanClient staff={staff} />

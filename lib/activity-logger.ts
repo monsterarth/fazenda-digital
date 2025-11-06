@@ -1,3 +1,5 @@
+// lib/activity-logger.ts
+
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, WriteBatch, doc } from 'firebase/firestore';
 
@@ -7,6 +9,7 @@ type ActivityActor = {
   identifier: string; // Nome do Hóspede ou Email do Admin
 };
 
+// ++ ATUALIZADO: O tipo ActivityLogData agora inclui Manutenção ++
 export type ActivityLogData = {
   type: 
   | "checkin_submitted"
@@ -21,7 +24,20 @@ export type ActivityLogData = {
   | "booking_cancelled_by_admin"
   | "booking_cancelled_by_guest"
   | "survey_submitted"
-  | "stay_token_updated";
+  | "stay_token_updated"
+  // Tipos de Solicitação (já estavam no dashboard, mas faltando aqui)
+  | 'request_created'       
+  | 'request_cancelled'
+  | 'request_in_progress' 
+  | 'request_completed'   
+  | 'request_deleted'
+  // ++ ADICIONADO: Tipos de Manutenção ++
+  | 'maintenance_task_created'
+  | 'maintenance_task_assigned'
+  | 'maintenance_task_status_changed'
+  | 'maintenance_task_completed'
+  | 'maintenance_task_archived'
+  | 'maintenance_task_deleted'; // <-- O novo tipo para a exclusão
     
   actor: ActivityActor;
   details: string; 

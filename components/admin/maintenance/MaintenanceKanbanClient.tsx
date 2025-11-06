@@ -6,7 +6,6 @@ import React, { useState, useEffect } from 'react';
 import {
   DragDropContext,
   Droppable,
-  Draggable,
   DropResult,
   DroppableProvided,
   DroppableStateSnapshot,
@@ -15,12 +14,14 @@ import { MaintenanceTask, StaffMember, TaskStatus } from '@/types/maintenance';
 import { TaskCard } from '@/components/admin/maintenance/TaskCard';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore'; 
-import { Loader2, Wrench, PlusCircle } from 'lucide-react';
+// ++ ATUALIZADO: Importa 'Archive' ++
+import { Loader2, Wrench, PlusCircle, Archive } from 'lucide-react';
 import { useModalStore } from '@/hooks/use-modal-store';
-import { updateTaskStatus } from '@/app/actions/manage-maintenance-task';
+import { updateTaskStatus, archiveMaintenanceTask } from '@/app/actions/manage-maintenance-task';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link'; // ++ ADICIONADO: Importa o Link ++
 
 const columns: { id: TaskStatus; title: string }[] = [
   { id: 'pending', title: 'Pendentes' },
@@ -37,7 +38,7 @@ export function MaintenanceKanbanClient({ staff }: { staff: StaffMember[] }) {
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. OUVINTE DO FIRESTORE (TEMPO REAL)
+  // 1. OUVINTE DO FIRESTORE
   useEffect(() => {
     const q = query(
       collection(db, "maintenance_tasks"),
@@ -67,7 +68,7 @@ export function MaintenanceKanbanClient({ staff }: { staff: StaffMember[] }) {
     return () => unsubscribe();
   }, []);
 
-  // 2. AGRUPA TAREFAS NAS COLUNAS (sem alteração)
+  // 2. AGRUPA TAREFAS NAS COLUNAS
   const taskColumns = React.useMemo(() => {
     const grouped: TaskColumns = {
       pending: [],
@@ -83,7 +84,7 @@ export function MaintenanceKanbanClient({ staff }: { staff: StaffMember[] }) {
     return grouped;
   }, [tasks]);
 
-  // 3. LÓGICA DE DRAG-AND-DROP (sem alteração)
+  // 3. LÓGICA DE DRAG-AND-DROP
   const onDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result;
 
@@ -120,6 +121,26 @@ export function MaintenanceKanbanClient({ staff }: { staff: StaffMember[] }) {
     }
   };
 
+  // 4. Handler para o clique no botão de arquivar
+  const handleArchiveClick = async (taskId: string) => {
+    if (!user?.email) {
+      toast.error("Você precisa estar logado para arquivar tarefas.");
+      return;
+    }
+
+    setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
+    
+    const toastId = toast.loading("Arquivando tarefa...");
+    const response = await archiveMaintenanceTask(taskId, user.email);
+
+    if (response.success) {
+      toast.success("Tarefa arquivada!", { id: toastId });
+    } else {
+      toast.error(`Falha: ${response.message}`, { id: toastId });
+    }
+  };
+
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -131,22 +152,34 @@ export function MaintenanceKanbanClient({ staff }: { staff: StaffMember[] }) {
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex flex-col h-full">
+        {/* ++ CABEÇALHO ATUALIZADO ++ */}
         <div className="flex items-center justify-between p-4 border-b">
           <h1 className="text-2xl font-bold flex items-center">
             <Wrench className="mr-3" />
             Quadro de Manutenção
           </h1>
-          <Button onClick={() => onOpen('createMaintenanceTask', { allTasks: tasks, staff })}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Nova Tarefa
-          </Button>
+          
+          <div className="flex gap-2">
+            {/* ++ BOTÃO DE ARQUIVO ADICIONADO ++ */}
+            <Button asChild variant="outline" size="icon">
+              <Link href="/admin/manutencao/arquivo">
+                <Archive className="h-4 w-4" />
+                <span className="sr-only">Ver Arquivo</span>
+              </Link>
+            </Button>
+            
+            {/* Botão Nova Tarefa (existente) */}
+            <Button onClick={() => onOpen('upsertMaintenanceTask', { allTasks: tasks, staff })}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Nova Tarefa
+            </Button>
+          </div>
         </div>
+        {/* ++ FIM DA ATUALIZAÇÃO DO CABEÇALHO ++ */}
 
         <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 p-4 overflow-x-auto">
           {columns.map((column) => (
             <Droppable key={column.id} droppableId={column.id}>
-              {/* ## INÍCIO DA CORREÇÃO (SINTAXE JSX) ## */}
-              {/* Os comentários foram removidos de dentro do "filho" do Droppable */}
               {(provided: DroppableProvided, snapshot: DroppableStateSnapshot) => (
                 <div
                   ref={provided.innerRef}
@@ -167,13 +200,13 @@ export function MaintenanceKanbanClient({ staff }: { staff: StaffMember[] }) {
                         index={index}
                         allTasks={tasks}
                         staff={staff}
+                        onArchiveClick={column.id === 'completed' ? handleArchiveClick : undefined}
                       />
                     ))}
                     {provided.placeholder}
                   </div>
                 </div>
               )}
-              {/* ## FIM DA CORREÇÃO ## */}
             </Droppable>
           ))}
         </div>

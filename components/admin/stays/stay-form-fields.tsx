@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // ++ IMPORTADO useEffect ++
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
 import { FullStayFormValues } from '@/lib/schemas/stay-schema';
 import { Cabin, Guest } from '@/types';
@@ -25,12 +25,13 @@ interface StayFormFieldsProps {
     form: UseFormReturn<FullStayFormValues>;
     cabins: Cabin[];
     onCpfBlur: (cpf: string) => void;
-    isLookingUp: boolean; // NOVO
-    foundGuest: Guest | null; // NOVO
-    onUseFoundGuest: () => void; // NOVO
+    isLookingUp: boolean;
+    foundGuest: Guest | null;
+    onUseFoundGuest: () => void;
 }
 
-const countries = ["Argentina", "Uruguai", "Chile", "Estados Unidos", "Portugal", "Alemanha"];
+// -- CONSTANTE DE PAÍSES REMOVIDA --
+// const countries = ["Argentina", "Uruguai", "Chile", "Estados Unidos", "Portugal", "Alemanha"];
 const generateSimpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, onCpfBlur, isLookingUp, foundGuest, onUseFoundGuest }) => {
@@ -38,6 +39,38 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
     const { fields: companions, append: appendCompanion, remove: removeCompanion } = useFieldArray({ control: form.control, name: "companions" });
     const { fields: pets, append: appendPet, remove: removePet } = useFieldArray({ control: form.control, name: "pets" });
     const [isLoadingCep, setIsLoadingCep] = useState(false);
+
+    // ++ INÍCIO DA CORREÇÃO: Estados para a lista de países ++
+    const [countriesList, setCountriesList] = useState<string[]>([]);
+    const [isLoadingCountries, setIsLoadingCountries] = useState(false);
+
+    useEffect(() => {
+        const fetchCountries = async () => {
+            setIsLoadingCountries(true);
+            try {
+                const response = await fetch('https://restcountries.com/v3.1/all?fields=name,translations');
+                if (!response.ok) throw new Error('Falha ao buscar países da API');
+
+                const data: { name: { common: string }, translations: { por?: { common: string } } }[] = await response.json();
+                
+                const names = data.map(country => 
+                    country.translations.por?.common || country.name.common
+                ).sort((a, b) => a.localeCompare(b, 'pt', { sensitivity: 'base' })); 
+                
+                setCountriesList(names);
+            } catch (error) {
+                console.error("Erro ao buscar países:", error);
+                // Lista de fallback caso a API falhe
+                setCountriesList(["Brasil", "Argentina", "Uruguai", "Chile", "Paraguai", "Estados Unidos", "Portugal", "Alemanha", "França", "Outro"]);
+            } finally {
+                setIsLoadingCountries(false);
+            }
+        };
+
+        fetchCountries();
+    }, []); 
+    // ++ FIM DA CORREÇÃO ++
+
 
     const handleCepLookup = async (cep: string) => {
         if (isForeigner || !cep) return;
@@ -55,7 +88,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                 return;
             }
             
-            form.setValue('address.street', data.logradouro, { shouldValidate: true });
+            form.setValue('address.street', data.logouro, { shouldValidate: true });
             form.setValue('address.neighborhood', data.bairro, { shouldValidate: true });
             form.setValue('address.city', data.localidade, { shouldValidate: true });
             form.setValue('address.state', data.uf, { shouldValidate: true });
@@ -107,7 +140,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                 <AccordionTrigger className="text-lg font-semibold">2. Hóspede Responsável</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">
                     
-                    {/* BANNER DE HÓSPEDE ENCONTRADO MOVIDO PARA CÁ */}
                     {foundGuest && (
                         <div className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between animate-in fade-in-50">
                             <div className="flex items-center">
@@ -127,7 +159,32 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {isForeigner ? (
                             <>
-                                <FormField name="country" control={form.control} render={({ field }) => (<FormItem><FormLabel>País</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl><SelectContent>{countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                {/* ++ INÍCIO DA CORREÇÃO: Campo de País atualizado ++ */}
+                                <FormField name="country" control={form.control} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>País</FormLabel>
+                                        <Select 
+                                            onValueChange={field.onChange} 
+                                            value={field.value} 
+                                            disabled={isLoadingCountries}
+                                        >
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder={isLoadingCountries ? "Carregando países..." : "Selecione..."} />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent className="max-h-[20rem] overflow-y-auto">
+                                                {isLoadingCountries ? (
+                                                    <SelectItem value="loading" disabled>Carregando...</SelectItem>
+                                                ) : (
+                                                    countriesList.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                                {/* ++ FIM DA CORREÇÃO ++ */}
                                 <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>Passaporte / Documento</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             </>
                         ) : (
@@ -149,7 +206,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                                     }}
                                                 />
                                             </FormControl>
-                                            {/* FEEDBACK VISUAL ADICIONADO AQUI */}
                                             <div className="absolute inset-y-0 right-0 flex items-center pr-3">
                                                 {isLookingUp && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
                                                 {foundGuest && <UserCheck className="h-5 w-5 text-green-600" />}
@@ -188,7 +244,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                 </AccordionContent>
             </AccordionItem>
 
-            {/* O restante do formulário permanece inalterado... */}
             <AccordionItem value="item-3">
                 <AccordionTrigger className="text-lg font-semibold">3. Endereço (para Nota Fiscal)</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">

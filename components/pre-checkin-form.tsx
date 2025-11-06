@@ -257,7 +257,9 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                                             <SelectValue placeholder={isLoadingCountries ? "Carregando países..." : "Selecione seu país..."} />
                                                         </SelectTrigger>
                                                     </FormControl>
-                                                    <SelectContent>
+                                                    {/* ++ INÍCIO DA CORREÇÃO: Adiciona altura máxima e rolagem ++ */}
+                                                    <SelectContent className="max-h-[20rem] overflow-y-auto">
+                                                    {/* ++ FIM DA CORREÇÃO ++ */}
                                                         {isLoadingCountries ? (
                                                             <SelectItem value="loading" disabled>Carregando...</SelectItem>
                                                         ) : (
@@ -319,9 +321,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                             <div key={field.id} className="grid grid-cols-12 gap-2 items-end mb-2">
                                                 <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (<FormItem className="col-span-6"><FormLabel className={cn(index !== 0 && "sr-only")}>Nome</FormLabel><FormControl><Input placeholder={`Acompanhante ${index + 1}`} {...field} /></FormControl><FormMessage /></FormItem>)} />
                                                 <FormField control={form.control} name={`companions.${index}.age`} render={({ field }) => (<FormItem className="col-span-2"><FormLabel className={cn(index !== 0 && "sr-only")}>Idade</FormLabel><FormControl><Input type="number" placeholder="Idade" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                {/* ++ INÍCIO DA CORREÇÃO: Tag </FormItem> corrigida ++ */}
                                                 <FormField control={form.control} name={`companions.${index}.cpf`} render={({ field }) => (<FormItem className="col-span-3"><FormLabel className={cn(index !== 0 && "sr-only")}>CPF</FormLabel><FormControl><Input placeholder="CPF (Opcional)" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                {/* ++ FIM DA CORREÇÃO ++ */}
                                                 <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                             </div>
                                         ))}

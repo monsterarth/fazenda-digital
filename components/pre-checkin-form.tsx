@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, useFieldArray, SubmitHandler, FieldPath } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -22,7 +22,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast, Toaster } from 'sonner';
 import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Home, Car, Phone, CheckCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-// ++ INÍCIO DA CORREÇÃO: Importa a nova função de log ++
 import { createActivityLog } from '@/lib/activity-logger';
 
 const preCheckInSchema = z.object({
@@ -69,8 +68,6 @@ const preCheckInSchema = z.object({
 
 type PreCheckInFormValues = z.infer<typeof preCheckInSchema>;
 
-const countries = ["Argentina", "Uruguai", "Chile", "Estados Unidos", "Portugal", "Alemanha"];
-
 interface PreCheckinFormProps {
     property: Property;
 }
@@ -81,6 +78,9 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
     const [currentStep, setCurrentStep] = useState(0);
     const [isLoadingCep, setIsLoadingCep] = useState(false);
     const [isSubmitSuccessful, setIsSubmitSuccessful] = useState(false);
+    
+    const [countriesList, setCountriesList] = useState<string[]>([]);
+    const [isLoadingCountries, setIsLoadingCountries] = useState(false);
 
     const form = useForm<PreCheckInFormValues>({
         resolver: zodResolver(preCheckInSchema),
@@ -114,6 +114,31 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
         ['estimatedArrivalTime', 'knowsVehiclePlate', 'vehiclePlate'],
         ['companions', 'pets']
     ];
+
+    useEffect(() => {
+        const fetchCountries = async () => {
+            setIsLoadingCountries(true);
+            try {
+                const response = await fetch('https://restcountries.com/v3.1/all?fields=name,translations');
+                if (!response.ok) throw new Error('Falha ao buscar países da API');
+
+                const data: { name: { common: string }, translations: { por?: { common: string } } }[] = await response.json();
+                
+                const names = data.map(country => 
+                    country.translations.por?.common || country.name.common
+                ).sort((a, b) => a.localeCompare(b, 'pt', { sensitivity: 'base' })); 
+                
+                setCountriesList(names);
+            } catch (error) {
+                console.error("Erro ao buscar países:", error);
+                setCountriesList(["Brasil", "Argentina", "Uruguai", "Chile", "Paraguai", "Estados Unidos", "Portugal", "Alemanha", "França", "Outro"]);
+            } finally {
+                setIsLoadingCountries(false);
+            }
+        };
+
+        fetchCountries();
+    }, []); 
 
     const handleNextStep = async () => {
         const fieldsToValidate = stepsFields[currentStep];
@@ -167,14 +192,12 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
             };
             await firestore.addDoc(firestore.collection(db, 'preCheckIns'), preCheckInData);
 
-            // ++ INÍCIO DA CORREÇÃO: Cria o log de atividade ++
             await createActivityLog({
                 type: 'checkin_submitted',
                 actor: { type: 'guest', identifier: data.leadGuestName },
                 details: `Novo pré-check-in de ${data.leadGuestName}.`,
                 link: '/admin/stays'
             });
-            // ++ FIM DA CORREÇÃO ++
 
             toast.dismiss(toastId);
             setIsSubmitSuccessful(true);
@@ -184,7 +207,6 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
         }
     };
     
-    // ... (resto do componente JSX sem alterações)
     if (isSubmitSuccessful) {
         return (
             <Card className="w-full max-w-2xl shadow-xl text-center">
@@ -226,7 +248,26 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                 <FormField name="isForeigner" control={form.control} render={({ field }) => (<FormItem className="flex flex-row items-center space-x-3 space-y-0"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">Sou estrangeiro / I'm a foreigner</FormLabel></FormItem>)} />
                                 {isForeigner ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <FormField name="country" control={form.control} render={({ field }) => (<FormItem><FormLabel>País</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecione seu país..." /></SelectTrigger></FormControl><SelectContent>{countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                        <FormField name="country" control={form.control} render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>País</FormLabel>
+                                                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoadingCountries}>
+                                                    <FormControl>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder={isLoadingCountries ? "Carregando países..." : "Selecione seu país..."} />
+                                                        </SelectTrigger>
+                                                    </FormControl>
+                                                    <SelectContent>
+                                                        {isLoadingCountries ? (
+                                                            <SelectItem value="loading" disabled>Carregando...</SelectItem>
+                                                        ) : (
+                                                            countriesList.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
+                                                        )}
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
                                         <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>Passaporte / Documento</FormLabel><FormControl><Input placeholder="Número do documento" {...field} /></FormControl><FormMessage /></FormItem>)} />
                                     </div>
                                 ) : (
@@ -278,7 +319,9 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                             <div key={field.id} className="grid grid-cols-12 gap-2 items-end mb-2">
                                                 <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (<FormItem className="col-span-6"><FormLabel className={cn(index !== 0 && "sr-only")}>Nome</FormLabel><FormControl><Input placeholder={`Acompanhante ${index + 1}`} {...field} /></FormControl><FormMessage /></FormItem>)} />
                                                 <FormField control={form.control} name={`companions.${index}.age`} render={({ field }) => (<FormItem className="col-span-2"><FormLabel className={cn(index !== 0 && "sr-only")}>Idade</FormLabel><FormControl><Input type="number" placeholder="Idade" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                {/* ++ INÍCIO DA CORREÇÃO: Tag </FormItem> corrigida ++ */}
                                                 <FormField control={form.control} name={`companions.${index}.cpf`} render={({ field }) => (<FormItem className="col-span-3"><FormLabel className={cn(index !== 0 && "sr-only")}>CPF</FormLabel><FormControl><Input placeholder="CPF (Opcional)" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                                {/* ++ FIM DA CORREÇÃO ++ */}
                                                 <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                             </div>
                                         ))}

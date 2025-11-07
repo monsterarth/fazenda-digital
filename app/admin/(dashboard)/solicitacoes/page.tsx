@@ -6,22 +6,22 @@ import React, { useState, useEffect } from 'react';
 import { getFirebaseDb } from '@/lib/firebase';
 import * as firestore from 'firebase/firestore';
 import { useAuth } from '@/context/AuthContext';
-// ++ INÍCIO DA ADIÇÃO ++
-import { useNotification } from '@/context/NotificationContext';
-// ++ FIM DA ADIÇÃO ++
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+// ++ INÍCIO: Importar a Server Action que criamos ++
 import { manageRequest } from '@/app/actions/manage-request';
+// ++ FIM: Importar a Server Action ++
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+// Os imports do DropdownMenu foram removidos
 import { toast, Toaster } from 'sonner';
-import { Loader2, ConciergeBell, MoreHorizontal, CheckCircle, Clock, Construction, ShoppingBag } from 'lucide-react';
+// IMPORTADO: ArrowRight, Trash2. REMOVIDO: MoreHorizontal
+import { Loader2, ConciergeBell, CheckCircle, Clock, Construction, ShoppingBag, ArrowRight, Trash2 } from 'lucide-react';
 
 // Tipos
 export type RequestType = 'item' | 'cleaning' | 'maintenance';
@@ -47,21 +47,12 @@ export interface Request {
 const REQUESTS_COLLECTION = 'requests';
 
 export default function ManageRequestsPage() {
+    // ++ INÍCIO: Pegar o 'user' do AuthContext para obtermos o e-mail do admin ++
     const { isAdmin, user } = useAuth();
-    // ++ INÍCIO DA ADIÇÃO ++
-    // Consome o hook de notificação para limpar o alerta
-    const { clearRequestsNotification } = useNotification();
-    // ++ FIM DA ADIÇÃO ++
+    // ++ FIM: Pegar o 'user' ++
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [requests, setRequests] = useState<Request[]>([]);
     const [loading, setLoading] = useState(true);
-
-    // ++ INÍCIO DA ADIÇÃO ++
-    // Limpa a notificação assim que o componente é montado
-    useEffect(() => {
-        clearRequestsNotification();
-    }, [clearRequestsNotification]);
-    // ++ FIM DA ADIÇÃO ++
 
     useEffect(() => {
         if (!isAdmin) return;
@@ -88,7 +79,7 @@ export default function ManageRequestsPage() {
         initializeApp();
     }, [isAdmin]);
 
-    // (resto do código sem alterações...)
+    // ++ INÍCIO: Função 'updateRequestStatus' MODIFICADA para usar a Server Action ++
     const updateRequestStatus = async (requestId: string, newStatus: 'in_progress' | 'completed') => {
         if (!user || !user.email) {
             toast.error("Autenticação do admin não encontrada. Faça login novamente.");
@@ -114,7 +105,9 @@ export default function ManageRequestsPage() {
             toast.error("Falha ao atualizar status.", { id: toastId, description: error.message });
         }
     };
-    
+    // ++ FIM: Função 'updateRequestStatus' MODIFICADA ++
+
+    // ++ INÍCIO: Função 'deleteRequest' MODIFICADA para usar a Server Action ++
     const deleteRequest = async (requestId: string) => {
         if (!user || !user.email) {
             toast.error("Autenticação do admin não encontrada. Faça login novamente.");
@@ -140,6 +133,7 @@ export default function ManageRequestsPage() {
             toast.error("Falha ao excluir.", { id: toastId, description: error.message });
         }
     };
+    // ++ FIM: Função 'deleteRequest' MODIFICADA ++
 
     const filteredRequests = (status: RequestStatus) => requests.filter(r => r.status === status);
 
@@ -173,6 +167,28 @@ export default function ManageRequestsPage() {
             cleaning: { icon: CheckCircle, label: "Limpeza", color: "bg-green-500" },
             maintenance: { icon: Construction, label: "Manutenção", color: "bg-yellow-600" },
         };
+
+        // ++ INÍCIO: Lógica para o botão de "Dar Seguimento" ++
+        let followUpButton;
+        if (request.status === 'pending') {
+            followUpButton = {
+                text: "Em Andamento",
+                action: () => updateRequestStatus(request.id, 'in_progress'),
+                icon: ArrowRight,
+                variant: "default" as const, 
+                className: "",
+            };
+        } else if (request.status === 'in_progress') {
+            followUpButton = {
+                text: "Concluída",
+                action: () => updateRequestStatus(request.id, 'completed'),
+                icon: CheckCircle,
+                variant: "secondary" as const, 
+                className: "bg-green-600 text-white hover:bg-green-700", 
+            };
+        }
+        // ++ FIM: Lógica para o botão de "Dar Seguimento" ++
+
         const Icon = typeInfo[request.type].icon;
 
         return (
@@ -194,16 +210,28 @@ export default function ManageRequestsPage() {
                 </TableCell>
                 <TableCell>{format(request.createdAt.toDate(), "dd/MM 'às' HH:mm", { locale: ptBR })}</TableCell>
                 <TableCell className="text-right">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            {request.status === 'pending' && <DropdownMenuItem onClick={() => updateRequestStatus(request.id, 'in_progress')}>Marcar como Em Andamento</DropdownMenuItem>}
-                            {request.status === 'in_progress' && <DropdownMenuItem onClick={() => updateRequestStatus(request.id, 'completed')}>Marcar como Concluída</DropdownMenuItem>}
-                            <DropdownMenuItem className="text-red-500" onClick={() => deleteRequest(request.id)}>Excluir</DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                    {/* Substitui o DropdownMenu por botões dedicados */}
+                    <div className="flex justify-end space-x-2">
+                        {followUpButton && (
+                            <Button 
+                                onClick={followUpButton.action} 
+                                variant={followUpButton.variant}
+                                className={followUpButton.className}
+                                size="sm"
+                            >
+                                <followUpButton.icon className="mr-2 h-4 w-4" />
+                                {followUpButton.text}
+                            </Button>
+                        )}
+                        <Button 
+                            onClick={() => deleteRequest(request.id)} 
+                            variant="destructive" 
+                            size="icon"
+                            title="Excluir Solicitação"
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </TableCell>
             </TableRow>
         );

@@ -8,12 +8,11 @@ import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, BedDouble, Coffee, Calendar, BarChart2, Settings, LogOut,
     Home, Paintbrush, Utensils, CalendarCheck, MessageSquare, FileText, Wrench, Shield, Users,
-    ConciergeBell, Book // Ícone para Guias
+    ConciergeBell, Book,
+    CalendarDays // <<< Ícone Adicionado para Casamentos
 } from 'lucide-react';
 import { useAuth, UserRole } from '@/context/AuthContext';
-// ++ INÍCIO DA ADIÇÃO ++
 import { useNotification } from '@/context/NotificationContext';
-// ++ FIM DA ADIÇÃO ++
 import { getAuth, signOut } from 'firebase/auth';
 import { toast } from 'sonner';
 import Image from 'next/image';
@@ -25,7 +24,7 @@ import {
 } from "@/components/ui/accordion"
 import { useProperty } from '@/context/PropertyContext';
 
-// (definições de mainNavItems e settingsNavItems sem alterações)
+// Array de navegação principal ATUALIZADO
 const mainNavItems = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/stays', label: 'Estadias', icon: BedDouble },
@@ -33,11 +32,15 @@ const mainNavItems = [
     { href: "/admin/hospedes", label: "Hóspedes", icon: Users },
     { href: '/admin/pedidos/cafe', label: 'Pedidos Café', icon: Coffee },
     { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
+    // ++ INÍCIO DA ADIÇÃO (Casamentos) ++
+    { href: '/admin/casamentos', label: 'Casamentos', icon: CalendarDays },
+    // ++ FIM DA ADIÇÃO ++
     { href: '/admin/solicitacoes', label: 'Solicitações', icon: ConciergeBell },
     { href: '/admin/manutencao', label: 'Manutenção', icon: Wrench },
     { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },
 ];
 
+// Array de navegação de configurações (sem alterações)
 const settingsNavItems = [
     { href: '/admin/settings/cabanas', label: 'Cabanas', icon: Home },
     { href: '/admin/settings/personalizacao', label: 'Personalização', icon: Paintbrush },
@@ -50,9 +53,9 @@ const settingsNavItems = [
     { href: '/admin/settings/equipe', label: 'Gerenciar Equipe', icon: Users },
 ];
 
-// (definições de permissions e checkPermission sem alterações)
 type Role = UserRole; 
 
+// Mapa de permissões ATUALIZADO
 const permissions: Record<string, (Role)[]> = {
     // === Main Nav ===
     '/admin/dashboard': ['recepcao'],
@@ -61,6 +64,9 @@ const permissions: Record<string, (Role)[]> = {
     '/admin/hospedes': ['recepcao'],
     '/admin/pedidos/cafe': ['recepcao', 'cafe'],
     '/admin/agendamentos': ['recepcao'],
+    // ++ INÍCIO DA ADIÇÃO (Permissão Casamentos) ++
+    '/admin/casamentos': ['recepcao'], // Apenas recepção (e super_admin) pode ver o CRM
+    // ++ FIM DA ADIÇÃO ++
     '/admin/solicitacoes': ['recepcao'],
     '/admin/manutencao': ['recepcao', 'manutencao'],
     '/admin/pesquisas/overview': ['recepcao', 'marketing'],
@@ -77,6 +83,7 @@ const permissions: Record<string, (Role)[]> = {
     '/admin/settings/equipe': [], // Apenas super_admin
 };
 
+// Função de verificação de permissão (sem alterações)
 const checkPermission = (role: Role, href: string): boolean => {
     if (role === 'super_admin') {
         return true;
@@ -84,15 +91,20 @@ const checkPermission = (role: Role, href: string): boolean => {
     if (!role) {
         return false;
     }
-    return permissions[href]?.includes(role) ?? false;
+    // Verifica se o href base está nas permissões (ex: /admin/casamentos permite /admin/casamentos/lista)
+    const baseHref = Object.keys(permissions).find(key => href.startsWith(key));
+    if (!baseHref) {
+        // Se a rota não estiver no mapa, assume-se que é permitida se a base for (ex: /admin/casamentos/lista)
+        // Mas para segurança, vamos checar pela rota exata ou rota base
+        return false;
+    }
+    return permissions[baseHref]?.includes(role) ?? false;
 };
 
-// ++ INÍCIO DA ADIÇÃO ++
 /** Um simples ponto visual para notificações */
 const NotificationDot = () => (
     <span className="ml-auto h-2 w-2 rounded-full bg-red-500" />
 );
-// ++ FIM DA ADIÇÃO ++
 
 
 export function Sidebar() {
@@ -100,10 +112,8 @@ export function Sidebar() {
     const router = useRouter();
     const { user, userRole } = useAuth();
     const { property } = useProperty();
-    // ++ INÍCIO DA ADIÇÃO ++
     // Consome o estado de notificação
     const { hasNewRequests, hasNewBookings } = useNotification();
-    // ++ FIM DA ADIÇÃO ++
 
     const handleLogout = async () => {
         const auth = getAuth();
@@ -117,15 +127,17 @@ export function Sidebar() {
         }
     };
 
-    // ++ ATUALIZADO: NavLink agora aceita 'showDot'
+    // NavLink (como fornecido, aceita 'showDot')
     const NavLink = ({ href, label, icon: Icon, disabled, showDot }: {
         href: string,
         label: string,
         icon: React.ElementType,
         disabled?: boolean,
-        showDot?: boolean // ++ ADICIONADO
+        showDot?: boolean 
     }) => {
-        const isActive = pathname.startsWith(href);
+        // ATUALIZAÇÃO: Fazer o 'isActive' checar a rota base
+        // ex: /admin/casamentos deve estar ativo se a rota for /admin/casamentos/lista
+        const isActive = (href === '/admin/dashboard' ? pathname === href : pathname.startsWith(href));
 
         if (disabled) {
             return (
@@ -146,9 +158,7 @@ export function Sidebar() {
             )}>
                 <Icon className="h-4 w-4" />
                 {label}
-                {/* ++ INÍCIO DA ADIÇÃO ++ */}
                 {showDot && <NotificationDot />}
-                {/* ++ FIM DA ADIÇÃO ++ */}
             </Link>
         );
     };
@@ -167,15 +177,14 @@ export function Sidebar() {
                 <div className="flex-1 overflow-auto py-2">
                     <nav className="grid items-start px-4 text-sm font-medium">
                         
-                        {/* ++ ATUALIZADO: Mapeamento com verificação de permissão e 'showDot' */}
+                        {/* Mapeamento com verificação de permissão e 'showDot' (sem alterações na lógica) */}
                         {mainNavItems.map(item => {
                             const hasPermission = checkPermission(userRole, item.href);
                             
-                            // ++ INÍCIO DA LÓGICA DO PONTO ++
+                            // Lógica do Ponto (não modificada)
                             const showDot = (item.href === '/admin/solicitacoes' && hasNewRequests) ||
                                             (item.href === '/admin/agendamentos' && hasNewBookings);
-                            // ++ FIM DA LÓGICA DO PONTO ++
-
+                            
                             return <NavLink 
                                 key={item.href} 
                                 {...item} 

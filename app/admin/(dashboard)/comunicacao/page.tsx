@@ -1,5 +1,3 @@
-// app/admin/(dashboard)/comunicacao/page.tsx
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useContext, useTransition } from 'react';
@@ -50,7 +48,6 @@ export default function CommunicationCenterPage() {
     const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>('');
     const [generatedMessage, setGeneratedMessage] = useState('');
 
-    // --- NOVO ESTADO PARA MENSAGEM DE PRÉ-CHECK-IN ---
     const [preCheckInMessage, setPreCheckInMessage] = useState('');
 
     const [upcomingCheckouts, setUpcomingCheckouts] = useState<EnrichedStayForSelect[]>([]);
@@ -81,7 +78,15 @@ export default function CommunicationCenterPage() {
                 
                 const combinedStays = [...activeStaysData, ...recentCheckoutsData];
                 const uniqueStays = Array.from(new Map(combinedStays.map(stay => [stay.id, stay])).values());
-                const sortedStays = uniqueStays.sort((a, b) => a.guest.name.localeCompare(b.guest.name));
+                
+                // ++ INÍCIO DA CORREÇÃO ++
+                // Com nomes "01", "02", "10", a ordenação alfabética padrão (localeCompare)
+                // já produzirá a ordem numérica correta.
+                const sortedStays = uniqueStays.sort((a, b) => 
+                    a.cabin.name.localeCompare(b.cabin.name)
+                );
+                // ++ FIM DA CORREÇÃO ++
+                
                 setAllStaysForSelect(sortedStays);
 
                 setUpcomingCheckouts(checkoutsData); setPendingBreakfast(breakfastData);
@@ -153,7 +158,6 @@ export default function CommunicationCenterPage() {
         setGeneratedMessage(template);
     }, [selectedItem, selectedTemplateKey, property, messageTemplates, allStaysForSelect]);
 
-    // --- NOVAS FUNÇÕES PARA O ENVIO DE PRÉ-CHECK-IN ---
     const handleGeneratePreCheckIn = () => {
         if (!property || !messageTemplates.whatsappPreCheckIn) {
             toast.error("Template de mensagem de pré-check-in não encontrado.");
@@ -161,7 +165,6 @@ export default function CommunicationCenterPage() {
         }
 
         let template = messageTemplates.whatsappPreCheckIn;
-        // O link para o pré-check-in geralmente é fixo, pois não há um token de estadia ainda.
         const preCheckInLink = 'https://portal.fazendadorosa.com.br/pre-check-in'; 
         
         template = template.replace(/{preCheckInLink}/g, preCheckInLink);
@@ -175,7 +178,6 @@ export default function CommunicationCenterPage() {
         try {
             await navigator.clipboard.writeText(preCheckInMessage);
             toast.success('Mensagem copiada para a área de transferência!');
-            // Log opcional para mensagens genéricas
             if (auth?.user?.uid) {
                 await logMessageCopy({
                     guestName: 'N/A (Pré-Check-in)', type: 'Pré-Check-in',
@@ -186,7 +188,6 @@ export default function CommunicationCenterPage() {
             toast.error('Falha ao copiar a mensagem.');
         }
     };
-    // --- FIM DAS NOVAS FUNÇÕES ---
 
     const handleStaySelect = (stayId: string) => {
         const findStay = allStaysForSelect.find(s => s.id === stayId);
@@ -282,8 +283,9 @@ export default function CommunicationCenterPage() {
                             <div className={selectedItem ? 'hidden' : 'block'}>
                                 <Select onValueChange={handleStaySelect}>
                                     <SelectTrigger className="text-base h-12"> <SelectValue placeholder="Selecione uma estadia..." /> </SelectTrigger>
-                                    <SelectContent className="max-h-[300px] overflow-y-auto"> {/* CORREÇÃO APLICADA AQUI */}
-                                        {allStaysForSelect.length > 0 ? allStaysForSelect.map((stay) => ( <SelectItem key={stay.id} value={stay.id}> <span className='font-semibold'>{stay.guest.name}</span> <span className='text-muted-foreground ml-2'>({stay.cabin.name}) - {stay.status === 'active' ? 'Ativa' : 'Encerrada'}</span> </SelectItem> )) : ( <div className='p-4 text-center text-sm text-muted-foreground'>Nenhuma estadia encontrada.</div> )}
+                                    <SelectContent className="max-h-[300px] overflow-y-auto">
+                                        {/* ++ CORREÇÃO DE DISPLAY APLICADA AQUI ++ */}
+                                        {allStaysForSelect.length > 0 ? allStaysForSelect.map((stay) => ( <SelectItem key={stay.id} value={stay.id}> <span className='font-semibold'>{stay.cabin.name}:</span> <span className='text-muted-foreground ml-2'>{stay.guest.name} - {stay.status === 'active' ? 'Ativa' : 'Encerrada'}</span> </SelectItem> )) : ( <div className='p-4 text-center text-sm text-muted-foreground'>Nenhuma estadia encontrada.</div> )}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -292,7 +294,6 @@ export default function CommunicationCenterPage() {
                         </CardContent>
                     </Card>
 
-                    {/* --- NOVO CARD DE ENVIO RÁPIDO --- */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Envio Rápido: Pré-Check-in</CardTitle>

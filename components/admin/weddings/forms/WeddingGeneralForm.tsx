@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
+  FormDescription, // ++ ADICIONADO
   FormField,
   FormItem,
   FormLabel,
@@ -34,13 +35,13 @@ import {
 } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import { Textarea } from '@/components/ui/textarea'
-// ++ Ícone Landmark REMOVIDO ++
-import { CalendarIcon, Loader2, Pencil, Users2, MapPin, Building } from 'lucide-react'
+import { CalendarIcon, Loader2, Pencil, Users2, MapPin, Building, ShieldCheck } from 'lucide-react' // ++ ADICIONADO ShieldCheck
 import { cn } from '@/lib/utils'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox' // ++ ADICIONADO
 
 interface WeddingGeneralFormProps {
   wedding: WeddingData
@@ -51,10 +52,12 @@ const InfoField = ({
   icon,
   label,
   value,
+  children, // ++ ADICIONADO para o Badge
 }: {
   icon: React.ElementType
   label: string
-  value: string | number | null | undefined
+  value?: string | number | null
+  children?: React.ReactNode
 }) => {
   const Icon = icon
   return (
@@ -64,9 +67,8 @@ const InfoField = ({
         <span className="text-sm font-medium text-muted-foreground">
           {label}
         </span>
-        <p className="text-base font-semibold">
-          {value || '—'}
-        </p>
+        {value && <p className="text-base font-semibold">{value || '—'}</p>}
+        {children && <div className="text-base font-semibold">{children}</div>}
       </div>
     </div>
   )
@@ -86,8 +88,8 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
       checkOutDate: parseISO(wedding.checkOutDate),
       location: wedding.location,
       guestCount: wedding.guestCount,
-      // totalValue REMOVIDO
       internalObservations: wedding.internalObservations || '',
+      hasLodgeExclusivity: wedding.hasLodgeExclusivity || false, // ++ ADICIONADO
     },
   })
 
@@ -129,8 +131,8 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
           </Button>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* ++ ATUALIZADO: Removido grid-cols-3, totalValue movido */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* ++ ATUALIZADO: grid-cols-4 para acomodar o novo campo */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <InfoField
               icon={CalendarIcon}
               label="Data do Evento"
@@ -146,6 +148,18 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
               label="Fim Hospedagem"
               value={format(data.checkOutDate, 'PPP', { locale: ptBR })}
             />
+            {/* ++ ADICIONADO: Exclusividade na Ficha ++ */}
+            <InfoField
+              icon={ShieldCheck}
+              label="Exclusividade"
+            >
+              {data.hasLodgeExclusivity ? (
+                <span className="text-green-600 font-semibold">Sim</span>
+              ) : (
+                <span className="text-muted-foreground font-semibold">Não</span>
+              )}
+            </InfoField>
+            
             <InfoField
               icon={MapPin}
               label="Local"
@@ -161,7 +175,6 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
               label="Nº de Convidados"
               value={data.guestCount}
             />
-            {/* Bloco Financeiro (totalValue) FOI REMOVIDO DAQUI */}
           </div>
 
           <Separator />
@@ -188,7 +201,6 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Campos do formulário */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -266,7 +278,6 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
                   <FormItem className="flex flex-col">
                     <FormLabel>Início Hospedagem</FormLabel>
                     <Popover>
-                      {/* ... (código do popover de data) ... */}
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
@@ -306,7 +317,6 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
                   <FormItem className="flex flex-col">
                     <FormLabel>Fim Hospedagem</FormLabel>
                     <Popover>
-                      {/* ... (código do popover de data) ... */}
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
@@ -341,7 +351,6 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
               />
             </div>
 
-            {/* ++ ATUALIZADO: Removido totalValue, grid-cols-2 agora */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -382,8 +391,30 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
                   </FormItem>
                 )}
               />
-              {/* totalValue FOI REMOVIDO DAQUI */}
             </div>
+            
+            {/* ++ ADICIONADO: Checkbox de Exclusividade de Hospedagem ++ */}
+            <FormField
+              control={form.control}
+              name="hasLodgeExclusivity"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center space-x-3 rounded-md border p-4">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={isPending}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Exclusividade de Hospedagem?</FormLabel>
+                    <FormDescription>
+                      Marque se o contrato inclui a exclusividade de toda a pousada.
+                    </FormDescription>
+                  </div>
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
@@ -405,7 +436,6 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
               )}
             />
 
-            {/* (Botões de Ação inalterados) */}
             <div className="flex justify-end space-x-2 pt-4 border-t">
               <Button
                 type="button"

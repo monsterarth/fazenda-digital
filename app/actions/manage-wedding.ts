@@ -6,7 +6,7 @@ import {
   WeddingGeneralFormValues,
   WeddingFinancialFormValues,
   WeddingSuppliersFormValues,
-  WeddingChecklistFormValues, // ++ ADICIONADO
+  WeddingChecklistFormValues,
 } from '@/lib/schemas/wedding-schema'
 import { Wedding, WeddingSupplier } from '@/types/wedding'
 import { FieldValue } from 'firebase-admin/firestore'
@@ -20,13 +20,14 @@ interface ActionResponse {
   weddingId?: string
 }
 
-// (Ação createWedding inalterada)
+// Ação 1: Criar Casamento (ATUALIZADO)
 export async function createWedding(
   data: WeddingFormValues,
 ): Promise<ActionResponse> {
-  // ... (código de criação completo, como antes)
   try {
     console.log('Criando novo casamento:', data.coupleName)
+    
+    // (Lógica de fornecedores...)
     const initialSuppliers: WeddingSupplier[] = []
     if (data.plannerName) {
       initialSuppliers.push({
@@ -62,9 +63,10 @@ export async function createWedding(
             : 'Externo',
         contact: '',
         status: 'Pendente',
-        isExclusive: data.buffetIsExclusive,
+        // isExclusive FOI REMOVIDO DAQUI
       })
     }
+    
     const newWeddingData: Omit<Wedding, 'id' | 'createdAt' | 'updatedAt'> = {
       coupleName: data.coupleName,
       weddingDate: data.weddingDate.toISOString().split('T')[0],
@@ -75,6 +77,9 @@ export async function createWedding(
       totalValue: data.totalValue,
       internalObservations: data.internalObservations || '',
       coupleCity: data.coupleCity || '',
+      
+      hasLodgeExclusivity: data.hasLodgeExclusivity, // ++ ADICIONADO ++
+
       isConfirmed: true,
       clients: [],
       paymentPlan: [],
@@ -84,13 +89,16 @@ export async function createWedding(
       couplePhotoUrl: '',
       contractUrl: '',
     }
+
     const weddingRef = await adminDb.collection('weddings').add({
       ...newWeddingData,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     })
+
     revalidatePath('/admin/casamentos')
     revalidatePath('/admin/casamentos/lista')
+
     return {
       success: true,
       message: 'Casamento criado com sucesso!',
@@ -103,12 +111,11 @@ export async function createWedding(
   }
 }
 
-// (Ação updateWeddingGeneral inalterada)
+// Ação 2: Atualizar Aba "Geral" (ATUALIZADO)
 export async function updateWeddingGeneral(
   weddingId: string,
   data: WeddingGeneralFormValues,
 ): Promise<ActionResponse> {
-  // ... (código de update geral, como antes)
   if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
@@ -121,6 +128,9 @@ export async function updateWeddingGeneral(
       checkOutDate: data.checkOutDate.toISOString().split('T')[0],
       coupleCity: data.coupleCity || '',
       internalObservations: data.internalObservations || '',
+      
+      hasLodgeExclusivity: data.hasLodgeExclusivity, // ++ ADICIONADO ++
+      
       updatedAt: FieldValue.serverTimestamp(),
     }
     await weddingRef.update(dataToUpdate)
@@ -139,7 +149,7 @@ export async function updateWeddingFinancial(
   weddingId: string,
   data: WeddingFinancialFormValues,
 ): Promise<ActionResponse> {
-  // ... (código de update financeiro, como antes)
+  // ... (código de update financeiro)
   if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
@@ -147,6 +157,8 @@ export async function updateWeddingFinancial(
     const weddingRef = adminDb.collection('weddings').doc(weddingId)
     const serializedData = {
       ...data,
+      // Se 'deposit' for opcional no schema, precisamos tratar o caso dele ser undefined
+      deposit: data.deposit ? data.deposit : { value: 0, status: 'Pendente' },
       paymentPlan: data.paymentPlan.map((installment) => ({
         ...installment,
         dueDate: installment.dueDate.toISOString().split('T')[0],
@@ -169,7 +181,7 @@ export async function updateWeddingSuppliers(
   weddingId: string,
   data: WeddingSuppliersFormValues,
 ): Promise<ActionResponse> {
-  // ... (código de update fornecedores, como antes)
+  // ... (código de update fornecedores)
   if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
@@ -189,38 +201,51 @@ export async function updateWeddingSuppliers(
   }
 }
 
-
-// ++ INÍCIO DA ADIÇÃO ++
-
-// Ação 5: Atualizar Aba "Checklist"
+// (Ação updateWeddingChecklist inalterada)
 export async function updateWeddingChecklist(
   weddingId: string,
   data: WeddingChecklistFormValues,
 ): Promise<ActionResponse> {
+  // ... (código de update checklist)
+   if (!weddingId) {
+    return { success: false, message: 'ID do casamento não fornecido.' }
+  }
+  try {
+    const weddingRef = adminDb.collection('weddings').doc(weddingId)
+    const serializedData = {
+      checklist: data.checklist.map((task) => ({
+        ...task,
+        deadline: task.deadline ? task.deadline.toISOString().split('T')[0] : null,
+      })),
+      updatedAt: FieldValue.serverTimestamp(),
+    }
+    await weddingRef.update(serializedData)
+    revalidatePath(`/admin/casamentos/${weddingId}`)
+    return { success: true, message: 'Checklist atualizado com sucesso!' }
+  } catch (error) {
+    console.error(`Erro ao atualizar checklist ${weddingId}:`, error)
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconheci'
+    return { success: false, message: errorMessage }
+  }
+}
+
+// ++ INÍCIO DA ADIÇÃO ++
+
+// Ação 6: Excluir Casamento
+export async function deleteWedding(weddingId: string): Promise<ActionResponse> {
   if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
 
   try {
-    const weddingRef = adminDb.collection('weddings').doc(weddingId)
-
-    // Serializa as datas (convertendo Date para string ou null)
-    const serializedData = {
-      checklist: data.checklist.map((task) => ({
-        ...task,
-        // Se a data existir, converte para YYYY-MM-DD, senão salva como null
-        deadline: task.deadline ? task.deadline.toISOString().split('T')[0] : null,
-      })),
-      updatedAt: FieldValue.serverTimestamp(),
-    }
-
-    await weddingRef.update(serializedData)
+    await adminDb.collection('weddings').doc(weddingId).delete()
     
-    revalidatePath(`/admin/casamentos/${weddingId}`)
+    revalidatePath(`/admin/casamentos/lista`)
+    revalidatePath(`/admin/casamentos`)
     
-    return { success: true, message: 'Checklist atualizado com sucesso!' }
+    return { success: true, message: 'Casamento excluído com sucesso!' }
   } catch (error) {
-    console.error(`Erro ao atualizar checklist ${weddingId}:`, error)
+    console.error(`Erro ao excluir casamento ${weddingId}:`, error)
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
     return { success: false, message: errorMessage }
   }

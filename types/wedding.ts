@@ -16,11 +16,11 @@ export interface WeddingClient {
 // Interface para o Plano de Pagamento
 export interface PaymentInstallment {
   id: string
-  description: string // Ex: "Sinal (50%)", "Saldo (50%)"
+  description: string
   value: number
   dueDate: string // Data ISO (YYYY-MM-DD)
   isPaid: boolean
-  paymentDate?: string // Data que foi pago
+  paymentDate?: string
 }
 
 // Interface para o Caução
@@ -35,33 +35,36 @@ export interface Deposit {
 export interface WeddingSupplier {
   id: string
   name: string
-  service: string // Ex: "Buffet", "Som", "Cerimonial"
+  service: string
   category: 'Exclusivo' | 'Externo' | 'Sugerido'
   contact: string
   status: 'Pendente' | 'Confirmado' | 'Pago'
-  isExclusive?: boolean // ++ ADICIONADO para o checkbox
+  // isExclusive FOI REMOVIDO DAQUI
 }
 
 // Interface para Tarefas do Checklist
 export interface WeddingTask {
   id: string
-  description: string // Ex: "Enviar Lista de Convidados"
+  description: string
   deadline: string // Data ISO (YYYY-MM-DD)
   isDone: boolean
-  responsible: 'Contratante' | 'Contratada' // Quem deve executar
+  responsible: 'Contratante' | 'Contratada'
 }
 
 // Interface principal do Dossiê de Casamento (ATUALIZADA)
 export interface Wedding {
   id: string
-  coupleName: string // Ex: "Milene & Pedro"
+  coupleName: string
   couplePhotoUrl?: string
   
-  weddingDate: string // Data ISO (YYYY-MM-DD)
+  weddingDate: string
   guestCount: number
   location: WeddingLocation
   
-  coupleCity: string // ++ ADICIONADO (Cidade dos noivos)
+  coupleCity: string 
+  
+  // ++ ADICIONADO ++
+  hasLodgeExclusivity: boolean // Exclusividade de hospedagem
 
   // Informações dos clientes
   clients: WeddingClient[]
@@ -69,7 +72,7 @@ export interface Wedding {
   // Datas de Hospedagem (para bloqueio)
   checkInDate: string
   checkOutDate: string
-  courtesyCabin?: string // Ex: "Hibisco"
+  courtesyCabin?: string
 
   // Financeiro
   totalValue: number
@@ -81,7 +84,7 @@ export interface Wedding {
   checklist: WeddingTask[]
   
   // Documentos e Notas
-  contractUrl?: string // Link para o PDF/DOCX no Firebase Storage
+  contractUrl?: string
   internalObservations: string
 
   // Metadados

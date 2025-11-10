@@ -11,13 +11,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Badge } from '@/components/ui/badge'
-import { MoreHorizontal, ArrowUpDown } from 'lucide-react'
+import { MoreHorizontal, ArrowUpDown, Loader2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-// ++ INÍCIO DA ADIÇÃO ++
 import { useRouter } from 'next/navigation'
-// ++ FIM DA ADIÇÃO ++
+import { useState, useTransition } from 'react'
+import { deleteWedding } from '@/app/actions/manage-wedding'
+import { toast } from 'sonner'
 
 // (As funções helper formatCurrency e getPaymentStatus 
 // permanecem as mesmas que criamos antes)
@@ -45,10 +57,80 @@ const getPaymentStatus = (
   return { status: 'Pendente', variant: 'destructive' }
 }
 
-// ++ INÍCIO DA ATUALIZAÇÃO ++
-// Criamos um componente interno para a célula de Ações
-// para que possamos usar o hook useRouter()
+// ++ ATUALIZAÇÃO 1: Célula de Ações (Removendo "Abrir Dossiê") ++
+// Componente da célula de Ações agora tem apenas Excluir
 const CellActions = ({ row }: { row: Row<WeddingData> }) => {
+  const [isPending, startTransition] = useTransition()
+  const [isAlertOpen, setIsAlertOpen] = useState(false)
+  const wedding = row.original
+
+  // Ação de exclusão real
+  const handleDelete = () => {
+    startTransition(async () => {
+      const result = await deleteWedding(wedding.id)
+      if (result.success) {
+        toast.success(result.message)
+        setIsAlertOpen(false) 
+      } else {
+        toast.error(result.message)
+      }
+    })
+  }
+
+  return (
+    <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0">
+            <span className="sr-only">Abrir menu</span>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+          {/* Item "Abrir Dossiê" e Separador REMOVIDOS */}
+          
+          {/* O AlertDialogTrigger abre o diálogo de confirmação */}
+          <AlertDialogTrigger asChild>
+            <DropdownMenuItem
+              className="text-red-600"
+              onSelect={(e) => e.preventDefault()} 
+            >
+              Excluir Casamento
+            </DropdownMenuItem>
+          </AlertDialogTrigger>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      
+      {/* Conteúdo do Diálogo de Confirmação de Exclusão */}
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Esta ação não pode ser desfeita. Isso excluirá permanentemente o
+            dossiê do casamento de <strong>{wedding.coupleName}</strong> do
+            banco de dados.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleDelete}
+            disabled={isPending}
+            className="bg-red-600 hover:bg-red-700"
+          >
+            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Sim, excluir
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+// ++ FIM DA ATUALIZAÇÃO 1 ++
+
+// ++ INÍCIO DA ADIÇÃO 2: Célula de Nome Clicável ++
+const CoupleNameCell = ({ row }: { row: Row<WeddingData> }) => {
   const router = useRouter()
   const wedding = row.original
 
@@ -56,36 +138,23 @@ const CellActions = ({ row }: { row: Row<WeddingData> }) => {
     router.push(`/admin/casamentos/${wedding.id}`)
   }
 
-  const deleteWedding = () => {
-    // TODO: Implementar action 'deleteWedding(wedding.id)'
-    alert('Excluir: ' + wedding.coupleName)
-  }
-
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-8 w-8 p-0">
-          <span className="sr-only">Abrir menu</span>
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Ações</DropdownMenuLabel>
-        <DropdownMenuItem onClick={goToDossier}>
-          Abrir Dossiê (Editar)
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={deleteWedding} className="text-red-600">
-          Excluir Casamento
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    // Usamos um botão com variant="link" para
+    // manter a semântica de "ação" e o estilo
+    <Button
+      variant="link"
+      // Resetamos o padding e a altura para parecer texto normal
+      className="font-medium p-0 h-auto text-left" 
+      onClick={goToDossier}
+    >
+      {wedding.coupleName}
+    </Button>
   )
 }
-// ++ FIM DA ATUALIZAÇÃO ++
+// ++ FIM DA ADIÇÃO 2 ++
 
 export const columns: ColumnDef<WeddingData>[] = [
-  // Coluna Casal
+  // Coluna Casal (ATUALIZADA)
   {
     accessorKey: 'coupleName',
     header: ({ column }: { column: Column<WeddingData, unknown> }) => {
@@ -99,12 +168,11 @@ export const columns: ColumnDef<WeddingData>[] = [
         </Button>
       )
     },
-    cell: ({ row }: { row: Row<WeddingData> }) => (
-      <div className="font-medium">{row.getValue('coupleName')}</div>
-    ),
+    // Usamos o novo componente de célula clicável
+    cell: CoupleNameCell, 
   },
   
-  // Coluna Data do Evento
+  // (Colunas restantes inalteradas)
   {
     accessorKey: 'weddingDate',
     header: ({ column }: { column: Column<WeddingData, unknown> }) => {
@@ -119,20 +187,17 @@ export const columns: ColumnDef<WeddingData>[] = [
       )
     },
     cell: ({ row }: { row: Row<WeddingData> }) => {
-      // Usamos parseISO porque a data é uma string YYYY-MM-DD
       const date = parseISO(row.getValue('weddingDate'))
-      const formattedDate = format(date, 'PPP', { locale: ptBR }) // 'P' é mais curto 'dd/MM/yyyy'
+      const formattedDate = format(date, 'PPP', { locale: ptBR })
       return <div>{formattedDate}</div>
     },
   },
 
-  // Coluna Local
   {
     accessorKey: 'location',
     header: 'Local',
   },
 
-  // Coluna Status Pgto.
   {
     accessorKey: 'paymentPlan',
     header: 'Status Pgto.',
@@ -142,7 +207,6 @@ export const columns: ColumnDef<WeddingData>[] = [
     },
   },
 
-  // Coluna Valor Contrato
   {
     accessorKey: 'totalValue',
     header: () => <div className="text-right">Valor Contrato</div>,
@@ -158,6 +222,6 @@ export const columns: ColumnDef<WeddingData>[] = [
   // Coluna Ações (ATUALIZADA)
   {
     id: 'actions',
-    cell: CellActions, // Usamos nosso novo componente aqui
+    cell: CellActions, // O componente CellActions agora está atualizado
   },
 ]

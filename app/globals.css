@@ -76,3 +76,78 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ======================================================================
+  Estilos do Calendário de Casamentos (Estilo Airbnb/Range)
+======================================================================
+*/
+
+/* Define a aparência dos dias DENTRO de um range */
+.rdp-day_range_middle {
+  border-radius: 0 !important;
+}
+
+/* Define a aparência dos dias de INÍCIO e FIM */
+.rdp-day_range_start {
+  border-top-left-radius: 50% !important;
+  border-bottom-left-radius: 50% !important;
+}
+.rdp-day_range_end {
+  border-top-right-radius: 50% !important;
+  border-bottom-right-radius: 50% !important;
+}
+
+/* --- Cores de RANGE (Hospedagem) --- */
+
+/* Maram (Azul) */
+.rdp-day_range_maram {
+  background-color: #dbeafe; /* Tailwind blue-100 */
+}
+.rdp-day_range_start.rdp-day_range_maram,
+.rdp-day_range_end.rdp-day_range_maram {
+  background-color: #3b82f6 !important; /* Tailwind blue-500 */
+  color: white !important;
+}
+
+/* Mayam (Rosa) */
+.rdp-day_range_mayam {
+  background-color: #fce7f3; /* Tailwind pink-100 */
+}
+.rdp-day_range_start.rdp-day_range_mayam,
+.rdp-day_range_end.rdp-day_range_mayam {
+  background-color: #ec4899 !important; /* Tailwind pink-500 */
+  color: white !important;
+}
+
+/* Outro (Verde) */
+.rdp-day_range_outro {
+  background-color: #dcfce7; /* Tailwind green-100 */
+}
+.rdp-day_range_start.rdp-day_range_outro,
+.rdp-day_range_end.rdp-day_range_outro {
+  background-color: #22c55e !important; /* Tailwind green-500 */
+  color: white !important;
+}
+
+
+/* --- Cores do DIA DO EVENTO (Círculo Sólido) --- */
+.rdp-day_event {
+  font-weight: bold;
+  border-radius: 50% !important;
+  color: white !important; /* Força a cor do texto do dia */
+}
+
+/* Cor do Evento Maram (Azul Escuro) */
+.rdp-day_event_maram {
+  background-color: #2563eb !important; /* Tailwind blue-600 */
+}
+
+/* Cor do Evento Mayam (Rosa Escuro) */
+.rdp-day_event_mayam {
+  background-color: #db2777 !important; /* Tailwind pink-600 */
+}
+
+/* Cor do Evento Outro (Verde Escuro) */
+.rdp-day_event_outro {
+  background-color: #16a34a !important; /* Tailwind green-600 */
+}

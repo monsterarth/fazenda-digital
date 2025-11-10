@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
@@ -36,21 +36,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import { Calendar } from '@/components/ui/calendar'
+// ++ REMOVIDO: Popover e Calendar não são mais necessários aqui
+// import {
+//   Popover,
+//   PopoverContent,
+//   PopoverTrigger,
+// } from '@/components/ui/popover'
+// import { Calendar } from '@/components/ui/calendar'
 import { Textarea } from '@/components/ui/textarea'
 import { CalendarIcon, Loader2, PlusCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { format } from 'date-fns'
+// ++ ATUALIZADO: parseISO é necessário para ler a data do input
+import { format, addDays, parseISO } from 'date-fns' 
 import { ptBR } from 'date-fns/locale'
-// ++ INÍCIO DAS ADIÇÕES ++
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
-// ++ FIM DAS ADIÇÕES ++
 
 export function WeddingFormDialog() {
   const [open, setOpen] = useState(false)
@@ -64,14 +64,30 @@ export function WeddingFormDialog() {
       guestCount: 100,
       totalValue: 25000,
       internalObservations: '',
-      // ++ ADIÇÕES (default values) ++
       coupleCity: '',
       plannerName: '',
       soundSupplierName: '',
       buffetSupplierName: '',
-      buffetIsExclusive: false,
+      hasLodgeExclusivity: false,
     },
   })
+
+  const { watch, setValue } = form
+  const watchedWeddingDate = watch('weddingDate')
+
+  useEffect(() => {
+    if (watchedWeddingDate) {
+      try {
+        const checkIn = addDays(watchedWeddingDate, -1)
+        const checkOut = addDays(watchedWeddingDate, 1)
+
+        setValue('checkInDate', checkIn, { shouldValidate: true })
+        setValue('checkOutDate', checkOut, { shouldValidate: true })
+      } catch (error) {
+        console.error("Erro ao definir datas de hospedagem:", error)
+      }
+    }
+  }, [watchedWeddingDate, setValue]) 
 
   const onSubmit = (values: WeddingFormValues) => {
     startTransition(async () => {
@@ -94,8 +110,12 @@ export function WeddingFormDialog() {
           Adicionar Casamento
         </Button>
       </DialogTrigger>
-      {/* ATUALIZADO: Aumentamos o tamanho do modal */}
-      <DialogContent className="sm:max-w-[750px]">
+      <DialogContent 
+        className="sm:max-w-[750px]"
+        onInteractOutside={(e) => {
+          e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Adicionar Novo Casamento</DialogTitle>
           <DialogDescription>
@@ -109,8 +129,8 @@ export function WeddingFormDialog() {
             onSubmit={form.handleSubmit(onSubmit)}
             className="space-y-4 pr-1"
           >
-            {/* Adicionado ScrollArea para telas menores */}
             <div className="max-h-[70vh] overflow-y-auto pr-5 space-y-4">
+              {/* (Campos de Nome e Cidade inalterados) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -129,8 +149,6 @@ export function WeddingFormDialog() {
                     </FormItem>
                   )}
                 />
-
-                {/* ++ ADICIONADO: Cidade dos Noivos ++ */}
                 <FormField
                   control={form.control}
                   name="coupleCity"
@@ -151,10 +169,10 @@ export function WeddingFormDialog() {
               </div>
 
               <Separator className="my-4" />
-              <p className="text-sm font-medium text-foreground">Fornecedores</p>
+              <p className="text-sm font-medium text-foreground">Fornecedores Iniciais</p>
 
+              {/* (Campos de Fornecedores inalterados) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* ++ ADICIONADO: Cerimonialista ++ */}
                 <FormField
                   control={form.control}
                   name="plannerName"
@@ -172,8 +190,6 @@ export function WeddingFormDialog() {
                     </FormItem>
                   )}
                 />
-
-                {/* ++ ADICIONADO: Fornecedor de Som ++ */}
                 <FormField
                   control={form.control}
                   name="soundSupplierName"
@@ -191,8 +207,6 @@ export function WeddingFormDialog() {
                     </FormItem>
                   )}
                 />
-
-                {/* ++ ADICIONADO: Fornecedor de Buffet ++ */}
                 <FormField
                   control={form.control}
                   name="buffetSupplierName"
@@ -210,29 +224,6 @@ export function WeddingFormDialog() {
                     </FormItem>
                   )}
                 />
-
-                {/* ++ ADICIONADO: Checkbox Exclusividade ++ */}
-                <FormField
-                  control={form.control}
-                  name="buffetIsExclusive"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-end space-x-3 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          disabled={isPending}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Buffet com exclusividade?</FormLabel>
-                        <FormDescription>
-                          Marque se for um fornecedor exclusivo.
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
               </div>
 
               <Separator className="my-4" />
@@ -240,48 +231,93 @@ export function WeddingFormDialog() {
                 Detalhes do Evento e Contrato
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                {/* ++ INÍCIO DA ATUALIZAÇÃO (Data do Evento) ++ */}
                 <FormField
                   control={form.control}
                   name="weddingDate"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Data do Evento</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={'outline'}
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground',
-                              )}
-                              disabled={isPending}
-                            >
-                              {field.value ? (
-                                format(field.value, 'PPP', { locale: ptBR })
-                              ) : (
-                                <span>Selecione a data</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={(date) => date < new Date('1900-01-01')}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          // Formata o objeto Date do formulário para "yyyy-MM-dd"
+                          value={field.value ? format(field.value, 'yyyy-MM-dd') : ''}
+                          onChange={(e) => {
+                            // Converte a string "yyyy-MM-dd" de volta para um objeto Date
+                            if (e.target.value) {
+                              field.onChange(parseISO(e.target.value));
+                            } else {
+                              field.onChange(undefined);
+                            }
+                          }}
+                          disabled={isPending}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                {/* ++ FIM DA ATUALIZAÇÃO ++ */}
 
+                {/* ++ INÍCIO DA ATUALIZAÇÃO (Início Hospedagem) ++ */}
+                <FormField
+                  control={form.control}
+                  name="checkInDate"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Início Hospedagem</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          value={field.value ? format(field.value, 'yyyy-MM-dd') : ''}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              field.onChange(parseISO(e.target.value));
+                            } else {
+                              field.onChange(undefined);
+                            }
+                          }}
+                          disabled={isPending}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {/* ++ FIM DA ATUALIZAÇÃO ++ */}
+                
+                {/* ++ INÍCIO DA ATUALIZAÇÃO (Fim Hospedagem) ++ */}
+                <FormField
+                  control={form.control}
+                  name="checkOutDate"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Fim Hospedagem</FormLabel>
+                       <FormControl>
+                        <Input
+                          type="date"
+                          value={field.value ? format(field.value, 'yyyy-MM-dd') : ''}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              field.onChange(parseISO(e.target.value));
+                            } else {
+                              field.onChange(undefined);
+                            }
+                          }}
+                          disabled={isPending}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {/* ++ FIM DA ATUALIZAÇÃO ++ */}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
                   name="location"
@@ -308,86 +344,6 @@ export function WeddingFormDialog() {
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="checkInDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Início Hospedagem</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={'outline'}
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground',
-                              )}
-                              disabled={isPending}
-                            >
-                              {field.value ? (
-                                format(field.value, 'PPP', { locale: ptBR })
-                              ) : (
-                                <span>Data de Check-in</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="checkOutDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Fim Hospedagem</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={'outline'}
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground',
-                              )}
-                              disabled={isPending}
-                            >
-                              {field.value ? (
-                                format(field.value, 'PPP', { locale: ptBR })
-                              ) : (
-                                <span>Data de Check-out</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
                 <FormField
                   control={form.control}
                   name="guestCount"
@@ -419,27 +375,50 @@ export function WeddingFormDialog() {
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="internalObservations"
-                  render={({ field }) => (
-                    <FormItem className="col-span-2">
-                      <FormLabel>Observações Internas</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Detalhes do contrato, pedidos especiais, etc."
-                          className="resize-none"
-                          {...field}
-                          disabled={isPending}
-                          rows={4}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
+
+              {/* (Checkbox e Observações inalterados) */}
+              <FormField
+                control={form.control}
+                name="hasLodgeExclusivity"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 rounded-md border p-4">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={isPending}
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Exclusividade de Hospedagem?</FormLabel>
+                      <FormDescription>
+                        Marque se o contrato inclui a exclusividade de toda a pousada.
+                      </FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="internalObservations"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Observações Internas</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Detalhes do contrato, pedidos especiais, etc."
+                        className="resize-none"
+                        {...field}
+                        disabled={isPending}
+                        rows={4}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             <DialogFooter className="pt-4 border-t">

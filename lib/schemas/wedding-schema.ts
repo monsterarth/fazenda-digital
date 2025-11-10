@@ -1,13 +1,17 @@
 import { z } from 'zod'
 
-// (Schema 1: Criação - Inalterado)
+// Schema 1: Criação de Casamento (ATUALIZADO)
 export const weddingFormSchema = z.object({
   coupleName: z.string().min(3, { message: 'Nome do casal é obrigatório.' }),
   coupleCity: z.string().optional(),
   plannerName: z.string().optional(),
   soundSupplierName: z.string().optional(),
   buffetSupplierName: z.string().optional(),
-  buffetIsExclusive: z.boolean().default(false),
+  // buffetIsExclusive FOI REMOVIDO
+  
+  // ++ ADICIONADO ++
+  hasLodgeExclusivity: z.boolean().default(false),
+
   weddingDate: z.date({ required_error: 'Data do evento é obrigatória.' }),
   checkInDate: z.date({ required_error: 'Data do Check-in é obrigatória.' }),
   checkOutDate: z.date({ required_error: 'Data do Check-out é obrigatória.' }),
@@ -25,10 +29,14 @@ export const weddingFormSchema = z.object({
 export type WeddingFormValues = z.infer<typeof weddingFormSchema>
 
 
-// (Schema 2: Aba Geral - Inalterado)
+// Schema 2: Edição da Aba "Geral" (ATUALIZADO)
 export const weddingGeneralFormSchema = z.object({
   coupleName: z.string().min(3, { message: 'Nome do casal é obrigatório.' }),
   coupleCity: z.string().optional(),
+  
+  // ++ ADICIONADO ++
+  hasLodgeExclusivity: z.boolean().default(false),
+
   weddingDate: z.date({ required_error: 'Data do evento é obrigatória.' }),
   checkInDate: z.date({ required_error: 'Data do Check-in é obrigatória.' }),
   checkOutDate: z.date({ required_error: 'Data do Check-out é obrigatória.' }),
@@ -80,22 +88,16 @@ export type WeddingSuppliersFormValues = z.infer<typeof weddingSuppliersFormSche
 export type SupplierValues = z.infer<typeof supplierSchema>
 
 
-// ++ INÍCIO DA ADIÇÃO ++
-
-// Schema 5: Edição da Aba "Checklist"
+// (Schema 5: Aba Checklist - Inalterado)
 export const taskSchema = z.object({
   id: z.string(),
   description: z.string().min(1, 'Descrição é obrigatória.'),
   isDone: z.boolean().default(false),
   responsible: z.enum(['Contratante', 'Contratada']),
-  deadline: z.date().optional(), // O prazo é opcional
+  deadline: z.date().optional(),
 })
-
 export const weddingChecklistFormSchema = z.object({
   checklist: z.array(taskSchema),
 })
-
 export type WeddingChecklistFormValues = z.infer<typeof weddingChecklistFormSchema>
 export type TaskValues = z.infer<typeof taskSchema>
-
-// ++ FIM DA ADIÇÃO ++

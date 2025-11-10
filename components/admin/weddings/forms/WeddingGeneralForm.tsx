@@ -34,7 +34,8 @@ import {
 } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import { Textarea } from '@/components/ui/textarea'
-import { CalendarIcon, Loader2, Pencil, Landmark, Users2, MapPin, Hash, Building } from 'lucide-react' // ++ Ícones
+// ++ Ícone Landmark REMOVIDO ++
+import { CalendarIcon, Loader2, Pencil, Users2, MapPin, Building } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -45,16 +46,7 @@ interface WeddingGeneralFormProps {
   wedding: WeddingData
 }
 
-// ++ INÍCIO DA ADIÇÃO ++
-// Helper para formatar moeda (para a Ficha)
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(value)
-}
-
-// Componente "Ficha de Informação" (para o modo Read-Only)
+// (InfoField helper inalterado)
 const InfoField = ({
   icon,
   label,
@@ -79,7 +71,6 @@ const InfoField = ({
     </div>
   )
 }
-// ++ FIM DA ADIÇÃO ++
 
 export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
   const [isPending, startTransition] = useTransition()
@@ -95,12 +86,11 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
       checkOutDate: parseISO(wedding.checkOutDate),
       location: wedding.location,
       guestCount: wedding.guestCount,
-      totalValue: wedding.totalValue,
+      // totalValue REMOVIDO
       internalObservations: wedding.internalObservations || '',
     },
   })
 
-  // Hook 'reset' para ser usado no Cancelar
   const { reset } = form
 
   const onSubmit = (values: WeddingGeneralFormValues) => {
@@ -109,7 +99,6 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
       if (result.success) {
         toast.success(result.message)
         setIsEditing(false)
-        // Atualiza os 'defaultValues' do formulário para o novo estado
         reset(values) 
       } else {
         toast.error(result.message)
@@ -118,19 +107,18 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
   }
 
   const handleCancel = () => {
-    reset() // Reseta o formulário para os 'defaultValues' originais
+    reset()
     setIsEditing(false)
   }
 
-  // ++ INÍCIO DA ADIÇÃO: MODO "FICHA" (READ-ONLY) ++
+  // MODO "FICHA" (READ-ONLY)
   if (!isEditing) {
-    // Rebuscamos os valores do formulário (que podem ter sido resetados pós-salvar)
     const data = form.getValues()
 
     return (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Informações Gerais e Contrato</CardTitle>
+          <CardTitle>Informações Gerais</CardTitle>
           <Button
             variant="outline"
             type="button"
@@ -141,8 +129,8 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
           </Button>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* ++ ATUALIZADO: Removido grid-cols-3, totalValue movido */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Bloco de Datas */}
             <InfoField
               icon={CalendarIcon}
               label="Data do Evento"
@@ -158,7 +146,6 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
               label="Fim Hospedagem"
               value={format(data.checkOutDate, 'PPP', { locale: ptBR })}
             />
-            {/* Bloco de Detalhes */}
             <InfoField
               icon={MapPin}
               label="Local"
@@ -174,17 +161,11 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
               label="Nº de Convidados"
               value={data.guestCount}
             />
-            {/* Bloco Financeiro */}
-             <InfoField
-              icon={Landmark} // Ou DollarSign
-              label="Valor Total (Contrato)"
-              value={formatCurrency(data.totalValue)}
-            />
+            {/* Bloco Financeiro (totalValue) FOI REMOVIDO DAQUI */}
           </div>
 
           <Separator />
 
-          {/* Observações */}
           <div>
             <span className="text-sm font-medium text-muted-foreground">
               Observações Internas
@@ -197,19 +178,17 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
       </Card>
     )
   }
-  // ++ FIM DA ADIÇÃO: MODO "FICHA" ++
 
-  // ++ INÍCIO: MODO "EDIÇÃO" (O FORMULÁRIO QUE JÁ TÍNHAMOS) ++
+  // MODO "EDIÇÃO" (O FORMULÁRIO)
   return (
     <Card>
       <CardHeader>
-        {/* Título muda para indicar a edição */}
         <CardTitle>Editando Informações Gerais</CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Campos do formulário (exatamente como antes) */}
+            {/* Campos do formulário */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -218,11 +197,7 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
                   <FormItem>
                     <FormLabel>Nome do Casal</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="Nome & Nome"
-                        {...field}
-                        disabled={isPending}
-                      />
+                      <Input {...field} disabled={isPending} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -235,11 +210,7 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
                   <FormItem>
                     <FormLabel>Cidade dos Noivos</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="Ex: Florianópolis - SC"
-                        {...field}
-                        disabled={isPending}
-                      />
+                      <Input {...field} disabled={isPending} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -248,6 +219,7 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* (Campos de Data... inalterados) */}
               <FormField
                 control={form.control}
                 name="weddingDate"
@@ -294,6 +266,7 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
                   <FormItem className="flex flex-col">
                     <FormLabel>Início Hospedagem</FormLabel>
                     <Popover>
+                      {/* ... (código do popover de data) ... */}
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
@@ -333,6 +306,7 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
                   <FormItem className="flex flex-col">
                     <FormLabel>Fim Hospedagem</FormLabel>
                     <Popover>
+                      {/* ... (código do popover de data) ... */}
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
@@ -367,7 +341,8 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* ++ ATUALIZADO: Removido totalValue, grid-cols-2 agora */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="location"
@@ -407,24 +382,7 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="totalValue"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Valor Total (Contrato)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        {...field}
-                        disabled={isPending}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* totalValue FOI REMOVIDO DAQUI */}
             </div>
 
             <FormField
@@ -447,7 +405,7 @@ export function WeddingGeneralForm({ wedding }: WeddingGeneralFormProps) {
               )}
             />
 
-            {/* Botões de Ação */}
+            {/* (Botões de Ação inalterados) */}
             <div className="flex justify-end space-x-2 pt-4 border-t">
               <Button
                 type="button"

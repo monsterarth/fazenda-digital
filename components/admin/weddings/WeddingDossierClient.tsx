@@ -19,8 +19,11 @@ import {
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-// ++ INÍCIO DA ADIÇÃO ++
 import { WeddingGeneralForm } from './forms/WeddingGeneralForm'
+import { WeddingFinancialForm } from './forms/WeddingFinancialForm'
+import { WeddingSuppliersForm } from './forms/WeddingSuppliersForm'
+// ++ INÍCIO DA ADIÇÃO ++
+import { WeddingChecklistForm } from './forms/WeddingChecklistForm'
 // ++ FIM DA ADIÇÃO ++
 
 interface DossierClientProps {
@@ -35,7 +38,7 @@ export function WeddingDossierClient({ weddingData }: DossierClientProps) {
 
   return (
     <div className="space-y-6">
-      {/* CABEÇALHO DO DOSSIÊ */}
+      {/* (Cabeçalho do Dossiê inalterado) */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
         <div className="flex items-center space-x-4">
           <Avatar className="h-16 w-16 border">
@@ -58,13 +61,10 @@ export function WeddingDossierClient({ weddingData }: DossierClientProps) {
             <Camera className="mr-2 h-4 w-4" />
             Alterar Foto
           </Button>
-          {/* Removemos o botão "Salvar" genérico daqui,
-            pois cada aba terá seu próprio botão "Salvar".
-          */}
         </div>
       </div>
 
-      {/* ABAS DE GERENCIAMENTO */}
+      {/* (Abas de Gerenciamento inalteradas) */}
       <Tabs defaultValue="geral" className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
           <TabsTrigger value="geral">
@@ -84,40 +84,27 @@ export function WeddingDossierClient({ weddingData }: DossierClientProps) {
           </TabsTrigger>
         </TabsList>
 
-        {/* Conteúdo da Aba 1: Geral (ATUALIZADO) */}
+        {/* Conteúdo da Aba 1: Geral (Inalterado) */}
         <TabsContent value="geral" className="mt-4">
-          {/* Substituímos o <p> pelo formulário real */}
           <WeddingGeneralForm wedding={weddingData} />
         </TabsContent>
 
-        {/* Conteúdo da Aba 2: Financeiro */}
+        {/* Conteúdo da Aba 2: Financeiro (Inalterado) */}
         <TabsContent value="financeiro" className="mt-4">
-          <h3 className="text-xl font-semibold mb-4">Gestão Financeira</h3>
-          <p>
-            (Aqui vamos construir o módulo de gestão do Valor Total,
-            Parcelamento e Caução.)
-          </p>
+          <WeddingFinancialForm wedding={weddingData} />
         </TabsContent>
 
-        {/* Conteúdo da Aba 3: Fornecedores */}
+        {/* Conteúdo da Aba 3: Fornecedores (Inalterado) */}
         <TabsContent value="fornecedores" className="mt-4">
-          <h3 className="text-xl font-semibold mb-4">
-            Gestão de Fornecedores
-          </h3>
-          <p>
-            (Aqui vamos construir uma tabela (CRUD) para adicionar, editar e
-            remover fornecedores da lista 'suppliers'.)
-          </p>
+          <WeddingSuppliersForm wedding={weddingData} />
         </TabsContent>
 
+        {/* ++ INÍCIO DA ATUALIZAÇÃO ++ */}
         {/* Conteúdo da Aba 4: Checklist */}
         <TabsContent value="checklist" className="mt-4">
-          <h3 className="text-xl font-semibold mb-4">Checklist do Evento</h3>
-          <p>
-            (Aqui vamos construir um checklist interativo (CRUD) para as
-            tarefas do cliente e da equipe interna.)
-          </p>
+          <WeddingChecklistForm wedding={weddingData} />
         </TabsContent>
+        {/* ++ FIM DA ATUALIZAÇÃO ++ */}
 
         {/* Conteúdo da Aba 5: Documentos */}
         <TabsContent value="documentos" className="mt-4">

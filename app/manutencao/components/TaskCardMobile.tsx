@@ -1,6 +1,7 @@
-// components/manutencao/TaskCardMobile.tsx
+// ARQUIVO: app/manutencao/components/TaskCardMobile.tsx
+// (Note: Corrigido para usar 'useModalStore')
 
-"use client";
+'use client';
 
 import React, { useState } from 'react';
 import { MaintenanceTask, TaskStatus } from '@/types/maintenance';
@@ -18,6 +19,8 @@ import { Loader2, Play, CheckCircle } from 'lucide-react';
 import { updateTaskStatus } from '@/app/actions/manage-maintenance-task';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
+// ### CORREÇÃO AQUI ###
+import { useModalStore } from '@/hooks/use-modal-store'; // <-- 1. IMPORTAR useModalStore
 
 interface TaskCardMobileProps {
   task: MaintenanceTask;
@@ -26,29 +29,38 @@ interface TaskCardMobileProps {
 export const TaskCardMobile = ({ task }: TaskCardMobileProps) => {
   const { user } = useAuth();
   const [isUpdating, setIsUpdating] = useState(false);
+  // ### CORREÇÃO AQUI ###
+  const { onOpen } = useModalStore(); // <-- 2. INICIAR useModalStore
 
   const priorityInfo = {
-    high: "bg-red-500",
-    medium: "bg-yellow-500",
-    low: "bg-green-500",
+    high: 'bg-red-500',
+    medium: 'bg-yellow-500',
+    low: 'bg-green-500',
   };
 
   const handleUpdateStatus = async (newStatus: TaskStatus) => {
     if (!user?.email) {
-      toast.error("Erro de autenticação.");
+      toast.error('Erro de autenticação.');
+      return;
+    }
+
+    if (newStatus === 'completed') {
+      onOpen('completeMaintenanceTask', { task });
       return;
     }
 
     setIsUpdating(true);
-    const toastId = toast.loading("Atualizando status...");
+    const toastId = toast.loading('Atualizando status...');
 
-    // Chama a Server Action que já existe
-    const response = await updateTaskStatus(task.id, newStatus, user.email);
+    const response = await updateTaskStatus(
+      task.id,
+      newStatus,
+      user.email, // Passando o email do usuário
+    );
 
     if (response.success) {
-      toast.success("Status atualizado!", { id: toastId });
+      toast.success('Status atualizado!', { id: toastId });
     } else {
-      // A validação de dependência (se houver) será mostrada aqui
       toast.error(`Falha: ${response.message}`, { id: toastId });
     }
     setIsUpdating(false);
@@ -62,7 +74,11 @@ export const TaskCardMobile = ({ task }: TaskCardMobileProps) => {
           <Badge
             className={`flex-shrink-0 ${priorityInfo[task.priority]} text-white`}
           >
-            {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
+            {task.priority === 'high'
+              ? 'Alta'
+              : task.priority === 'medium'
+                ? 'Média'
+                : 'Baixa'}
           </Badge>
         </div>
         <CardDescription>
@@ -83,7 +99,11 @@ export const TaskCardMobile = ({ task }: TaskCardMobileProps) => {
             onClick={() => handleUpdateStatus('in_progress')}
             disabled={isUpdating}
           >
-            {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+            {isUpdating ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-4 w-4" />
+            )}
             Iniciar Tarefa
           </Button>
         )}
@@ -91,10 +111,11 @@ export const TaskCardMobile = ({ task }: TaskCardMobileProps) => {
         {task.status === 'in_progress' && (
           <Button
             className="w-full bg-green-600 hover:bg-green-700"
-            onClick={() => handleUpdateStatus('completed')}
+            // ### CORREÇÃO AQUI ### (Chamando onOpen do useModalStore)
+            onClick={() => onOpen('completeMaintenanceTask', { task })}
             disabled={isUpdating}
           >
-            {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+            <CheckCircle className="mr-2 h-4 w-4" />
             Concluir Tarefa
           </Button>
         )}
@@ -102,6 +123,12 @@ export const TaskCardMobile = ({ task }: TaskCardMobileProps) => {
         {task.status === 'completed' && (
           <p className="text-sm text-green-700 font-medium w-full text-center">
             Tarefa concluída!
+          </p>
+        )}
+
+        {task.status === 'awaiting_review' && (
+          <p className="text-sm text-yellow-700 font-medium w-full text-center">
+            Enviada para revisão.
           </p>
         )}
       </CardFooter>

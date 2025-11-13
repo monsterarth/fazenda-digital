@@ -1,26 +1,26 @@
-// app/admin/(dashboard)/manutencao/page.tsx
+// ARQUIVO: app/admin/(dashboard)/manutencao/page.tsx
+// (Note: Adicionando o novo ViewTaskModal)
 
 import React from 'react';
 import { getMaintenanceStaff } from '@/app/actions/get-maintenance-staff';
-// ++ REMOVIDO: CreateTaskSheet (não existe mais) ++
-// import { CreateTaskSheet } from '@/components/admin/maintenance/CreateTaskSheet';
 import { DelegateTaskDialog } from '@/components/admin/maintenance/DelegateTaskDialog';
 import { MaintenanceKanbanClient } from '@/components/admin/maintenance/MaintenanceKanbanClient';
-// ++ REMOVIDO: EditTaskDialog (não existe mais) ++
-// import { EditTaskDialog } from '@/components/admin/maintenance/EditTaskDialog';
-import { MaintenanceTaskDialog } from '@/components/admin/maintenance/MaintenanceTaskDialog'; // ++ ADICIONADO: O novo modal unificado
+import { MaintenanceTaskDialog } from '@/components/admin/maintenance/MaintenanceTaskDialog';
+
+// 1. IMPORTAR O NOVO MODAL DE VISUALIZAÇÃO
+import { ViewTaskModal } from '@/components/admin/maintenance/ViewTaskModal';
 
 export default async function ManutencaoPage() {
-  
   const staff = await getMaintenanceStaff();
 
   return (
     <div className="flex flex-col h-full">
       {/* Modais que escutam o useModalStore */}
       <DelegateTaskDialog staff={staff} />
-      
-      {/* ++ ATUALIZADO: Renderiza o novo modal unificado ++ */}
-      <MaintenanceTaskDialog /> 
+      <MaintenanceTaskDialog />
+
+      {/* 2. RENDERIZAR O NOVO MODAL */}
+      <ViewTaskModal />
 
       {/* Componente principal do Kanban */}
       <MaintenanceKanbanClient staff={staff} />

@@ -1,11 +1,9 @@
 'use client'
 
 import * as React from 'react'
-// MANTEMOS ESTES IMPORTS DO REACT
-import { useReactTable, flexRender } from '@tanstack/react-table'
-
-// E MUDAMOS TODOS OS TIPOS E FUNÇÕES CORE PARA O PACOTE 'TABLE-CORE'
 import {
+  useReactTable,
+  flexRender,
   ColumnDef,
   ColumnFiltersState,
   SortingState,
@@ -13,6 +11,7 @@ import {
   getCoreRowModel,
   getFacetedRowModel,
   getFacetedUniqueValues,
+  getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
   // Tipos explícitos
@@ -20,9 +19,8 @@ import {
   Header,
   Row,
   Cell,
-  // A FUNÇÃO PROBLEMÁTICA (AGORA DO LUGAR CERTO)
-  getFilteredRowModel, 
-} from '@tanstack/table-core' // <<< IMPORTADO DE @tanstack/table-core
+  // ++ REMOVIDO: A função 'getGlobalFilteredRowModel' não existe ++
+} from '@tanstack/react-table'
 
 import {
   Table,
@@ -32,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { DataTablePagination } from './data-table-pagination' 
+import { DataTablePagination } from './data-table-pagination'
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
@@ -57,25 +55,32 @@ export function DataTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns,
+    initialState: {
+      pagination: {
+        pageSize: 50, // Mantém o padrão de 50 linhas
+      },
+    },
     state: {
       sorting,
       columnVisibility,
       rowSelection,
       columnFilters,
-      globalFilter, 
+      globalFilter,
     },
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
-    onGlobalFilterChange: onGlobalFilterChange, 
+    onGlobalFilterChange: onGlobalFilterChange,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
+    getFilteredRowModel: getFilteredRowModel(), // Este já cuida do filtro global
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
-    getFacetedUniqueValues: getFacetedUniqueValues(),  })
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+    // ++ REMOVIDO: A linha 'getGlobalFilteredRowModel: ...' foi removida ++
+  })
 
   return (
     <div className="space-y-4">

@@ -132,7 +132,8 @@ export function WeddingChecklistForm({ wedding }: WeddingChecklistFormProps) {
                     </span>
                     {task.deadline && (
                        <span className={cn('text-xs text-muted-foreground', task.isDone && 'line-through')}>
-                         Prazo: {format(task.deadline, 'P', { locale: ptBR })}
+                         {/* ++ CORREÇÃO: Removido o 3º argumento (options) ++ */}
+                         Prazo: {format(task.deadline, 'P')}
                        </span>
                     )}
                   </div>
@@ -158,7 +159,8 @@ export function WeddingChecklistForm({ wedding }: WeddingChecklistFormProps) {
                     </span>
                     {task.deadline && (
                        <span className={cn('text-xs text-muted-foreground', task.isDone && 'line-through')}>
-                         Prazo: {format(task.deadline, 'P', { locale: ptBR })}
+                         {/* ++ CORREÇÃO: Removido o 3º argumento (options) ++ */}
+                         Prazo: {format(task.deadline, 'P')}
                        </span>
                     )}
                   </div>
@@ -252,6 +254,7 @@ export function WeddingChecklistForm({ wedding }: WeddingChecklistFormProps) {
                                    disabled={isPending}
                                  >
                                    {field.value ? (
+                                     // (Mantido aqui, pois 'ptBR' é necessário para a UI)
                                      format(field.value, 'P', { locale: ptBR })
                                    ) : (
                                      <span>Definir prazo</span>

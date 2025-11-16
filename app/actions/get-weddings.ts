@@ -1,22 +1,17 @@
 'use server'
 
-import { adminDb, adminAuth } from '@/lib/firebase-admin'
-import { Wedding } from '@/types/wedding'
-import { headers } from 'next/headers'
+import { adminDb } from '@/lib/firebase-admin'
+import { Wedding, WeddingTask } from '@/types/wedding' // Importamos os tipos Corretos
+import { unstable_noStore as noStore } from 'next/cache'
 
-// (A função checkAdminRole() que você talvez tenha,
-// ou a verificação de segurança da página,
-// deve proteger estas actions)
-
-// O tipo de dados que já tínhamos
-export interface WeddingData extends Omit<Wedding, 'createdAt' | 'updatedAt' | 'weddingDate' | 'checkInDate' | 'checkOutDate'> {
-  id: string
-  // Datas são serializadas como string
-  weddingDate: string
-  checkInDate: string
-  checkOutDate: string
-  createdAt: string
-  updatedAt: string
+// Esta interface agora funciona, pois o tipo base 'Wedding' foi corrigido
+export interface WeddingData extends Omit<Wedding, 'createdAt' | 'updatedAt' | 'checklist'> {
+  id: string; 
+  createdAt: string;
+  updatedAt: string;
+  // O tipo WeddingTask[] de 'types/wedding.ts' já é 'deadline?: string | null'
+  // mas garantimos a serialização
+  checklist: Array<Omit<WeddingTask, 'deadline'> & { deadline?: string | null }>;
 }
 
 // Função auxiliar para converter o documento do Firestore
@@ -30,17 +25,22 @@ const serializeWedding = (doc: FirebaseFirestore.DocumentSnapshot): WeddingData 
     ...data,
     id: doc.id,
     // Converte Timestamps para strings ISO
-    // As datas do formulário já são strings YYYY-MM-DD
-    weddingDate: data.weddingDate,
-    checkInDate: data.checkInDate,
-    checkOutDate: data.checkOutDate,
     createdAt: data.createdAt.toDate().toISOString(),
     updatedAt: data.updatedAt.toDate().toISOString(),
+    // Garante que o checklist seja um array e que o deadline seja null
+    checklist: (data.checklist || []).map(task => ({
+      ...task,
+      deadline: task.deadline || null,
+    })),
   }
 }
 
-// Ação 1: Obter todos os casamentos (Já tínhamos)
+// Ação 1: Obter todos os casamentos
 export async function getWeddings(): Promise<WeddingData[]> {
+  // ++ ESTA É A CORREÇÃO DO CACHE ++
+  noStore();
+  // ++ FIM DA CORREÇÃO DO CACHE ++
+
   try {
     const weddingsRef = adminDb.collection('weddings')
     const snapshot = await weddingsRef.where('isConfirmed', '==', true).orderBy('weddingDate', 'asc').get()
@@ -58,9 +58,12 @@ export async function getWeddings(): Promise<WeddingData[]> {
   }
 }
 
-// ++ INÍCIO DA ADIÇÃO ++
 // Ação 2: Obter um casamento específico pelo ID
 export async function getWeddingById(id: string): Promise<WeddingData | null> {
+  // ++ ESTA É A CORREÇÃO DO CACHE ++
+  noStore();
+  // ++ FIM DA CORREÇÃO DO CACHE ++
+  
   try {
     const weddingRef = adminDb.collection('weddings').doc(id)
     const doc = await weddingRef.get()
@@ -77,4 +80,3 @@ export async function getWeddingById(id: string): Promise<WeddingData | null> {
     return null
   }
 }
-// ++ FIM DA ADIÇÃO ++

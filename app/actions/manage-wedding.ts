@@ -1,3 +1,5 @@
+//app\actions\manage-wedding.ts
+
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
@@ -9,25 +11,32 @@ import {
   WeddingChecklistFormValues,
 } from '@/lib/schemas/wedding-schema'
 import { Wedding, WeddingSupplier } from '@/types/wedding'
-import { FieldValue } from 'firebase-admin/firestore'
+import { FieldValue, Timestamp as AdminTimestamp } from 'firebase-admin/firestore'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 
-// (Interface ActionResponse inalterada)
 interface ActionResponse {
   success: boolean
   message: string
   weddingId?: string
 }
 
-// Ação 1: Criar Casamento (ATUALIZADO)
+// Helper de Revalidação (Corrigido para garantir que todas as páginas sejam limpas)
+const revalidateWeddingPaths = (weddingId?: string) => {
+  revalidatePath('/admin/casamentos')
+  revalidatePath('/admin/casamentos/lista')
+  revalidatePath('/admin/casamentos/calendario')
+  if (weddingId) {
+    revalidatePath(`/admin/casamentos/${weddingId}`)
+  }
+}
+
+// Ação 1: Criar Casamento (Inalterado, mas com revalidação correta)
 export async function createWedding(
   data: WeddingFormValues,
 ): Promise<ActionResponse> {
   try {
     console.log('Criando novo casamento:', data.coupleName)
-    
-    // (Lógica de fornecedores...)
     const initialSuppliers: WeddingSupplier[] = []
     if (data.plannerName) {
       initialSuppliers.push({
@@ -63,10 +72,8 @@ export async function createWedding(
             : 'Externo',
         contact: '',
         status: 'Pendente',
-        // isExclusive FOI REMOVIDO DAQUI
       })
     }
-    
     const newWeddingData: Omit<Wedding, 'id' | 'createdAt' | 'updatedAt'> = {
       coupleName: data.coupleName,
       weddingDate: data.weddingDate.toISOString().split('T')[0],
@@ -77,9 +84,7 @@ export async function createWedding(
       totalValue: data.totalValue,
       internalObservations: data.internalObservations || '',
       coupleCity: data.coupleCity || '',
-      
-      hasLodgeExclusivity: data.hasLodgeExclusivity, // ++ ADICIONADO ++
-
+      hasLodgeExclusivity: data.hasLodgeExclusivity,
       isConfirmed: true,
       clients: [],
       paymentPlan: [],
@@ -96,8 +101,7 @@ export async function createWedding(
       updatedAt: FieldValue.serverTimestamp(),
     })
 
-    revalidatePath('/admin/casamentos')
-    revalidatePath('/admin/casamentos/lista')
+    revalidateWeddingPaths() // Revalida tudo
 
     return {
       success: true,
@@ -111,31 +115,38 @@ export async function createWedding(
   }
 }
 
-// Ação 2: Atualizar Aba "Geral" (ATUALIZADO)
+// ++ INÍCIO DA CORREÇÃO ++
+// Ação 2: Atualizar Aba "Geral" (REESCRITA)
 export async function updateWeddingGeneral(
   weddingId: string,
-  data: WeddingGeneralFormValues,
+  data: WeddingGeneralFormValues, // Este tipo NÃO TEM 'totalValue'
 ): Promise<ActionResponse> {
   if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
   try {
     const weddingRef = adminDb.collection('weddings').doc(weddingId)
+    
+    // Em vez de usar '...data' (spread), definimos EXPLICITAMENTE
+    // quais campos esta ação tem permissão para atualizar.
+    // Isso impede que 'totalValue' seja apagado.
     const dataToUpdate = {
-      ...data,
+      coupleName: data.coupleName,
+      coupleCity: data.coupleCity || '',
       weddingDate: data.weddingDate.toISOString().split('T')[0],
       checkInDate: data.checkInDate.toISOString().split('T')[0],
       checkOutDate: data.checkOutDate.toISOString().split('T')[0],
-      coupleCity: data.coupleCity || '',
+      location: data.location,
+      guestCount: data.guestCount,
       internalObservations: data.internalObservations || '',
-      
-      hasLodgeExclusivity: data.hasLodgeExclusivity, // ++ ADICIONADO ++
-      
+      hasLodgeExclusivity: data.hasLodgeExclusivity,
       updatedAt: FieldValue.serverTimestamp(),
     }
+    
     await weddingRef.update(dataToUpdate)
-    revalidatePath(`/admin/casamentos/lista`)
-    revalidatePath(`/admin/casamentos/${weddingId}`)
+    
+    revalidateWeddingPaths(weddingId) // Revalida tudo
+
     return { success: true, message: 'Dados gerais atualizados com sucesso!' }
   } catch (error) {
     console.error(`Erro ao atualizar casamento ${weddingId}:`, error)
@@ -143,21 +154,22 @@ export async function updateWeddingGeneral(
     return { success: false, message: errorMessage }
   }
 }
+// ++ FIM DA CORREÇÃO ++
 
-// (Ação updateWeddingFinancial inalterada)
+// Ação 3: Atualizar Aba "Financeiro"
 export async function updateWeddingFinancial(
   weddingId: string,
-  data: WeddingFinancialFormValues,
+  data: WeddingFinancialFormValues, // Este tipo TEM 'totalValue'
 ): Promise<ActionResponse> {
-  // ... (código de update financeiro)
   if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
   try {
     const weddingRef = adminDb.collection('weddings').doc(weddingId)
+    
+    // Esta ação ATUALIZA 'totalValue' e os outros campos financeiros
     const serializedData = {
-      ...data,
-      // Se 'deposit' for opcional no schema, precisamos tratar o caso dele ser undefined
+      totalValue: data.totalValue, // Salva o valor total
       deposit: data.deposit ? data.deposit : { value: 0, status: 'Pendente' },
       paymentPlan: data.paymentPlan.map((installment) => ({
         ...installment,
@@ -165,9 +177,11 @@ export async function updateWeddingFinancial(
       })),
       updatedAt: FieldValue.serverTimestamp(),
     }
+    
     await weddingRef.update(serializedData)
-    revalidatePath(`/admin/casamentos/lista`)
-    revalidatePath(`/admin/casamentos/${weddingId}`)
+    
+    revalidateWeddingPaths(weddingId) // Revalida tudo
+
     return { success: true, message: 'Dados financeiros atualizados com sucesso!' }
   } catch (error) {
     console.error(`Erro ao atualizar financeiro ${weddingId}:`, error)
@@ -176,12 +190,11 @@ export async function updateWeddingFinancial(
   }
 }
 
-// (Ação updateWeddingSuppliers inalterada)
+// Ação 4: Atualizar Aba "Fornecedores"
 export async function updateWeddingSuppliers(
   weddingId: string,
   data: WeddingSuppliersFormValues,
 ): Promise<ActionResponse> {
-  // ... (código de update fornecedores)
   if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
@@ -192,7 +205,9 @@ export async function updateWeddingSuppliers(
       updatedAt: FieldValue.serverTimestamp(),
     }
     await weddingRef.update(dataToUpdate)
-    revalidatePath(`/admin/casamentos/${weddingId}`)
+
+    revalidateWeddingPaths(weddingId) // Revalida tudo
+
     return { success: true, message: 'Lista de fornecedores atualizada!' }
   } catch (error) {
     console.error(`Erro ao atualizar fornecedores ${weddingId}:`, error)
@@ -201,12 +216,11 @@ export async function updateWeddingSuppliers(
   }
 }
 
-// (Ação updateWeddingChecklist inalterada)
+// Ação 5: Atualizar Aba "Checklist"
 export async function updateWeddingChecklist(
   weddingId: string,
   data: WeddingChecklistFormValues,
 ): Promise<ActionResponse> {
-  // ... (código de update checklist)
    if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
@@ -220,28 +234,26 @@ export async function updateWeddingChecklist(
       updatedAt: FieldValue.serverTimestamp(),
     }
     await weddingRef.update(serializedData)
-    revalidatePath(`/admin/casamentos/${weddingId}`)
+    
+    revalidateWeddingPaths(weddingId) // Revalida tudo
+
     return { success: true, message: 'Checklist atualizado com sucesso!' }
   } catch (error) {
     console.error(`Erro ao atualizar checklist ${weddingId}:`, error)
-    const errorMessage = error instanceof Error ? error.message : 'Erro desconheci'
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
     return { success: false, message: errorMessage }
   }
 }
-
-// ++ INÍCIO DA ADIÇÃO ++
 
 // Ação 6: Excluir Casamento
 export async function deleteWedding(weddingId: string): Promise<ActionResponse> {
   if (!weddingId) {
     return { success: false, message: 'ID do casamento não fornecido.' }
   }
-
   try {
     await adminDb.collection('weddings').doc(weddingId).delete()
     
-    revalidatePath(`/admin/casamentos/lista`)
-    revalidatePath(`/admin/casamentos`)
+    revalidateWeddingPaths() // Revalida tudo
     
     return { success: true, message: 'Casamento excluído com sucesso!' }
   } catch (error) {
@@ -250,4 +262,32 @@ export async function deleteWedding(weddingId: string): Promise<ActionResponse> 
     return { success: false, message: errorMessage }
   }
 }
-// ++ FIM DA ADIÇÃO ++
+
+// Ação 7: Atualizar Foto do Casal
+export async function updateWeddingPhoto(
+weddingId: string, photoUrl: string, email: string,
+): Promise<ActionResponse> {
+  if (!weddingId || !photoUrl) {
+    return {
+      success: false,
+      message: 'ID do casamento ou URL da foto estão faltando.',
+    }
+  }
+  try {
+    const weddingRef = adminDb.collection('weddings').doc(weddingId)
+    await weddingRef.update({
+      couplePhotoUrl: photoUrl,
+      updatedAt: AdminTimestamp.now(),
+    })
+
+    revalidateWeddingPaths(weddingId) // Revalida tudo
+
+    return { success: true, message: 'Foto atualizada.' }
+  } catch (error: any) {
+    console.error('Erro ao atualizar foto do casamento:', error)
+    return {
+      success: false,
+      message: 'Erro do servidor ao salvar a foto.',
+    }
+  }
+}

@@ -32,7 +32,7 @@ import { WeddingChecklistForm } from './forms/WeddingChecklistForm';
 import React, { useState, useRef, ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { updateWeddingPhoto } from '@/app/actions/manage-weddings';
+import { updateWeddingPhoto } from '@/app/actions/manage-wedding';
 // --- 1. INÍCIO DA ADIÇÃO ---
 import { useAuth } from '@/context/AuthContext'; // <-- Importar o hook de autenticação
 // --- FIM DA ADIÇÃO ---

@@ -31,7 +31,7 @@ export interface Deposit {
   returnedDate?: string
 }
 
-// Interface para Fornecedores (ATUALIZADA)
+// Interface para Fornecedores
 export interface WeddingSupplier {
   id: string
   name: string
@@ -39,19 +39,21 @@ export interface WeddingSupplier {
   category: 'Exclusivo' | 'Externo' | 'Sugerido'
   contact: string
   status: 'Pendente' | 'Confirmado' | 'Pago'
-  // isExclusive FOI REMOVIDO DAQUI
 }
 
-// Interface para Tarefas do Checklist
+// ++ INÍCIO DA CORREÇÃO ++
+// Interface para Tarefas do Checklist (ATUALIZADA)
 export interface WeddingTask {
   id: string
   description: string
-  deadline: string // Data ISO (YYYY-MM-DD)
+  // O prazo é opcional e pode ser nulo
+  deadline?: string | null 
   isDone: boolean
   responsible: 'Contratante' | 'Contratada'
 }
+// ++ FIM DA CORREÇÃO ++
 
-// Interface principal do Dossiê de Casamento (ATUALIZADA)
+// Interface principal do Dossiê de Casamento
 export interface Wedding {
   id: string
   coupleName: string
@@ -63,8 +65,7 @@ export interface Wedding {
   
   coupleCity: string 
   
-  // ++ ADICIONADO ++
-  hasLodgeExclusivity: boolean // Exclusividade de hospedagem
+  hasLodgeExclusivity: boolean
 
   // Informações dos clientes
   clients: WeddingClient[]
@@ -77,11 +78,11 @@ export interface Wedding {
   // Financeiro
   totalValue: number
   paymentPlan: PaymentInstallment[]
-  deposit: Deposit 
+  deposit: Deposit // Este tipo está correto, o erro era no form
 
   // Gerenciamento
   suppliers: WeddingSupplier[]
-  checklist: WeddingTask[]
+  checklist: WeddingTask[] // <-- Agora usa a WeddingTask corrigida
   
   // Documentos e Notas
   contractUrl?: string

@@ -10,9 +10,10 @@ import {
     Home, Paintbrush, Utensils, CalendarCheck, MessageSquare, FileText, Wrench, Shield, Users,
     ConciergeBell, Book,
     CalendarDays,
-    ChefHat, // ++ NOVO: Para Cozinha
-    Package, // ++ NOVO: Para Estoque
-    Monitor  // ++ NOVO: Para Salão
+    ChefHat, // Cozinha
+    Package, // Estoque
+    Monitor, // Salão
+    PieChart // ++ NOVO: Relatórios
 } from 'lucide-react';
 import { useAuth, UserRole } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
@@ -34,16 +35,19 @@ const mainNavItems = [
     { href: "/admin/comunicacao", label: "Comunicação", icon: MessageSquare },
     { href: "/admin/hospedes", label: "Hóspedes", icon: Users },
     
-    // ++ INÍCIO DA ADIÇÃO (Módulos Operacionais) ++
-    { href: '/admin/salao', label: 'Salão', icon: Monitor }, // Novo módulo de Mesas
-    { href: '/admin/cozinha', label: 'Cozinha', icon: ChefHat }, // Novo KDS
-    // ++ FIM DA ADIÇÃO ++
+    // Módulos Operacionais
+    { href: '/admin/salao', label: 'Salão', icon: Monitor },
+    { href: '/admin/cozinha', label: 'Cozinha', icon: ChefHat },
 
     { href: '/admin/pedidos/cafe', label: 'Pedidos Café (Cestas)', icon: Coffee },
     { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
     { href: '/admin/casamentos', label: 'Casamentos', icon: CalendarDays },
     { href: '/admin/solicitacoes', label: 'Solicitações', icon: ConciergeBell },
     { href: '/admin/manutencao', label: 'Manutenção', icon: Wrench },
+    
+    // ++ NOVO: Relatórios Financeiros ++
+    { href: '/admin/relatorios', label: 'Relatórios & Custos', icon: PieChart },
+    
     { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },
 ];
 
@@ -52,9 +56,8 @@ const settingsNavItems = [
     { href: '/admin/settings/cabanas', label: 'Cabanas', icon: Home },
     { href: '/admin/settings/personalizacao', label: 'Personalização', icon: Paintbrush },
     
-    // ++ INÍCIO DA ADIÇÃO (Estoque) ++
+    // Configuração de Estoque
     { href: '/admin/settings/estoque', label: 'Estoque & Custos', icon: Package },
-    // ++ FIM DA ADIÇÃO ++
 
     { href: '/admin/settings/cafe', label: 'Cardápio Café', icon: Utensils },
     { href: '/admin/settings/agendamentos', label: 'Gerenciar Agend.', icon: CalendarCheck },
@@ -75,25 +78,25 @@ const permissions: Record<string, (Role)[]> = {
     '/admin/comunicacao': ['recepcao'],
     '/admin/hospedes': ['recepcao'],
     
-    // ++ NOVAS PERMISSÕES ++
-    '/admin/salao': ['recepcao', 'cafe'],    // Garçons e Recepção acessam o Salão
-    '/admin/cozinha': ['recepcao', 'cafe'],  // Cozinha e Recepção acessam o KDS
-    // ++ FIM NOVAS PERMISSÕES ++
-
+    '/admin/salao': ['recepcao', 'cafe'],    // Garçons e Recepção
+    '/admin/cozinha': ['recepcao', 'cafe'],  // Cozinha e Recepção
+    
     '/admin/pedidos/cafe': ['recepcao', 'cafe'],
     '/admin/agendamentos': ['recepcao'],
     '/admin/casamentos': ['recepcao'],
     '/admin/solicitacoes': ['recepcao'],
     '/admin/manutencao': ['recepcao', 'manutencao'],
+    
+    // ++ PERMISSÃO RELATÓRIOS ++
+    '/admin/relatorios': ['recepcao', 'cafe', 'super_admin'],
+    
     '/admin/pesquisas/overview': ['recepcao', 'marketing'],
 
     // === Settings Nav ===
     '/admin/settings/cabanas': ['recepcao'],
     '/admin/settings/personalizacao': [], // Apenas super_admin
     
-    // ++ NOVA PERMISSÃO ESTOQUE ++
-    '/admin/settings/estoque': ['recepcao', 'cafe'], // Chef/Cozinha pode gerenciar estoque
-    // ++ FIM NOVA PERMISSÃO ++
+    '/admin/settings/estoque': ['recepcao', 'cafe'], // Chef/Cozinha gerencia estoque
 
     '/admin/settings/cafe': ['recepcao', 'cafe'],
     '/admin/settings/agendamentos': ['recepcao'],

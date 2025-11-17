@@ -4,19 +4,31 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import {
-  collection, addDoc, query, where, onSnapshot,
-  serverTimestamp, getDocs, doc, updateDoc, limit,
-  writeBatch // ++ CORREÇÃO: Importação adicionada
+  collection,
+  addDoc,
+  query,
+  where,
+  onSnapshot,
+  serverTimestamp,
+  getDocs,
+  doc,
+  updateDoc,
+  limit,
+  writeBatch
 } from 'firebase/firestore';
 import { useAuth } from '@/context/AuthContext';
 import { BreakfastMenuItem, BreakfastMenuCategory, Flavor, Timestamp } from '@/types/index';
 import { KitchenOrderItem, KitchenOrder } from '@/types/cafe';
+import { Ingredient } from '@/types/stock'; 
 import { Loader2, Send, Plus, Minus, CheckCircle, Clock, XCircle, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import {
-  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
 } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -27,12 +39,11 @@ interface Props {
   onTableClosed: () => void;
 }
 
-// Item da comanda interna antes de ser enviada
 interface ComandaItem extends KitchenOrderItem {
-  id: string; // ID único do item (itemId + flavorId)
+  id: string; // ID único para controle local (itemId + flavorId)
 }
 
-// Função helper para converter Timestamp
+// Função helper para converter Timestamp com segurança
 const timestampToMillis = (timestamp: Timestamp | undefined | null): number => {
   if (!timestamp) return 0;
   if (typeof timestamp === 'number') return timestamp;
@@ -46,6 +57,7 @@ const timestampToMillis = (timestamp: Timestamp | undefined | null): number => {
   return 0;
 };
 
+// Helper para data de hoje (yyyy-MM-dd)
 const getTodayString = () => new Intl.DateTimeFormat('fr-CA', {
   timeZone: 'America/Sao_Paulo',
 }).format(new Date());
@@ -58,6 +70,7 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
   const { user } = useAuth();
 
   const [pratosQuentes, setPratosQuentes] = useState<BreakfastMenuCategory[]>([]);
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]); // Lista de ingredientes para cálculo de custo
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
@@ -65,24 +78,19 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
   const [existingOrders, setExistingOrders] = useState<KitchenOrder[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 1. Carrega o cardápio (apenas uma vez, ao montar)
+  // 1. Carrega Cardápio E Ingredientes (Ao montar)
   useEffect(() => {
-    async function fetchMenu() {
+    async function fetchData() {
       if (!db) return;
       setLoadingMenu(true);
       try {
+        // A. Carregar Cardápio
         const categoriesRef = collection(db, 'breakfastMenus', 'default_breakfast', 'categories');
-        const q = query(categoriesRef, where("type", "==", "individual")); 
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) {
-          toast.error("Erro Crítico: Cardápio 'individual' não encontrado.");
-          setLoadingMenu(false);
-          return;
-        }
+        const qMenu = query(categoriesRef, where("type", "==", "individual")); 
+        const snapshotMenu = await getDocs(qMenu);
 
         const menu: BreakfastMenuCategory[] = [];
-        for (const categoryDoc of snapshot.docs) {
+        for (const categoryDoc of snapshotMenu.docs) {
           const categoryData = categoryDoc.data() as Omit<BreakfastMenuCategory, 'id' | 'items'>;
           const itemsRef = collection(db, 'breakfastMenus', 'default_breakfast', 'categories', categoryDoc.id, 'items');
           const itemsSnapshot = await getDocs(itemsRef);
@@ -93,20 +101,30 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
               items.push({ id: itemDoc.id, ...itemDoc.data() } as BreakfastMenuItem)
             }
           });
-          
+          // Ordena itens e adiciona à categoria
           menu.push({ 
-            ...categoryData, id: categoryDoc.id, 
+            ...categoryData, 
+            id: categoryDoc.id, 
             items: items.sort((a,b) => a.order - b.order) 
           });
         }
-        setPratosQuentes(menu.sort((a, b) => a.order - b.order)); 
+        // Ordena categorias
+        setPratosQuentes(menu.sort((a, b) => a.order - b.order));
+
+        // B. Carregar Ingredientes (para cálculo de custo em tempo real)
+        const ingredientsRef = collection(db, 'ingredients');
+        const snapshotIng = await getDocs(ingredientsRef);
+        const ingList = snapshotIng.docs.map(d => ({ id: d.id, ...d.data() } as Ingredient));
+        setIngredients(ingList);
+
       } catch (err: any) {
-        toast.error("Falha ao carregar o cardápio.", { description: err.message });
+        console.error("Erro ao carregar dados:", err);
+        toast.error("Falha ao carregar o cardápio e ingredientes.");
       } finally {
         setLoadingMenu(false);
       }
     }
-    fetchMenu();
+    fetchData();
   }, []);
 
   // 2. Ouve pedidos da mesa selecionada (depende de tableId)
@@ -114,7 +132,7 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
     if (!db || !tableId) {
       setExistingOrders([]);
       setLoadingHistory(false);
-      return () => {}; // Retorna função de limpeza vazia
+      return () => {};
     }
     
     setLoadingHistory(true);
@@ -138,14 +156,52 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
       );
       setLoadingHistory(false);
     }, (err) => {
+      console.error("Erro ao buscar histórico:", err);
       toast.error(`Erro ao buscar histórico da ${tableId}.`);
       setLoadingHistory(false);
     });
 
-    return () => unsubscribe(); // Limpa o listener ao trocar de mesa
+    return () => unsubscribe();
   }, [tableId]);
 
-  // Ação: Enviar comanda para a cozinha
+  // 3. Função de Cálculo de Custo (CMV)
+  const calculateComandaCost = () => {
+    let totalCost = 0;
+    comandaItems.forEach((cItem) => {
+        // Encontra o item original no menu carregado
+        let menuItem: BreakfastMenuItem | undefined;
+        for (const cat of pratosQuentes) {
+            const found = cat.items.find(i => i.id === cItem.itemId);
+            if (found) { menuItem = found; break; }
+        }
+        
+        if (menuItem) {
+            // Custo da Receita Base
+            let itemUnitCost = (menuItem.recipe || []).reduce((acc, r) => {
+                const ing = ingredients.find(i => i.id === r.ingredientId);
+                // Custo = Custo Médio do Ingrediente * Quantidade na Receita
+                return acc + ((ing?.averageCost || 0) * r.quantity);
+            }, 0);
+
+            // Custo da Receita do Sabor (se houver)
+            if (cItem.flavorName) {
+                const flavor = menuItem.flavors.find(f => f.name === cItem.flavorName);
+                if (flavor && flavor.recipe) {
+                    const flavorCost = flavor.recipe.reduce((acc, r) => {
+                        const ing = ingredients.find(i => i.id === r.ingredientId);
+                        return acc + ((ing?.averageCost || 0) * r.quantity);
+                    }, 0);
+                    itemUnitCost += flavorCost;
+                }
+            }
+            // Soma ao total: Custo Unitário * Quantidade Pedida
+            totalCost += (itemUnitCost * cItem.quantity);
+        }
+    });
+    return Number(totalCost.toFixed(2)); // Retorna com 2 casas decimais
+  };
+
+  // 4. Enviar Pedido
   const handleSendOrder = async () => {
     if (!tableId) return;
     if (comandaItems.size === 0) return toast.info("Adicione pelo menos um item.");
@@ -153,6 +209,9 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
 
     setIsSubmitting(true);
     const toastId = toast.loading("Enviando para a cozinha...");
+    
+    // Calcula o custo total (CMV) antes de enviar
+    const totalCost = calculateComandaCost();
 
     const newOrder: Omit<KitchenOrder, 'id'> = {
       table: tableId,
@@ -160,6 +219,7 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
       status: 'pending',
       createdAt: serverTimestamp() as any,
       createdBy: user.displayName || user.email || 'Admin',
+      totalCost: totalCost // ++ Custo gravado no pedido!
     };
 
     try {
@@ -167,14 +227,14 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
       toast.success("Pedido enviado!", { id: toastId });
       setComandaItems(new Map()); // Limpa a comanda
     } catch (err: any) {
+      console.error("Erro ao enviar pedido:", err);
       toast.error("Falha ao enviar o pedido.", { id: toastId, description: err.message });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Ação: Encerrar a mesa
-  // ++ FUNÇÃO CORRIGIDA ++
+  // 5. Encerrar Mesa
   const handleCloseTable = async () => {
     if (!tableId) return;
     
@@ -182,7 +242,7 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
     const toastId = toast.loading(`Encerrando ${tableId}...`);
 
     try {
-      // 1. Encontra o documento da mesa em 'breakfastTables' (se existir)
+      // A. Encontra o documento da mesa em 'breakfastTables' (se existir)
       const tablesRef = collection(db, 'breakfastTables');
       const q = query(
         tablesRef,
@@ -192,33 +252,35 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
       );
       const tableSnapshot = await getDocs(q);
       
-      // 2. Encontra todos os hóspedes ATIVOS ('attended') nesta mesa
-      const batch = writeBatch(db); // (Importação corrigida)
+      // B. Prepara o Batch
+      const batch = writeBatch(db);
+      
+      // C. Encontra todos os hóspedes ATIVOS ('attended') nesta mesa
       const attendeesAtTableRef = collection(db, 'breakfastAttendees');
-      const qGuests = query(attendeesAtTableRef, 
-        where('date', '==', getTodayString()), 
-        where('table', '==', tableId),
+      const qGuests = query(
+        attendeesAtTableRef, 
+        where('date', '==', getTodayString()), // Correção da sintaxe
+        where('table', '==', tableId),         // Correção da sintaxe
         where('status', '==', 'attended')
       );
       const guestsSnapshot = await getDocs(qGuests);
 
-      // 3. Marca a mesa como 'closed'
+      // D. Marca a mesa como 'closed' (se encontrada)
       if (!tableSnapshot.empty) {
         const tableDocId = tableSnapshot.docs[0].id;
         const docRef = doc(db, 'breakfastTables', tableDocId);
         batch.update(docRef, { status: 'closed' });
       }
 
-      // 4. Finaliza todos os hóspedes encontrados (muda status para 'finished')
+      // E. Finaliza todos os hóspedes encontrados
       guestsSnapshot.forEach(guestDoc => {
         batch.update(guestDoc.ref, { status: 'finished', table: null });
       });
       
-      // 5. Commita o batch (Mesa e Hóspedes)
+      // F. Executa o Batch
       await batch.commit();
 
-      // 6. Define a mensagem de sucesso com base se havia hóspedes
-      // (Lógica 'allAttendees' removida e substituída por 'guestsSnapshot')
+      // G. Feedback ao usuário
       const hasGuests = !guestsSnapshot.empty; 
       if (!hasGuests && existingOrders.length === 0) {
          toast.info(`Mesa ${tableId} (avulsa) fechada.`, { id: toastId });
@@ -229,23 +291,27 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
       onTableClosed(); // Avisa o painel principal para des-selecionar
       
     } catch (err: any) {
+      console.error("Erro ao encerrar mesa:", err);
       toast.error("Falha ao encerrar a mesa.", { id: toastId, description: err.message });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Funções de controle da comanda (adicionar/remover item)
+  // 6. Controles da Comanda Local
   const addToComanda = (item: BreakfastMenuItem, flavor?: Flavor) => {
     const id = flavor ? `${item.id}-${flavor.id}` : item.id;
     const existing = comandaItems.get(id);
     const newItem: ComandaItem = {
-      id: id, itemId: item.id, itemName: item.name,
-      flavorName: flavor?.name,
-      quantity: (existing?.quantity || 0) + 1,
+      id: id, 
+      itemId: item.id, 
+      itemName: item.name, 
+      flavorName: flavor?.name, 
+      quantity: (existing?.quantity || 0) + 1 
     };
     setComandaItems(new Map(comandaItems.set(id, newItem)));
   };
+
   const removeFromComanda = (id: string) => {
     const existing = comandaItems.get(id);
     if (!existing) return;
@@ -258,9 +324,10 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
       setComandaItems(newMap);
     }
   };
+
   const comandaArray = useMemo(() => Array.from(comandaItems.values()), [comandaItems]);
 
-  // --- Renderização do Painel ---
+  // --- Renderização ---
 
   if (!tableId) {
     return (
@@ -283,7 +350,7 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Cabeçalho do Painel */}
+      {/* Cabeçalho */}
       <header className="flex items-center justify-between p-4 border-b">
         <h2 className="text-2xl font-bold text-brand-dark-green truncate">
           {tableId}
@@ -295,12 +362,13 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
         </Button>
       </header>
 
-      {/* Conteúdo dividido: 50% Cardápio/Comanda, 50% Histórico */}
+      {/* Conteúdo (50/50) */}
       <div className="flex flex-col xl:flex-row flex-grow min-h-0">
         
         {/* Coluna 1: Cardápio e Nova Comanda */}
         <ScrollArea className="w-full xl:w-1/2 h-1/2 xl:h-full">
           <div className="p-4 space-y-4">
+            
             {/* Nova Comanda (Sticky) */}
             <Card className="sticky top-0 z-10 shadow-md">
               <CardHeader>
@@ -318,14 +386,18 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
                           {item.flavorName && <p className="text-sm text-brand-mid-green">{item.flavorName}</p>}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => removeFromComanda(item.id)}><Minus className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => removeFromComanda(item.id)}>
+                            <Minus className="h-4 w-4" />
+                          </Button>
                           <span className="font-bold w-6 text-center">{item.quantity}</span>
                           <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => {
                             const category = pratosQuentes.find(c => c.items.some(i => i.id === item.itemId));
                             const originalItem = category?.items.find(i => i.id === item.itemId);
                             const originalFlavor = originalItem?.flavors.find(f => f.name === item.flavorName);
                             if (originalItem) addToComanda(originalItem, originalFlavor);
-                          }}><Plus className="h-4 w-4" /></Button>
+                          }}>
+                            <Plus className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -340,7 +412,7 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
             
             <Separator />
 
-            {/* Cardápio de Pratos Quentes */}
+            {/* Lista do Cardápio */}
             <Card>
               <CardHeader><CardTitle>Cardápio (Pratos Quentes)</CardTitle></CardHeader>
               <CardContent>
@@ -380,7 +452,7 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
           </div>
         </ScrollArea>
 
-        {/* Coluna 2: Histórico de Pedidos da Mesa */}
+        {/* Coluna 2: Histórico de Pedidos */}
         <ScrollArea className="w-full xl:w-1/2 h-1/2 xl:h-full border-t xl:border-t-0 xl:border-l">
           <div className="p-4 space-y-4">
             <h3 className="text-xl font-semibold text-brand-dark-green">Pedidos Enviados (Hoje)</h3>
@@ -405,7 +477,9 @@ export function SalaoOrderPanel({ tableId, onTableClosed }: Props) {
                   <CardContent className="space-y-2">
                     {order.items.map((item, idx) => (
                       <div key={idx} className="flex justify-between">
-                        <span className="text-brand-dark-green">{item.quantity}x {item.itemName} {item.flavorName && `(${item.flavorName})`}</span>
+                        <span className="text-brand-dark-green">
+                          {item.quantity}x {item.itemName} {item.flavorName && `(${item.flavorName})`}
+                        </span>
                       </div>
                     ))}
                   </CardContent>

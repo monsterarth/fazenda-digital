@@ -1,4 +1,4 @@
-//components/admin/Sidebar.tsx
+// components/admin/Sidebar.tsx
 "use client";
 
 import React from 'react';
@@ -9,7 +9,10 @@ import {
     LayoutDashboard, BedDouble, Coffee, Calendar, BarChart2, Settings, LogOut,
     Home, Paintbrush, Utensils, CalendarCheck, MessageSquare, FileText, Wrench, Shield, Users,
     ConciergeBell, Book,
-    CalendarDays // <<< Ícone Adicionado para Casamentos
+    CalendarDays,
+    ChefHat, // ++ NOVO: Para Cozinha
+    Package, // ++ NOVO: Para Estoque
+    Monitor  // ++ NOVO: Para Salão
 } from 'lucide-react';
 import { useAuth, UserRole } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
@@ -30,20 +33,29 @@ const mainNavItems = [
     { href: '/admin/stays', label: 'Estadias', icon: BedDouble },
     { href: "/admin/comunicacao", label: "Comunicação", icon: MessageSquare },
     { href: "/admin/hospedes", label: "Hóspedes", icon: Users },
-    { href: '/admin/pedidos/cafe', label: 'Pedidos Café', icon: Coffee },
-    { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
-    // ++ INÍCIO DA ADIÇÃO (Casamentos) ++
-    { href: '/admin/casamentos', label: 'Casamentos', icon: CalendarDays },
+    
+    // ++ INÍCIO DA ADIÇÃO (Módulos Operacionais) ++
+    { href: '/admin/salao', label: 'Salão', icon: Monitor }, // Novo módulo de Mesas
+    { href: '/admin/cozinha', label: 'Cozinha', icon: ChefHat }, // Novo KDS
     // ++ FIM DA ADIÇÃO ++
+
+    { href: '/admin/pedidos/cafe', label: 'Pedidos Café (Cestas)', icon: Coffee },
+    { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar },
+    { href: '/admin/casamentos', label: 'Casamentos', icon: CalendarDays },
     { href: '/admin/solicitacoes', label: 'Solicitações', icon: ConciergeBell },
     { href: '/admin/manutencao', label: 'Manutenção', icon: Wrench },
     { href: '/admin/pesquisas/overview', label: 'Pesquisas', icon: BarChart2 },
 ];
 
-// Array de navegação de configurações (sem alterações)
+// Array de navegação de configurações ATUALIZADO
 const settingsNavItems = [
     { href: '/admin/settings/cabanas', label: 'Cabanas', icon: Home },
     { href: '/admin/settings/personalizacao', label: 'Personalização', icon: Paintbrush },
+    
+    // ++ INÍCIO DA ADIÇÃO (Estoque) ++
+    { href: '/admin/settings/estoque', label: 'Estoque & Custos', icon: Package },
+    // ++ FIM DA ADIÇÃO ++
+
     { href: '/admin/settings/cafe', label: 'Cardápio Café', icon: Utensils },
     { href: '/admin/settings/agendamentos', label: 'Gerenciar Agend.', icon: CalendarCheck },
     { href: '/admin/settings/pesquisas', label: 'Gerenciar Pesquisas', icon: FileText },
@@ -62,11 +74,15 @@ const permissions: Record<string, (Role)[]> = {
     '/admin/stays': ['recepcao'],
     '/admin/comunicacao': ['recepcao'],
     '/admin/hospedes': ['recepcao'],
+    
+    // ++ NOVAS PERMISSÕES ++
+    '/admin/salao': ['recepcao', 'cafe'],    // Garçons e Recepção acessam o Salão
+    '/admin/cozinha': ['recepcao', 'cafe'],  // Cozinha e Recepção acessam o KDS
+    // ++ FIM NOVAS PERMISSÕES ++
+
     '/admin/pedidos/cafe': ['recepcao', 'cafe'],
     '/admin/agendamentos': ['recepcao'],
-    // ++ INÍCIO DA ADIÇÃO (Permissão Casamentos) ++
-    '/admin/casamentos': ['recepcao'], // Apenas recepção (e super_admin) pode ver o CRM
-    // ++ FIM DA ADIÇÃO ++
+    '/admin/casamentos': ['recepcao'],
     '/admin/solicitacoes': ['recepcao'],
     '/admin/manutencao': ['recepcao', 'manutencao'],
     '/admin/pesquisas/overview': ['recepcao', 'marketing'],
@@ -74,6 +90,11 @@ const permissions: Record<string, (Role)[]> = {
     // === Settings Nav ===
     '/admin/settings/cabanas': ['recepcao'],
     '/admin/settings/personalizacao': [], // Apenas super_admin
+    
+    // ++ NOVA PERMISSÃO ESTOQUE ++
+    '/admin/settings/estoque': ['recepcao', 'cafe'], // Chef/Cozinha pode gerenciar estoque
+    // ++ FIM NOVA PERMISSÃO ++
+
     '/admin/settings/cafe': ['recepcao', 'cafe'],
     '/admin/settings/agendamentos': ['recepcao'],
     '/admin/settings/pesquisas': ['recepcao', 'marketing'],
@@ -91,11 +112,8 @@ const checkPermission = (role: Role, href: string): boolean => {
     if (!role) {
         return false;
     }
-    // Verifica se o href base está nas permissões (ex: /admin/casamentos permite /admin/casamentos/lista)
     const baseHref = Object.keys(permissions).find(key => href.startsWith(key));
     if (!baseHref) {
-        // Se a rota não estiver no mapa, assume-se que é permitida se a base for (ex: /admin/casamentos/lista)
-        // Mas para segurança, vamos checar pela rota exata ou rota base
         return false;
     }
     return permissions[baseHref]?.includes(role) ?? false;
@@ -106,13 +124,11 @@ const NotificationDot = () => (
     <span className="ml-auto h-2 w-2 rounded-full bg-red-500" />
 );
 
-
 export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
     const { user, userRole } = useAuth();
     const { property } = useProperty();
-    // Consome o estado de notificação
     const { hasNewRequests, hasNewBookings } = useNotification();
 
     const handleLogout = async () => {
@@ -127,7 +143,6 @@ export function Sidebar() {
         }
     };
 
-    // NavLink (como fornecido, aceita 'showDot')
     const NavLink = ({ href, label, icon: Icon, disabled, showDot }: {
         href: string,
         label: string,
@@ -135,8 +150,6 @@ export function Sidebar() {
         disabled?: boolean,
         showDot?: boolean 
     }) => {
-        // ATUALIZAÇÃO: Fazer o 'isActive' checar a rota base
-        // ex: /admin/casamentos deve estar ativo se a rota for /admin/casamentos/lista
         const isActive = (href === '/admin/dashboard' ? pathname === href : pathname.startsWith(href));
 
         if (disabled) {
@@ -177,11 +190,9 @@ export function Sidebar() {
                 <div className="flex-1 overflow-auto py-2">
                     <nav className="grid items-start px-4 text-sm font-medium">
                         
-                        {/* Mapeamento com verificação de permissão e 'showDot' (sem alterações na lógica) */}
                         {mainNavItems.map(item => {
                             const hasPermission = checkPermission(userRole, item.href);
                             
-                            // Lógica do Ponto (não modificada)
                             const showDot = (item.href === '/admin/solicitacoes' && hasNewRequests) ||
                                             (item.href === '/admin/agendamentos' && hasNewBookings);
                             
@@ -189,7 +200,7 @@ export function Sidebar() {
                                 key={item.href} 
                                 {...item} 
                                 disabled={!hasPermission} 
-                                showDot={showDot} // Passa a propriedade
+                                showDot={showDot}
                             />
                         })}
 

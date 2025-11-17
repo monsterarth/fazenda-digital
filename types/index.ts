@@ -182,10 +182,19 @@ export interface Booking {
 // 4. CARDÁPIO E PEDIDOS DE CAFÉ DA MANHÃ
 // ========================================================================
 
+// ++ NOVO: Definição de Item de Receita (Ficha Técnica)
+export interface RecipeIngredient {
+  ingredientId: string; // ID do documento em 'ingredients'
+  quantity: number;     // Ex: 0.2
+  unit: string;         // Ex: 'kg'
+  ingredientName?: string; // Opcional para exibição no front
+}
+
 export interface Flavor {
     id: string;
     name: string;
     available: boolean;
+    recipe?: RecipeIngredient[]; // ++ NOVO: Ficha técnica do sabor
 }
 
 export interface BreakfastMenuItem {
@@ -199,6 +208,7 @@ export interface BreakfastMenuItem {
   order: number;
   imageUrl?: string;
   flavors: Flavor[];
+  recipe?: RecipeIngredient[]; // ++ NOVO: Ficha técnica do item base
 }
 
 export interface BreakfastMenuCategory {

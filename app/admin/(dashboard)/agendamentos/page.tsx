@@ -21,9 +21,6 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
-// ++ INÍCIO DA ADIÇÃO ++
-import { useNotification } from '@/context/NotificationContext';
-// ++ FIM DA ADIÇÃO ++
 import { addActivityLogToBatch } from '@/lib/activity-logger';
 
 // --- Tipos e Interfaces ---
@@ -74,10 +71,6 @@ function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
 // --- Página Principal ---
 export default function AdminBookingsDashboard() {
     const { user, isAdmin } = useAuth();
-    // ++ INÍCIO DA ADIÇÃO ++
-    // Consome o hook de notificação para limpar o alerta
-    const { clearBookingsNotification } = useNotification();
-    // ++ FIM DA ADIÇÃO ++
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [structures, setStructures] = useState<Structure[]>([]);
     const [bookings, setBookings] = useState<Booking[]>([]);
@@ -90,13 +83,6 @@ export default function AdminBookingsDashboard() {
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedSlots, setSelectedSlots] = useState<Map<string, SlotInfo>>(new Map());
     const isDateInPast = useMemo(() => isBefore(selectedDate, startOfDay(new Date())), [selectedDate]);
-
-    // ++ INÍCIO DA ADIÇÃO ++
-    // Limpa a notificação assim que o componente é montado
-    useEffect(() => {
-        clearBookingsNotification();
-    }, [clearBookingsNotification]);
-    // ++ FIM DA ADIÇÃO ++
 
     useEffect(() => {
         if (!isAdmin) return;
@@ -161,7 +147,6 @@ export default function AdminBookingsDashboard() {
         return () => { unsubBookings(); unsubOverrides(); };
     }, [db, selectedDate, isAdmin, activeGuests]);
 
-    // (O restante do arquivo continua sem alterações)
     const pendingBookings = useMemo(() => {
         return bookings
             .filter(b => b.status === 'pendente')
@@ -275,7 +260,7 @@ export default function AdminBookingsDashboard() {
                     structureName: structure.name, 
                     unitId: unit, 
                     stayId: 'admin', 
-                    guestId: 'admin', 
+                    guestId: 'admin',
                     date: dateStr, 
                     startTime, 
                     endTime, 
@@ -301,7 +286,7 @@ export default function AdminBookingsDashboard() {
                     structureName: structure.name, 
                     unitId: unit, 
                     stayId: guest.id, 
-                    guestId: guest.id, 
+                    guestId: guest.id,
                     date: dateStr, 
                     startTime, 
                     endTime, 
@@ -375,7 +360,7 @@ export default function AdminBookingsDashboard() {
                         structureName: slot.structure.name, 
                         unitId: slot.unit, 
                         stayId: 'admin', 
-                        guestId: 'admin', 
+                        guestId: 'admin',
                         date: dateStr, 
                         startTime: slot.startTime, 
                         endTime: slot.endTime, 
@@ -547,7 +532,11 @@ export default function AdminBookingsDashboard() {
                                     <Select value={selectedStayId} onValueChange={setSelectedStayId}>
                                         <SelectTrigger><SelectValue placeholder="Selecione um hóspede..." /></SelectTrigger>
                                         <SelectContent className="max-h-[300px] overflow-y-auto">
-                                            {activeGuests.sort((a, b) => a.guestName.localeCompare(b.guestName)).map(g => <SelectItem key={g.id} value={g.id}>{g.guestName} ({g.cabinName})</SelectItem>)}
+                                            {[...activeGuests].sort((a, b) => a.cabinName.localeCompare(b.cabinName, undefined, { numeric: true })).map(g => (
+                                                <SelectItem key={g.id} value={g.id}>
+                                                    {g.guestName} ({g.cabinName})
+                                                </SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                 ) : (

@@ -1,5 +1,4 @@
 // app/admin/(dashboard)/solicitacoes/page.tsx
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -9,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// ++ INÍCIO: Importar a Server Action que criamos ++
+// ++ INÍCIO: Importar a Server Action ++
 import { manageRequest } from '@/app/actions/manage-request';
 // ++ FIM: Importar a Server Action ++
 
@@ -18,10 +17,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-// Os imports do DropdownMenu foram removidos
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+// ++ INÍCIO: Importar componentes de Tooltip ++
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+// ++ FIM: Importar componentes de Tooltip ++
 import { toast, Toaster } from 'sonner';
-// IMPORTADO: ArrowRight, Trash2. REMOVIDO: MoreHorizontal
-import { Loader2, ConciergeBell, CheckCircle, Clock, Construction, ShoppingBag, ArrowRight, Trash2 } from 'lucide-react';
+import { Loader2, ConciergeBell, MoreHorizontal, CheckCircle, Clock, Construction, ShoppingBag, Info } from 'lucide-react';
 
 // Tipos
 export type RequestType = 'item' | 'cleaning' | 'maintenance';
@@ -47,9 +48,7 @@ export interface Request {
 const REQUESTS_COLLECTION = 'requests';
 
 export default function ManageRequestsPage() {
-    // ++ INÍCIO: Pegar o 'user' do AuthContext para obtermos o e-mail do admin ++
     const { isAdmin, user } = useAuth();
-    // ++ FIM: Pegar o 'user' ++
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     const [requests, setRequests] = useState<Request[]>([]);
     const [loading, setLoading] = useState(true);
@@ -79,7 +78,6 @@ export default function ManageRequestsPage() {
         initializeApp();
     }, [isAdmin]);
 
-    // ++ INÍCIO: Função 'updateRequestStatus' MODIFICADA para usar a Server Action ++
     const updateRequestStatus = async (requestId: string, newStatus: 'in_progress' | 'completed') => {
         if (!user || !user.email) {
             toast.error("Autenticação do admin não encontrada. Faça login novamente.");
@@ -88,7 +86,6 @@ export default function ManageRequestsPage() {
         
         const toastId = toast.loading("Atualizando status...");
         try {
-            // Chama a Server Action que criamos
             const result = await manageRequest({
                 requestId,
                 adminEmail: user.email,
@@ -105,9 +102,7 @@ export default function ManageRequestsPage() {
             toast.error("Falha ao atualizar status.", { id: toastId, description: error.message });
         }
     };
-    // ++ FIM: Função 'updateRequestStatus' MODIFICADA ++
 
-    // ++ INÍCIO: Função 'deleteRequest' MODIFICADA para usar a Server Action ++
     const deleteRequest = async (requestId: string) => {
         if (!user || !user.email) {
             toast.error("Autenticação do admin não encontrada. Faça login novamente.");
@@ -117,7 +112,6 @@ export default function ManageRequestsPage() {
         
         const toastId = toast.loading("Excluindo solicitação...");
         try {
-            // Chama a Server Action que criamos
             const result = await manageRequest({
                 requestId,
                 adminEmail: user.email,
@@ -133,7 +127,6 @@ export default function ManageRequestsPage() {
             toast.error("Falha ao excluir.", { id: toastId, description: error.message });
         }
     };
-    // ++ FIM: Função 'deleteRequest' MODIFICADA ++
 
     const filteredRequests = (status: RequestStatus) => requests.filter(r => r.status === status);
 
@@ -167,29 +160,37 @@ export default function ManageRequestsPage() {
             cleaning: { icon: CheckCircle, label: "Limpeza", color: "bg-green-500" },
             maintenance: { icon: Construction, label: "Manutenção", color: "bg-yellow-600" },
         };
-
-        // ++ INÍCIO: Lógica para o botão de "Dar Seguimento" ++
-        let followUpButton;
-        if (request.status === 'pending') {
-            followUpButton = {
-                text: "Em Andamento",
-                action: () => updateRequestStatus(request.id, 'in_progress'),
-                icon: ArrowRight,
-                variant: "default" as const, 
-                className: "",
-            };
-        } else if (request.status === 'in_progress') {
-            followUpButton = {
-                text: "Concluída",
-                action: () => updateRequestStatus(request.id, 'completed'),
-                icon: CheckCircle,
-                variant: "secondary" as const, 
-                className: "bg-green-600 text-white hover:bg-green-700", 
-            };
-        }
-        // ++ FIM: Lógica para o botão de "Dar Seguimento" ++
-
         const Icon = typeInfo[request.type].icon;
+
+        // Função auxiliar para renderizar o conteúdo com Tooltip se necessário
+        const renderDetails = () => {
+            let content = null;
+            if (request.type === 'item') content = `${request.details.quantity}x ${request.details.itemName}`;
+            else if (request.type === 'cleaning') content = "Solicitação de limpeza de rotina";
+            else if (request.type === 'maintenance') content = request.details.description;
+
+            // Se for manutenção, usamos o Tooltip para textos longos
+            if (request.type === 'maintenance' && content) {
+                return (
+                    <TooltipProvider>
+                        <Tooltip delayDuration={300}>
+                            <TooltipTrigger asChild>
+                                <div className="max-w-xs flex items-center gap-2 cursor-help group">
+                                    <span className="truncate">{content}</span>
+                                    <Info className="h-3 w-3 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-[300px] p-4 bg-popover text-popover-foreground border shadow-lg">
+                                <p className="font-semibold mb-1 text-xs text-muted-foreground">Descrição completa:</p>
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            }
+
+            return <div className="max-w-xs truncate" title={content || ""}>{content}</div>;
+        };
 
         return (
             <TableRow>
@@ -203,35 +204,21 @@ export default function ManageRequestsPage() {
                         {typeInfo[request.type].label}
                     </Badge>
                 </TableCell>
-                <TableCell className="max-w-xs truncate">
-                    {request.type === 'item' && `${request.details.quantity}x ${request.details.itemName}`}
-                    {request.type === 'cleaning' && "Solicitação de limpeza de rotina"}
-                    {request.type === 'maintenance' && request.details.description}
+                <TableCell>
+                    {renderDetails()}
                 </TableCell>
                 <TableCell>{format(request.createdAt.toDate(), "dd/MM 'às' HH:mm", { locale: ptBR })}</TableCell>
                 <TableCell className="text-right">
-                    {/* Substitui o DropdownMenu por botões dedicados */}
-                    <div className="flex justify-end space-x-2">
-                        {followUpButton && (
-                            <Button 
-                                onClick={followUpButton.action} 
-                                variant={followUpButton.variant}
-                                className={followUpButton.className}
-                                size="sm"
-                            >
-                                <followUpButton.icon className="mr-2 h-4 w-4" />
-                                {followUpButton.text}
-                            </Button>
-                        )}
-                        <Button 
-                            onClick={() => deleteRequest(request.id)} 
-                            variant="destructive" 
-                            size="icon"
-                            title="Excluir Solicitação"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </div>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {request.status === 'pending' && <DropdownMenuItem onClick={() => updateRequestStatus(request.id, 'in_progress')}>Marcar como Em Andamento</DropdownMenuItem>}
+                            {request.status === 'in_progress' && <DropdownMenuItem onClick={() => updateRequestStatus(request.id, 'completed')}>Marcar como Concluída</DropdownMenuItem>}
+                            <DropdownMenuItem className="text-red-500" onClick={() => deleteRequest(request.id)}>Excluir</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </TableCell>
             </TableRow>
         );

@@ -1,14 +1,14 @@
-// fazenda-digital/components/admin/stays/stays-list.tsx
+// components/admin/stays/stays-list.tsx
 
 "use client";
 
-import React,  { useState } from 'react';
+import React, { useState, useTransition } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Stay } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Edit, Printer, MoreHorizontal, LogOut, PlusCircle } from 'lucide-react';
+import { Edit, Printer, MoreHorizontal, LogOut, PlusCircle, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,48 +30,64 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { ThermalCoupon } from './thermal-coupon';
-// ## INÍCIO DA CORREÇÃO ##
-import { useModalStore } from '@/hooks/use-modal-store'; // Alterado de useModal
-// ## FIM DA CORREÇÃO ##
+import { useModalStore } from '@/hooks/use-modal-store';
+// Importação da nossa nova Server Action
+import { finalizeStayAction } from '@/app/actions/finalize-stay';
 
 interface StaysListProps {
     stays: Stay[];
 }
 
 export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
-    const { user, getIdToken } = useAuth();
-    // ## INÍCIO DA CORREÇÃO ##
-    const { onOpen } = useModalStore(); // Alterado de useModal
-    // ## FIM DA CORREÇÃO ##
+    const { user } = useAuth();
+    const { onOpen } = useModalStore();
+    
     const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [stayToEnd, setStayToEnd] = useState<Stay | null>(null);
-    const [isEnding, setIsEnding] = useState(false);
+    
+    // useTransition é ideal para Server Actions, pois gerencia o estado de loading nativamente
+    const [isPending, startTransition] = useTransition();
 
-    // (Resto do componente sem alterações)
     const handleOpenEndStayDialog = (stay: Stay) => {
         setStayToEnd(stay);
         setIsAlertOpen(true);
     };
 
-    const handleEndStay = async () => {
-        if (!stayToEnd || !user) return;
-        setIsEnding(true);
-        const toastId = toast.loading(`Encerrando estadia...`);
-        try {
-            const token = await getIdToken();
-            const response = await fetch(`/api/admin/stays/${stayToEnd.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ action: 'end_stay', adminUser: { email: user.email, name: user.displayName } }),
-            });
-            if (!response.ok) throw new Error((await response.json()).error || "Falha ao encerrar.");
-            toast.success(`Estadia encerrada.`, { id: toastId });
-        } catch (error: any) {
-            toast.error("Erro ao encerrar.", { id: toastId, description: error.message });
-        } finally {
-            setIsEnding(false);
-            setIsAlertOpen(false);
+    const handleEndStay = () => {
+        if (!stayToEnd || !user || !user.email) {
+            toast.error("Erro de autenticação.");
+            return;
         }
+
+        const stayId = stayToEnd.id;
+        const adminEmail = user.email;
+
+        startTransition(async () => {
+            const toastId = toast.loading("Encerrando estadia e processando pesquisa...");
+            
+            try {
+                // Chamada direta para a Server Action
+                const result = await finalizeStayAction(stayId, adminEmail);
+
+                if (result.success) {
+                    toast.success("Sucesso!", { 
+                        id: toastId, 
+                        description: result.message // Ex: "Estadia finalizada! Pesquisa: enviado"
+                    });
+                } else {
+                    toast.error("Erro ao finalizar", { 
+                        id: toastId, 
+                        description: result.message 
+                    });
+                }
+            } catch (error) {
+                toast.error("Erro inesperado", { id: toastId });
+                console.error(error);
+            } finally {
+                setIsAlertOpen(false);
+                setStayToEnd(null);
+            }
+        });
     };
 
     const handlePrintCoupon = (stay: Stay) => {
@@ -152,10 +168,36 @@ export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
                     )}
                 </TableBody>
             </Table>
+
             <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
                 <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>Confirmar Encerramento</AlertDialogTitle><AlertDialogDescription>Tem certeza que deseja encerrar a estadia de <span className="font-bold">{stayToEnd?.guestName}</span>? Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter><AlertDialogCancel disabled={isEnding}>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleEndStay} disabled={isEnding} className="bg-red-600 hover:bg-red-700">{isEnding ? "Encerrando..." : "Sim, Encerrar"}</AlertDialogAction></AlertDialogFooter>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Confirmar Encerramento</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Tem certeza que deseja encerrar a estadia de <span className="font-bold">{stayToEnd?.guestName}</span>?
+                            <br/><br/>
+                            <span className="text-sm text-muted-foreground block bg-muted p-2 rounded">
+                                ℹ️ Isso enviará automaticamente a <strong>Pesquisa de Satisfação</strong> para o WhatsApp do hóspede.
+                            </span>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction 
+                            onClick={handleEndStay} 
+                            disabled={isPending} 
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            {isPending ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Processando...
+                                </>
+                            ) : (
+                                "Sim, Encerrar e Enviar Pesquisa"
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
         </>

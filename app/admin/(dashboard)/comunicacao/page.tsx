@@ -11,6 +11,7 @@ import { getRecentCheckoutsForFeedback } from '@/app/actions/get-recent-checkout
 import { getActiveStaysForWelcome } from '@/app/actions/get-active-stays-for-welcome';
 import { getNewBookingsForConfirmation, EnrichedBookingForSelect } from '@/app/actions/get-new-bookings-for-confirmation';
 import { markCommunicationAsSent } from '@/app/actions/mark-communication-as-sent';
+import { testWhatsAppConnection } from '@/app/actions/test-whatsapp-connection'; // NOVA ACTION IMPORTADA
 import { Property, Stay } from '@/types';
 import { format, addDays, differenceInHours, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -19,11 +20,12 @@ import { AuthContext } from '@/context/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input'; // IMPORTADO
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { MessageSquare, Copy, X, Wand2, Phone, BedDouble, Calendar, Bell, Coffee, LogOut, Star, CheckCircle, Loader2, Handshake, CalendarCheck } from 'lucide-react';
+import { MessageSquare, Copy, X, Wand2, Phone, BedDouble, Calendar, Bell, Coffee, LogOut, Star, CheckCircle, Loader2, Handshake, CalendarCheck, Zap } from 'lucide-react';
 
 type TipMessageType = 'feedback' | 'welcome' | 'bookingConfirmation';
 
@@ -49,6 +51,10 @@ export default function CommunicationCenterPage() {
     const [generatedMessage, setGeneratedMessage] = useState('');
 
     const [preCheckInMessage, setPreCheckInMessage] = useState('');
+
+    // --- ESTADOS PARA TESTE DE WHATSAPP ---
+    const [testPhone, setTestPhone] = useState('');
+    const [isTestingZap, startTestZap] = useTransition();
 
     const [upcomingCheckouts, setUpcomingCheckouts] = useState<EnrichedStayForSelect[]>([]);
     const [pendingBreakfast, setPendingBreakfast] = useState<EnrichedStayForSelect[]>([]);
@@ -79,13 +85,9 @@ export default function CommunicationCenterPage() {
                 const combinedStays = [...activeStaysData, ...recentCheckoutsData];
                 const uniqueStays = Array.from(new Map(combinedStays.map(stay => [stay.id, stay])).values());
                 
-                // ++ INÍCIO DA CORREÇÃO ++
-                // Com nomes "01", "02", "10", a ordenação alfabética padrão (localeCompare)
-                // já produzirá a ordem numérica correta.
                 const sortedStays = uniqueStays.sort((a, b) => 
                     a.cabin.name.localeCompare(b.cabin.name)
                 );
-                // ++ FIM DA CORREÇÃO ++
                 
                 setAllStaysForSelect(sortedStays);
 
@@ -189,6 +191,22 @@ export default function CommunicationCenterPage() {
         }
     };
 
+    // --- FUNÇÃO DE TESTE WHATSAPP ---
+    const handleTestWhatsApp = () => {
+        if (!testPhone) {
+            toast.error("Digite um número para testar.");
+            return;
+        }
+        startTestZap(async () => {
+            const result = await testWhatsAppConnection(testPhone);
+            if (result.success) {
+                toast.success(result.message);
+            } else {
+                toast.error(result.message);
+            }
+        });
+    };
+
     const handleStaySelect = (stayId: string) => {
         const findStay = allStaysForSelect.find(s => s.id === stayId);
         setSelectedItem(findStay || null);
@@ -267,10 +285,37 @@ export default function CommunicationCenterPage() {
     return (
         <div className="container mx-auto p-4 md:p-6 space-y-6">
             <Toaster richColors position="top-center" />
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2"> <MessageSquare className="h-8 w-8 text-primary" /> Centro de Comunicação </h1>
-                <p className="text-muted-foreground">Gere e envie mensagens personalizadas para seus hóspedes.</p>
+            
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2"> <MessageSquare className="h-8 w-8 text-primary" /> Centro de Comunicação </h1>
+                    <p className="text-muted-foreground">Gere e envie mensagens personalizadas para seus hóspedes.</p>
+                </div>
             </div>
+
+            {/* --- ÁREA DE DIAGNÓSTICO DO WHATSAPP --- */}
+            <Card className="border-blue-200 bg-blue-50/50">
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2 text-blue-800">
+                        <Zap className="h-4 w-4 fill-blue-800" /> Diagnóstico do WhatsApp (Synapse Gateway)
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col md:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full">
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Número de Teste (com DDD)</label>
+                        <Input 
+                            placeholder="Ex: 31999999999" 
+                            value={testPhone}
+                            onChange={(e) => setTestPhone(e.target.value)}
+                            className="bg-white"
+                        />
+                    </div>
+                    <Button onClick={handleTestWhatsApp} disabled={isTestingZap} className="bg-blue-600 hover:bg-blue-700 text-white">
+                        {isTestingZap ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <CheckCircle className="h-4 w-4 mr-2"/>}
+                        Testar Envio
+                    </Button>
+                </CardContent>
+            </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-6">
@@ -284,7 +329,6 @@ export default function CommunicationCenterPage() {
                                 <Select onValueChange={handleStaySelect}>
                                     <SelectTrigger className="text-base h-12"> <SelectValue placeholder="Selecione uma estadia..." /> </SelectTrigger>
                                     <SelectContent className="max-h-[300px] overflow-y-auto">
-                                        {/* ++ CORREÇÃO DE DISPLAY APLICADA AQUI ++ */}
                                         {allStaysForSelect.length > 0 ? allStaysForSelect.map((stay) => ( <SelectItem key={stay.id} value={stay.id}> <span className='font-semibold'>{stay.cabin.name}:</span> <span className='text-muted-foreground ml-2'>{stay.guest.name} - {stay.status === 'active' ? 'Ativa' : 'Encerrada'}</span> </SelectItem> )) : ( <div className='p-4 text-center text-sm text-muted-foreground'>Nenhuma estadia encontrada.</div> )}
                                     </SelectContent>
                                 </Select>

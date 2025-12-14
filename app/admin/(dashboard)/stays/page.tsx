@@ -1,5 +1,3 @@
-// app/admin/(dashboard)/stays/page.tsx
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -8,22 +6,27 @@ import * as firestore from 'firebase/firestore';
 import { PreCheckIn, Stay, Cabin, Property, BreakfastOrder } from '@/types';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Users, FileCheck2, PlusCircle, Archive, History } from 'lucide-react'; // Ícones adicionados
+import { Loader2, Users, FileCheck2, PlusCircle, History, Zap } from 'lucide-react'; 
 import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
 import { StaysList } from '@/components/admin/stays/stays-list';
+// Importe o novo componente
+import { FastStaysList } from '@/components/admin/stays/fast-stays-list';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { subDays } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/ui/button'; // Importe do Button
-import { useModalStore } from '@/hooks/use-modal-store'; // Importe do Modal Store
+import { Button } from '@/components/ui/button'; 
+import { useModalStore } from '@/hooks/use-modal-store'; 
 
 export default function ManageStaysPage() {
     const { isAdmin } = useAuth();
-    const { onOpen } = useModalStore(); // Hook para abrir os modais
+    const { onOpen } = useModalStore(); 
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     
     const [pendingCheckIns, setPendingCheckIns] = useState<PreCheckIn[]>([]);
     const [activeStays, setActiveStays] = useState<Stay[]>([]);
+    // Novo Estado para Fast Stays
+    const [fastStays, setFastStays] = useState<Stay[]>([]);
+    
     const [checkedOutStays, setCheckedOutStays] = useState<Stay[]>([]);
     const [breakfastOrders, setBreakfastOrders] = useState<BreakfastOrder[]>([]);
     const [cabins, setCabins] = useState<Cabin[]>([]);
@@ -49,11 +52,23 @@ export default function ManageStaysPage() {
 
             const unsubscribers: firestore.Unsubscribe[] = [];
 
+            // 1. Pré-Check-ins Legados (Coleção preCheckIns)
             const qCheckIns = firestore.query(firestore.collection(firestoreDb, 'preCheckIns'), firestore.where('status', '==', 'pendente'));
             unsubscribers.push(firestore.onSnapshot(qCheckIns, (snapshot) => {
                 setPendingCheckIns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PreCheckIn)));
             }));
 
+            // 2. Fast Stays (Coleção stays, status 'pending_guest_data')
+            const qFast = firestore.query(
+                firestore.collection(firestoreDb, 'stays'), 
+                firestore.where('status', '==', 'pending_guest_data'),
+                firestore.orderBy('createdAt', 'desc')
+            );
+            unsubscribers.push(firestore.onSnapshot(qFast, (snapshot) => {
+                setFastStays(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay)));
+            }));
+
+            // 3. Estadias Ativas
             const qStays = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where('status', '==', 'active'), firestore.orderBy('checkInDate', 'asc'));
             unsubscribers.push(firestore.onSnapshot(qStays, (snapshot) => {
                 setActiveStays(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay)));
@@ -82,12 +97,6 @@ export default function ManageStaysPage() {
                 }
             }));
             
-            const todayStr = new Date().toISOString().split('T')[0];
-            const qBreakfast = firestore.query(firestore.collection(firestoreDb, 'breakfastOrders'), firestore.where('deliveryDate', '==', todayStr));
-            unsubscribers.push(firestore.onSnapshot(qBreakfast, (snapshot) => {
-                setBreakfastOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BreakfastOrder)));
-            }));
-
             return () => unsubscribers.forEach(unsub => unsub());
         };
 
@@ -102,9 +111,7 @@ export default function ManageStaysPage() {
                     <p className="text-muted-foreground">Valide pré-check-ins e acompanhe as estadias ativas.</p>
                 </div>
                 
-                {/* --- ÁREA DOS BOTÕES --- */}
                 <div className="flex items-center gap-3">
-                    {/* Botão Legado Discreto */}
                     <Button 
                         variant="ghost" 
                         size="sm" 
@@ -115,9 +122,8 @@ export default function ManageStaysPage() {
                         Modo Legado
                     </Button>
 
-                    {/* Botão Principal Novo */}
                     <Button 
-                        onClick={() => onOpen('createStay', { cabins: cabins })} // <--- ALTERAÇÃO AQUI
+                        onClick={() => onOpen('createStay', { cabins: cabins })} 
                         className="bg-green-600 hover:bg-green-700 text-white shadow-sm"
                     >
                         <PlusCircle className="mr-2 h-5 w-5" />
@@ -131,26 +137,47 @@ export default function ManageStaysPage() {
             ) : (
                 <>
                     <Tabs defaultValue="active">
-                        <TabsList className="grid w-full grid-cols-2">
+                        <TabsList className="grid w-full grid-cols-3">
                             <TabsTrigger value="active">Estadias Ativas ({activeStays.length})</TabsTrigger>
-                            <TabsTrigger value="pending">Pendentes ({pendingCheckIns.length})</TabsTrigger>
+                            <TabsTrigger value="fast">Aguardando Hóspede ({fastStays.length})</TabsTrigger>
+                            <TabsTrigger value="pending">Validação Pendente ({pendingCheckIns.length})</TabsTrigger>
                         </TabsList>
+                        
                         <TabsContent value="active">
                              <Card className="shadow-md">
                                 <CardHeader>
-                                    <CardTitle className="flex items-center gap-2"><Users className="text-green-600"/> Estadias Ativas e Futuras</CardTitle>
-                                    <CardDescription>Hóspedes com estadias já confirmadas no sistema.</CardDescription>
+                                    <CardTitle className="flex items-center gap-2"><Users className="text-green-600"/> Estadias Ativas</CardTitle>
+                                    <CardDescription>Hóspedes com estadias já confirmadas.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <StaysList stays={activeStays} />
                                 </CardContent>
                             </Card>
                         </TabsContent>
+
+                        {/* NOVA ABA DE FAST STAYS */}
+                        <TabsContent value="fast">
+                             <Card className="shadow-md border-blue-100">
+                                <CardHeader className="bg-blue-50/50">
+                                    <CardTitle className="flex items-center gap-2 text-blue-800">
+                                        <Zap className="text-blue-600"/> Links Enviados
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Estadias criadas via Fast Stay que ainda não foram completadas pelo hóspede.
+                                        <br/>Use o botão "Reenviar" para corrigir o número se necessário.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <FastStaysList stays={fastStays} />
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
                         <TabsContent value="pending">
                              <Card className="shadow-md">
                                 <CardHeader>
-                                    <CardTitle className="flex items-center gap-2"><FileCheck2 className="text-yellow-600"/> Pré-Check-ins Pendentes</CardTitle>
-                                    <CardDescription>Hóspedes que preencheram o formulário e aguardam validação.</CardDescription>
+                                    <CardTitle className="flex items-center gap-2"><FileCheck2 className="text-yellow-600"/> Pré-Check-ins (Legado)</CardTitle>
+                                    <CardDescription>Hóspedes que preencheram o formulário e aguardam validação manual.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <PendingCheckInsList pendingCheckIns={pendingCheckIns} cabins={cabins} />

@@ -49,54 +49,68 @@ client.on('disconnected', (reason) => {
 
 client.initialize();
 
+// --- FUNÇÃO DE INTELIGÊNCIA DE NÚMERO ---
+async function getWhatsAppId(number) {
+    // 1. Limpeza básica
+    let formatted = number.replace(/\D/g, '');
+    
+    // Se não tiver DDI, adiciona 55 (Brasil)
+    if (formatted.length >= 10 && formatted.length <= 11) {
+        formatted = '55' + formatted;
+    }
+
+    // 2. Tenta verificar o ID exato que o usuário mandou
+    try {
+        const id = await client.getNumberId(formatted);
+        if (id) return id._serialized;
+    } catch (e) {
+        console.log('Erro ao verificar ID inicial:', e.message);
+    }
+
+    // 3. ESTRATÉGIA BRASIL (Correção do 9º dígito)
+    // Se for Brasil (começa com 55) e tiver 13 dígitos (55 + 2 DDD + 9 + 8 num),
+    // significa que tem o nono dígito. Vamos tentar SEM ele.
+    if (formatted.startsWith('55') && formatted.length === 13 && formatted[4] === '9') {
+        const withoutNine = formatted.slice(0, 4) + formatted.slice(5); // Remove o dígito na posição 4 (o primeiro 9 do número)
+        console.log(`Tentando variante sem o 9: ${withoutNine}`);
+        try {
+            const idNoNine = await client.getNumberId(withoutNine);
+            if (idNoNine) return idNoNine._serialized;
+        } catch (e) { }
+    }
+
+    // 4. Se nada der certo, retorna o formato padrão como tentativa final (Blind Send)
+    return formatted.includes('@c.us') ? formatted : `${formatted}@c.us`;
+}
+
 // --- Endpoints ---
 
 app.get('/qr', (req, res) => {
-    if (isReady) return res.send('<html><body><h1>✅ Conectado!</h1></body></html>');
-    if (!qrCodeUrl) return res.send('<html><body><h1>⏳ Iniciando... aguarde.</h1><script>setTimeout(()=>location.reload(),2000)</script></body></html>');
+    if (isReady) return res.send('<html><body><h1 style="color:green">✅ WhatsApp Conectado!</h1></body></html>');
+    if (!qrCodeUrl) return res.send('<html><body><h1>⏳ Iniciando... aguarde e recarregue.</h1><script>setTimeout(()=>location.reload(),3000)</script></body></html>');
     res.send(`<html><body><h1>Escaneie o QR Code</h1><img src="${qrCodeUrl}" /></body></html>`);
 });
 
 app.get('/status', (req, res) => {
-    res.json({ 
-        ready: isReady, 
-        info: isReady ? 'ONLINE' : 'OFFLINE' 
-    });
+    res.json({ ready: isReady, info: isReady ? 'ONLINE' : 'OFFLINE' });
 });
 
 app.post('/send', async (req, res) => {
     if (!isReady) return res.status(503).json({ error: 'WhatsApp não está pronto.' });
 
     const { number, message } = req.body;
-
     if (!number || !message) return res.status(400).json({ error: 'Dados inválidos.' });
 
     try {
-        // --- LÓGICA DE FORMATAÇÃO CORRIGIDA ---
-        let formattedNumber = number.replace(/\D/g, ''); // Remove tudo que não é número
-
-        // Se tiver 10 ou 11 dígitos (Ex: 31999999999), assume que é BR e adiciona 55
-        if (formattedNumber.length >= 10 && formattedNumber.length <= 11) {
-            formattedNumber = '55' + formattedNumber;
-        }
-
-        // Adiciona o sufixo do WhatsApp Web se não tiver
-        if (!formattedNumber.endsWith('@c.us')) {
-            formattedNumber += '@c.us';
-        }
-
-        console.log(`Tentando enviar para: ${formattedNumber}`);
+        console.log(`Recebido pedido para: ${number}`);
         
-        // Verifica se o número existe no WhatsApp antes de enviar (opcional, mas bom para debug)
-        const isRegistered = await client.isRegisteredUser(formattedNumber);
-        if (!isRegistered) {
-            console.log(`Número ${formattedNumber} não registrado no WhatsApp.`);
-            return res.status(404).json({ error: 'Número não possui WhatsApp válido.' });
-        }
+        // Usa nossa função inteligente para descobrir o ID real (com ou sem 9)
+        const targetId = await getWhatsAppId(number);
+        
+        console.log(`ID Resolvido: ${targetId}`);
 
-        const response = await client.sendMessage(formattedNumber, message);
-        console.log(`Mensagem enviada com sucesso para ${formattedNumber}`);
-        res.json({ success: true, response });
+        const response = await client.sendMessage(targetId, message);
+        res.json({ success: true, targetId, response });
 
     } catch (error) {
         console.error('Erro no envio:', error);

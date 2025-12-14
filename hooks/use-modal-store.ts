@@ -1,30 +1,27 @@
-// ARQUIVO: hooks/use-modal-store.ts
-// (Note: Fornecendo o código completo do arquivo, com a nova adição)
+// hooks/use-modal-store.ts
 
 import { create } from 'zustand';
 import { Stay, Cabin, Property, Guest } from '@/types';
 import { MaintenanceTask, StaffMember } from '@/types/maintenance';
 
 export type ModalType =
-  | 'createStay'
+  | 'createStay'          // Novo Fast Stay
+  | 'createStayLegacy'    // Antigo Modal Completo (Adicionado)
   | 'editStay'
-  // Tipos de manutenção existentes
   | 'upsertMaintenanceTask'
   | 'delegateMaintenanceTask'
   | 'completeMaintenanceTask'
   | 'reviewMaintenanceTask'
-  // 1. NOSSO NOVO TIPO DE MODAL (ADMIN VIEW)
-  | 'viewMaintenanceTask'; // <-- ADICIONADO
+  | 'viewMaintenanceTask';
 
 interface ModalData {
-  // --- Para Stays ('createStay' e 'editStay') ---
+  // --- Para Stays ---
   stay?: Stay;
   cabins?: Cabin[];
   property?: Property;
   guest?: Guest;
 
   // --- Para Manutenção ---
-  // (Todos os tipos de dados existentes são reutilizados)
   task?: MaintenanceTask;
   allTasks?: MaintenanceTask[];
   staff?: StaffMember[];

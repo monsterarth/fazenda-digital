@@ -1,5 +1,3 @@
-//components/pre-checkin-form.tsx
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -20,9 +18,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast, Toaster } from 'sonner';
-import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Home, Car, Phone, CheckCircle } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Send, PawPrint, ArrowRight, ArrowLeft, User, Mail, Car, Phone, CheckCircle, Lock, Edit2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { createActivityLog } from '@/lib/activity-logger';
+import { completeFastStayAction } from '@/app/actions/complete-fast-stay';
 
 const preCheckInSchema = z.object({
     leadGuestName: z.string().min(3, "O nome completo é obrigatório."),
@@ -70,14 +69,19 @@ type PreCheckInFormValues = z.infer<typeof preCheckInSchema>;
 
 interface PreCheckinFormProps {
     property: Property;
+    prefilledData?: any;
+    token?: string;
 }
 
 const generateSimpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
+export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefilledData, token }) => {
     const [currentStep, setCurrentStep] = useState(0);
     const [isLoadingCep, setIsLoadingCep] = useState(false);
     const [isSubmitSuccessful, setIsSubmitSuccessful] = useState(false);
+    
+    // NOVO: Controle de bloqueio dos campos
+    const [isLocked, setIsLocked] = useState(false);
     
     const [countriesList, setCountriesList] = useState<string[]>([]);
     const [isLoadingCountries, setIsLoadingCountries] = useState(false);
@@ -91,6 +95,35 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
             companions: [], pets: []
         },
     });
+
+    // --- POPULAR CAMPOS E ATIVAR BLOQUEIO ---
+    useEffect(() => {
+        if (prefilledData) {
+            console.log("Preenchendo formulário...", prefilledData);
+            
+            // Ativa o bloqueio pois temos dados confiáveis do sistema
+            setIsLocked(true);
+
+            // Reseta o formulário com os dados
+            form.reset({
+                leadGuestName: prefilledData.guestName || '',
+                leadGuestPhone: prefilledData.guestPhone ? prefilledData.guestPhone.replace(/\D/g, '') : '',
+                leadGuestDocument: prefilledData.guestId ? prefilledData.guestId.replace(/\D/g, '') : '',
+                leadGuestEmail: prefilledData.email || '',
+                
+                isForeigner: false, 
+                country: 'Brasil',
+                
+                // Endereço e outros campos
+                address: { cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '' },
+                estimatedArrivalTime: '16:00',
+                knowsVehiclePlate: true,
+                vehiclePlate: '',
+                companions: [], 
+                pets: []
+            });
+        }
+    }, [prefilledData, form]);
 
     const isForeigner = form.watch('isForeigner');
     const arrivalTime = form.watch('estimatedArrivalTime');
@@ -121,22 +154,17 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
             try {
                 const response = await fetch('https://restcountries.com/v3.1/all?fields=name,translations');
                 if (!response.ok) throw new Error('Falha ao buscar países da API');
-
                 const data: { name: { common: string }, translations: { por?: { common: string } } }[] = await response.json();
-                
                 const names = data.map(country => 
                     country.translations.por?.common || country.name.common
                 ).sort((a, b) => a.localeCompare(b, 'pt', { sensitivity: 'base' })); 
-                
                 setCountriesList(names);
             } catch (error) {
-                console.error("Erro ao buscar países:", error);
-                setCountriesList(["Brasil", "Argentina", "Uruguai", "Chile", "Paraguai", "Estados Unidos", "Portugal", "Alemanha", "França", "Outro"]);
+                setCountriesList(["Brasil", "Outro"]);
             } finally {
                 setIsLoadingCountries(false);
             }
         };
-
         fetchCountries();
     }, []); 
 
@@ -152,35 +180,36 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
         if (isForeigner) return;
         const cleanCep = cep.replace(/\D/g, '');
         if (cleanCep.length !== 8) return;
-        
         setIsLoadingCep(true);
         try {
             const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
             const data = await response.json();
-            if (data.erro) {
-                toast.error("CEP não encontrado.");
-                return;
-            }
+            if (data.erro) { toast.error("CEP não encontrado."); return; }
             form.setValue('address.street', data.logradouro);
             form.setValue('address.neighborhood', data.bairro);
             form.setValue('address.city', data.localidade);
             form.setValue('address.state', data.uf);
             document.getElementById('address.number')?.focus();
-        } catch (error) {
-            toast.error("Falha ao buscar o CEP.");
-        } finally {
-            setIsLoadingCep(false);
-        }
+        } catch (error) { toast.error("Falha ao buscar o CEP."); } finally { setIsLoadingCep(false); }
     };
     
     const onSubmit: SubmitHandler<PreCheckInFormValues> = async (data) => {
-        const db = await getFirebaseDb();
-        if (!db) {
-            toast.error("Erro de conexão. Por favor, tente novamente.");
-            return;
-        }
         const toastId = toast.loading("Enviando seus dados...");
         try {
+            if (token) {
+                const result = await completeFastStayAction(token, data);
+                if (result.success) {
+                    toast.dismiss(toastId);
+                    setIsSubmitSuccessful(true);
+                } else {
+                    toast.error("Erro ao processar", { id: toastId, description: result.message });
+                }
+                return;
+            }
+
+            const db = await getFirebaseDb();
+            if (!db) { toast.error("Erro de conexão."); return; }
+
             const { country, ...restOfData } = data;
             const preCheckInData: Omit<PreCheckIn, 'id' | 'stayId'> = {
                 ...restOfData,
@@ -191,19 +220,12 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                 createdAt: firestore.Timestamp.now(),
             };
             await firestore.addDoc(firestore.collection(db, 'preCheckIns'), preCheckInData);
-
-            await createActivityLog({
-                type: 'checkin_submitted',
-                actor: { type: 'guest', identifier: data.leadGuestName },
-                details: `Novo pré-check-in de ${data.leadGuestName}.`,
-                link: '/admin/stays'
-            });
-
+            await createActivityLog({ type: 'checkin_submitted', actor: { type: 'guest', identifier: data.leadGuestName }, details: `Novo pré-check-in de ${data.leadGuestName}.`, link: '/admin/stays' });
             toast.dismiss(toastId);
             setIsSubmitSuccessful(true);
         } catch (error) {
-            console.error("Firebase submission error:", error);
-            toast.error("Falha ao enviar o formulário.", { id: toastId, description: "Por favor, verifique os dados e tente novamente." });
+            console.error(error);
+            toast.error("Falha ao enviar.", { id: toastId });
         }
     };
     
@@ -212,16 +234,14 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
             <Card className="w-full max-w-2xl shadow-xl text-center">
                 <CardHeader>
                     {property?.logoUrl && <Image src={property.logoUrl} alt="Logo" width={96} height={96} className="mx-auto mb-4" />}
-                    <div className="mx-auto bg-green-100 rounded-full p-3 w-fit">
-                        <CheckCircle className="h-10 w-10 text-green-600" />
-                    </div>
+                    <div className="mx-auto bg-green-100 rounded-full p-3 w-fit"><CheckCircle className="h-10 w-10 text-green-600" /></div>
                     <CardTitle className="text-3xl mt-4">{property?.messages.preCheckInSuccessTitle || "Tudo Certo!"}</CardTitle>
                     <CardDescription>{property?.messages.preCheckInSuccessSubtitle || "Seu pré-check-in foi enviado com sucesso."}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <p className="text-muted-foreground">Caso tenha qualquer dúvida, não hesite em nos contatar.</p>
                     <Button asChild size="lg" className="mt-6">
-                        <a href="https://wa.me/554899632985" target="_blank" rel="noopener noreferrer">
+                        <a href={`https://wa.me/${(property as any).phone || '554899632985'}`} target="_blank" rel="noopener noreferrer">
                             <Phone className="mr-2 h-4 w-4" /> Entrar em contato
                         </a>
                     </Button>
@@ -243,48 +263,105 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                     <form onSubmit={(e) => e.preventDefault()} className="space-y-8">
                         {currentStep === 0 && (
                             <div className="space-y-4 animate-in fade-in-0">
-                                <h3 className="text-lg font-semibold flex items-center gap-2"><User />Informações do Responsável</h3>
-                                <FormField name="leadGuestName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Nome Completo</FormLabel><FormControl><Input placeholder="Seu nome completo" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                <FormField name="isForeigner" control={form.control} render={({ field }) => (<FormItem className="flex flex-row items-center space-x-3 space-y-0"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">Sou estrangeiro / I'm a foreigner</FormLabel></FormItem>)} />
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-semibold flex items-center gap-2"><User />Informações do Responsável</h3>
+                                    {isLocked && (
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            onClick={() => setIsLocked(false)}
+                                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                        >
+                                            <Edit2 className="h-4 w-4 mr-2" /> Alterar Dados
+                                        </Button>
+                                    )}
+                                </div>
+
+                                {/* Banner Informativo se estiver travado */}
+                                {isLocked && (
+                                    <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex items-start gap-3 text-sm text-blue-800">
+                                        <Lock className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                                        <div>
+                                            <p className="font-semibold">Dados confirmados</p>
+                                            <p>Já preenchemos com o que temos no sistema. Se precisar corrigir, clique em "Alterar Dados".</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <FormField name="leadGuestName" control={form.control} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Nome Completo</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="Seu nome completo" {...field} disabled={isLocked} className={isLocked ? "bg-gray-100 text-gray-600" : ""} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                                
+                                <FormField name="isForeigner" control={form.control} render={({ field }) => (
+                                    <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                                        <FormControl>
+                                            <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} />
+                                        </FormControl>
+                                        <FormLabel className="font-normal">Sou estrangeiro / I'm a foreigner</FormLabel>
+                                    </FormItem>
+                                )} />
+                                
                                 {isForeigner ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <FormField name="country" control={form.control} render={({ field }) => (
                                             <FormItem>
                                                 <FormLabel>País</FormLabel>
-                                                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoadingCountries}>
-                                                    <FormControl>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder={isLoadingCountries ? "Carregando países..." : "Selecione seu país..."} />
-                                                        </SelectTrigger>
-                                                    </FormControl>
-                                                    {/* ++ INÍCIO DA CORREÇÃO: Adiciona altura máxima e rolagem ++ */}
-                                                    <SelectContent className="max-h-[20rem] overflow-y-auto">
-                                                    {/* ++ FIM DA CORREÇÃO ++ */}
-                                                        {isLoadingCountries ? (
-                                                            <SelectItem value="loading" disabled>Carregando...</SelectItem>
-                                                        ) : (
-                                                            countriesList.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
-                                                        )}
-                                                    </SelectContent>
+                                                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoadingCountries || isLocked}>
+                                                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl>
+                                                    <SelectContent className="max-h-[20rem] overflow-y-auto">{countriesList.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                                                 </Select>
                                                 <FormMessage />
                                             </FormItem>
                                         )} />
-                                        <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>Passaporte / Documento</FormLabel><FormControl><Input placeholder="Número do documento" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>Documento</FormLabel><FormControl><Input placeholder="Passaporte" {...field} disabled={isLocked} /></FormControl><FormMessage /></FormItem>)} />
                                     </div>
                                 ) : (
-                                    <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>CPF</FormLabel><FormControl><Input placeholder="000.000.000-00" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>CPF</FormLabel>
+                                            <FormControl>
+                                                <Input 
+                                                    placeholder="000.000.000-00" 
+                                                    {...field} 
+                                                    disabled={isLocked} 
+                                                    className={isLocked ? "bg-gray-100 text-gray-600" : ""}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
                                 )}
                             </div>
                         )}
                         {currentStep === 1 && (
                             <div className="space-y-4 animate-in fade-in-0">
                                 <h3 className="text-lg font-semibold flex items-center gap-2"><Mail />Contato e Endereço</h3>
-                                <p className="text-sm text-muted-foreground">Estas informações são necessárias para a emissão da Nota Fiscal.</p>
+                                
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <FormField name="leadGuestEmail" control={form.control} render={({ field }) => (<FormItem><FormLabel>E-mail</FormLabel><FormControl><Input type="email" placeholder="seu@email.com" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                    <FormField name="leadGuestPhone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Telefone / WhatsApp</FormLabel><FormControl><Input type="tel" placeholder="(XX) XXXXX-XXXX" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField name="leadGuestPhone" control={form.control} render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Telefone / WhatsApp</FormLabel>
+                                            <FormControl>
+                                                <Input 
+                                                    type="tel" 
+                                                    placeholder="(XX) XXXXX-XXXX" 
+                                                    {...field} 
+                                                    disabled={isLocked} 
+                                                    className={isLocked ? "bg-gray-100 text-gray-600" : ""}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
                                 </div>
+
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <FormField name="address.cep" control={form.control} render={({ field }) => (<FormItem className="md:col-span-1"><FormLabel>CEP</FormLabel><FormControl><Input placeholder="00000-000" {...field} onBlur={(e) => handleCepLookup(e.target.value)} /></FormControl>{isLoadingCep && <p className='text-sm text-muted-foreground'>Buscando...</p>}<FormMessage /></FormItem>)} />
                                     <FormField name="address.street" control={form.control} render={({ field }) => (<FormItem className="md:col-span-2"><FormLabel>Logradouro</FormLabel><FormControl><Input placeholder="Rua, Avenida..." {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -300,8 +377,9 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                  </div>
                             </div>
                         )}
+                        {/* Passo 2 e 3 sem mudanças (Chegada e Acompanhantes) */}
                         {currentStep === 2 && (
-                            <div className="space-y-4 animate-in fade-in-0">
+                             <div className="space-y-4 animate-in fade-in-0">
                                  <h3 className="text-lg font-semibold flex items-center gap-2"><Car />Detalhes da Chegada</h3>
                                  <p className="text-sm text-muted-foreground">Nos informe os detalhes para uma recepção tranquila.</p>
                                 <FormField name="estimatedArrivalTime" control={form.control} render={({ field }) => (<FormItem><FormLabel>Horário Previsto de Chegada</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -312,7 +390,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property }) => {
                                     <FormField name="knowsVehiclePlate" control={form.control} render={({ field }) => (<FormItem className="flex flex-row items-center space-x-2 space-y-0 pb-2"><FormControl><Checkbox checked={!field.value} onCheckedChange={(checked) => field.onChange(!checked)} /></FormControl><FormLabel className="font-normal text-sm">Não sei / Sem carro</FormLabel></FormItem>)} />
                                 </div>
                             </div>
-                             )}
+                        )}
                         {currentStep === 3 && (
                                <div className="space-y-6 animate-in fade-in-0">
                                     <div>

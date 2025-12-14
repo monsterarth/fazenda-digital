@@ -41,7 +41,7 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) =>
     // ## FIM DA CORREÇÃO ##
     const { user } = useAuth();
     const { guest } = data;
-    const isModalOpen = isOpen && type === 'createStay';
+    const isModalOpen = isOpen && type === 'createStayLegacy';
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLookingUp, setIsLookingUp] = useState(false);

@@ -8,7 +8,7 @@ import { Stay } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Edit, Printer, MoreHorizontal, LogOut, PlusCircle, Loader2 } from 'lucide-react';
+import { Edit, Printer, MoreHorizontal, LogOut, Loader2 } from 'lucide-react'; // Removido PlusCircle
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +31,6 @@ import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { ThermalCoupon } from './thermal-coupon';
 import { useModalStore } from '@/hooks/use-modal-store';
-// Importação da nossa nova Server Action
 import { finalizeStayAction } from '@/app/actions/finalize-stay';
 
 interface StaysListProps {
@@ -44,8 +43,6 @@ export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
     
     const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [stayToEnd, setStayToEnd] = useState<Stay | null>(null);
-    
-    // useTransition é ideal para Server Actions, pois gerencia o estado de loading nativamente
     const [isPending, startTransition] = useTransition();
 
     const handleOpenEndStayDialog = (stay: Stay) => {
@@ -58,31 +55,20 @@ export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
             toast.error("Erro de autenticação.");
             return;
         }
-
         const stayId = stayToEnd.id;
         const adminEmail = user.email;
 
         startTransition(async () => {
             const toastId = toast.loading("Encerrando estadia e processando pesquisa...");
-            
             try {
-                // Chamada direta para a Server Action
                 const result = await finalizeStayAction(stayId, adminEmail);
-
                 if (result.success) {
-                    toast.success("Sucesso!", { 
-                        id: toastId, 
-                        description: result.message // Ex: "Estadia finalizada! Pesquisa: enviado"
-                    });
+                    toast.success("Sucesso!", { id: toastId, description: result.message });
                 } else {
-                    toast.error("Erro ao finalizar", { 
-                        id: toastId, 
-                        description: result.message 
-                    });
+                    toast.error("Erro ao finalizar", { id: toastId, description: result.message });
                 }
             } catch (error) {
                 toast.error("Erro inesperado", { id: toastId });
-                console.error(error);
             } finally {
                 setIsAlertOpen(false);
                 setStayToEnd(null);
@@ -108,7 +94,6 @@ export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
                         <ThermalCoupon stay={stay} qrUrl={qrUrl} propertyName="Fazenda do Rosa" />
                     </React.StrictMode>
                 );
-
                 setTimeout(() => {
                     printWindow.focus();
                     printWindow.print();
@@ -122,12 +107,8 @@ export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
 
     return (
         <>
-            <div className="flex justify-end mb-4">
-                <Button onClick={() => onOpen('createStay')}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Criar Estadia Manualmente
-                </Button>
-            </div>
+            {/* BOTÃO REMOVIDO DAQUI - Agora ele fica no cabeçalho da página */}
+            
             <Table>
                 <TableHeader>
                     <TableRow>
@@ -183,19 +164,8 @@ export const StaysList: React.FC<StaysListProps> = ({ stays }) => {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction 
-                            onClick={handleEndStay} 
-                            disabled={isPending} 
-                            className="bg-red-600 hover:bg-red-700"
-                        >
-                            {isPending ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Processando...
-                                </>
-                            ) : (
-                                "Sim, Encerrar e Enviar Pesquisa"
-                            )}
+                        <AlertDialogAction onClick={handleEndStay} disabled={isPending} className="bg-red-600 hover:bg-red-700">
+                            {isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando...</> : "Sim, Encerrar"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

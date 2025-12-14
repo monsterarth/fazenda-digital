@@ -8,15 +8,18 @@ import * as firestore from 'firebase/firestore';
 import { PreCheckIn, Stay, Cabin, Property, BreakfastOrder } from '@/types';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Users, FileCheck2 } from 'lucide-react';
+import { Loader2, Users, FileCheck2, PlusCircle, Archive, History } from 'lucide-react'; // Ícones adicionados
 import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
 import { StaysList } from '@/components/admin/stays/stays-list';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { subDays } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
+import { Button } from '@/components/ui/button'; // Importe do Button
+import { useModalStore } from '@/hooks/use-modal-store'; // Importe do Modal Store
 
 export default function ManageStaysPage() {
     const { isAdmin } = useAuth();
+    const { onOpen } = useModalStore(); // Hook para abrir os modais
     const [db, setDb] = useState<firestore.Firestore | null>(null);
     
     const [pendingCheckIns, setPendingCheckIns] = useState<PreCheckIn[]>([]);
@@ -98,14 +101,35 @@ export default function ManageStaysPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Gestão de Estadias</h1>
                     <p className="text-muted-foreground">Valide pré-check-ins e acompanhe as estadias ativas.</p>
                 </div>
+                
+                {/* --- ÁREA DOS BOTÕES --- */}
+                <div className="flex items-center gap-3">
+                    {/* Botão Legado Discreto */}
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => onOpen('createStayLegacy')}
+                    >
+                        <History className="mr-2 h-4 w-4" />
+                        Modo Legado
+                    </Button>
+
+                    {/* Botão Principal Novo */}
+                    <Button 
+                        onClick={() => onOpen('createStay', { cabins: cabins })} // <--- ALTERAÇÃO AQUI
+                        className="bg-green-600 hover:bg-green-700 text-white shadow-sm"
+                    >
+                        <PlusCircle className="mr-2 h-5 w-5" />
+                        Nova Estadia Rápida
+                    </Button>
+                </div>
             </header>
 
             {loading ? (
                 <div className="flex items-center justify-center h-64"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
             ) : (
                 <>
-
-
                     <Tabs defaultValue="active">
                         <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="active">Estadias Ativas ({activeStays.length})</TabsTrigger>
@@ -129,7 +153,6 @@ export default function ManageStaysPage() {
                                     <CardDescription>Hóspedes que preencheram o formulário e aguardam validação.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    {/* ++ CORREÇÃO: Removendo a prop 'db' que não é mais necessária ++ */}
                                     <PendingCheckInsList pendingCheckIns={pendingCheckIns} cabins={cabins} />
                                 </CardContent>
                             </Card>

@@ -1,18 +1,49 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useProperty } from '@/context/PropertyContext';
 import Image from 'next/image';
-import { PreCheckinForm } from '@/components/pre-checkin-form'; // Importando o novo componente
+import { PreCheckinForm } from '@/components/pre-checkin-form'; 
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getStayByToken } from '@/app/actions/get-stay-by-token';
+import { toast } from 'sonner';
 
-export default function PreCheckInPage() {
-    // Usar o hook para obter os dados de personalização
-    const { property, loading } = useProperty();
+function PreCheckInContent() {
+    const searchParams = useSearchParams();
+    const token = searchParams.get('token');
+    const { property, loading: propertyLoading } = useProperty();
+    
+    // Estado para guardar dados pré-carregados da estadia
+    const [prefilledData, setPrefilledData] = useState<any>(null);
+    const [isLoadingData, setIsLoadingData] = useState(!!token);
 
-    // Enquanto o PropertyProvider carrega os dados, exibimos um skeleton.
-    if (loading || !property) {
+    useEffect(() => {
+        const loadData = async () => {
+            if (!token) return;
+
+            try {
+                const data = await getStayByToken(token);
+                if (data) {
+                    setPrefilledData(data);
+                    toast.success(`Olá, ${data.guestName.split(' ')[0]}!`, {
+                        description: "Encontramos sua reserva. Complete seus dados abaixo."
+                    });
+                } else {
+                    toast.error("Reserva não encontrada ou token expirado.");
+                }
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setIsLoadingData(false);
+            }
+        };
+
+        loadData();
+    }, [token]);
+
+    if (propertyLoading || isLoadingData) {
         return (
             <div className="min-h-screen flex items-center justify-center p-4">
                 <Card className="w-full max-w-2xl">
@@ -29,32 +60,45 @@ export default function PreCheckInPage() {
         );
     }
 
+    if (!property) return null;
+
     return (
-        <main className="min-h-screen flex items-center justify-center p-4">
-            <div className="max-w-2xl mx-auto w-full">
-                {/* O cabeçalho agora está na página, e não no formulário */}
-                <div className="text-center mb-8">
-                    {property.logoUrl && (
-                        <Image
-                            src={property.logoUrl}
-                            alt={`Logo de ${property.name}`}
-                            width={128}
-                            height={128}
-                            className="mx-auto mb-4 rounded-md"
-                            priority
-                        />
-                    )}
-                    <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-primary">
-                        {property.messages.preCheckInWelcomeTitle}
-                    </h1>
-                    <p className="mt-2 text-lg text-muted-foreground">
-                        {property.messages.preCheckInWelcomeSubtitle}
-                    </p>
-                </div>
-                
-                {/* O formulário agora é um componente separado, recebendo os dados da propriedade */}
-                <PreCheckinForm property={property} />
+        <div className="max-w-2xl mx-auto w-full">
+            <div className="text-center mb-8">
+                {property.logoUrl && (
+                    <Image
+                        src={property.logoUrl}
+                        alt={`Logo de ${property.name}`}
+                        width={128}
+                        height={128}
+                        className="mx-auto mb-4 rounded-md shadow-sm"
+                        priority
+                    />
+                )}
+                <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-primary">
+                    {property.messages?.preCheckInWelcomeTitle || "Bem-vindo!"}
+                </h1>
+                <p className="mt-2 text-lg text-muted-foreground">
+                    {property.messages?.preCheckInWelcomeSubtitle || "Complete seu cadastro para agilizar o check-in."}
+                </p>
             </div>
+            
+            {/* Passamos o token e os dados encontrados para o formulário */}
+            <PreCheckinForm 
+                property={property} 
+                prefilledData={prefilledData} 
+                token={token || undefined}
+            />
+        </div>
+    );
+}
+
+export default function PreCheckInPage() {
+    return (
+        <main className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+            <Suspense fallback={<div className="text-center">Carregando...</div>}>
+                <PreCheckInContent />
+            </Suspense>
         </main>
     );
 }

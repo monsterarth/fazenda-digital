@@ -2,7 +2,7 @@
 
 import { adminDb } from '@/lib/firebase-admin';
 import { unstable_noStore as noStore } from 'next/cache';
-import { addDays, isAfter, isBefore, isSameDay, startOfDay, subDays } from 'date-fns';
+import { subDays, startOfDay, format } from 'date-fns';
 
 export interface CommunicationStaySummary {
     id: string;
@@ -21,73 +21,90 @@ export interface CommunicationLists {
 }
 
 export async function getCommunicationListsAction(): Promise<CommunicationLists> {
-    noStore();
+    noStore(); // Evita cache, mas agora gastando menos recursos
     try {
-        const snapshot = await adminDb.collection('stays')
-            .where('status', 'in', ['active', 'pending_guest_data', 'pending_validation', 'checked_out'])
-            .get();
-
-        const now = new Date();
-        const startOfToday = startOfDay(now);
-        const limitDate = subDays(startOfToday, 3); // Limite de 3 dias atrás
-
         const lists: CommunicationLists = {
             future: [],
             current: [],
             ended: []
         };
 
-        snapshot.forEach(doc => {
+        // Data de corte para estadias encerradas (3 dias atrás)
+        // Assumindo que suas datas no banco são strings ISO YYYY-MM-DD
+        const limitDateObj = subDays(startOfDay(new Date()), 3);
+        const limitDateStr = limitDateObj.toISOString(); 
+
+        // 1. Buscar Pendentes (Futuros)
+        const pendingSnapshot = await adminDb.collection('stays')
+            .where('status', 'in', ['pending_guest_data', 'pending_validation'])
+            .get();
+
+        // 2. Buscar Ativos (Atuais e Futuros confirmados)
+        const activeSnapshot = await adminDb.collection('stays')
+            .where('status', '==', 'active')
+            .get();
+
+        // 3. Buscar Encerrados RECENTES (Apenas últimos 3 dias)
+        // ISSO SALVA MUITA QUOTA: Usamos o índice do banco em vez de filtrar na memória
+        const endedSnapshot = await adminDb.collection('stays')
+            .where('status', '==', 'checked_out')
+            .where('checkOutDate', '>=', limitDateStr.split('T')[0]) // Comparação de string ISO funciona se o formato for YYYY-MM-DD
+            .orderBy('checkOutDate', 'desc')
+            .get();
+
+        // Função auxiliar para processar documentos
+        const processDoc = (doc: FirebaseFirestore.QueryDocumentSnapshot) => {
             const data = doc.data();
-            
-            // Conversão segura de datas
             const checkInDate = typeof data.checkInDate === 'string' ? data.checkInDate : (data.checkInDate?.toDate?.()?.toISOString() || new Date().toISOString());
             const checkOutDate = typeof data.checkOutDate === 'string' ? data.checkOutDate : (data.checkOutDate?.toDate?.()?.toISOString() || new Date().toISOString());
 
-            const checkIn = new Date(checkInDate);
-            const checkOut = new Date(checkOutDate);
-            
-            const summary: CommunicationStaySummary = {
+            return {
                 id: doc.id,
                 guestName: data.guestName || 'Hóspede',
                 cabinName: data.cabinName || 'Cabana',
-                checkInDate: checkInDate,
-                checkOutDate: checkOutDate,
+                checkInDate,
+                checkOutDate,
                 status: data.status,
                 guestPhone: data.guestPhone || data.tempGuestPhone
-            };
+            } as CommunicationStaySummary;
+        };
 
-            // Lógica de Classificação
-            if (data.status === 'checked_out') {
-                // FILTRO: Apenas encerrados nos últimos 3 dias
-                if (isAfter(checkOut, limitDate)) {
-                    lists.ended.push(summary);
-                }
-            } else if (data.status === 'pending_guest_data' || data.status === 'pending_validation') {
+        // Popular listas
+        pendingSnapshot.forEach(doc => lists.future.push(processDoc(doc)));
+        
+        // Ativos precisam ser separados entre "Current" (na casa) e "Future" (chega amanhã)
+        const now = new Date();
+        const startOfToday = startOfDay(now);
+
+        activeSnapshot.forEach(doc => {
+            const summary = processDoc(doc);
+            const checkIn = new Date(summary.checkInDate);
+            const checkOut = new Date(summary.checkOutDate);
+
+            if (checkOut < startOfToday) {
+                 // Deveria ter saído, mas status ainda é active. Joga pra ended.
+                 lists.ended.push(summary);
+            } else if (checkIn > startOfToday) {
+                // Chega no futuro
                 lists.future.push(summary);
-            } else if (data.status === 'active') {
-                if (isBefore(checkOut, startOfToday)) {
-                    // Ativa mas expirada (tratar como encerrada recente se dentro do prazo)
-                    if (isAfter(checkOut, limitDate)) {
-                        lists.ended.push(summary);
-                    }
-                } else if (isAfter(checkIn, startOfToday) && !isSameDay(checkIn, startOfToday)) {
-                    lists.future.push(summary);
-                } else {
-                    lists.current.push(summary);
-                }
+            } else {
+                // Está na casa
+                lists.current.push(summary);
             }
         });
 
-        // Ordenação
+        endedSnapshot.forEach(doc => lists.ended.push(processDoc(doc)));
+
+        // Ordenação final em memória (já que são poucos itens agora)
         lists.future.sort((a, b) => new Date(a.checkInDate).getTime() - new Date(b.checkInDate).getTime());
         lists.current.sort((a, b) => new Date(a.checkOutDate).getTime() - new Date(b.checkOutDate).getTime());
-        lists.ended.sort((a, b) => new Date(b.checkOutDate).getTime() - new Date(a.checkOutDate).getTime()); // Mais recentes primeiro
+        lists.ended.sort((a, b) => new Date(b.checkOutDate).getTime() - new Date(a.checkOutDate).getTime());
 
         return JSON.parse(JSON.stringify(lists));
 
     } catch (error) {
-        console.error("Erro ao buscar listas de comunicação:", error);
+        console.error("Erro crítico ao buscar listas (Quota ou Rede):", error);
+        // Retorna vazio para não quebrar a página inteira
         return { future: [], current: [], ended: [] };
     }
 }

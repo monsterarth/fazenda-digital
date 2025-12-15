@@ -57,9 +57,8 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                 const data = docSnap.data() as PreCheckIn;
                 setPreCheckIn(data);
                 
-                // Mapeamento inteligente para edição (compatibilidade com dados antigos)
+                // Mapeamento: Converte idade numérica (legado) para categoria ACF
                 const mappedCompanions = (data.companions || []).map((c: any) => {
-                    // Se já tiver category, usa. Se não, infere pelo age.
                     let category: 'adult' | 'child' | 'baby' = 'adult';
                     if (c.category) {
                         category = c.category;
@@ -69,7 +68,8 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                         else if (age >= 6) category = 'child';
                         else category = 'baby';
                     }
-                    return { ...c, category };
+                    // Removemos 'age' do objeto para não dar conflito com o schema
+                    return { fullName: c.fullName, category, cpf: c.cpf || '' };
                 });
 
                 form.reset({
@@ -83,10 +83,7 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                     estimatedArrivalTime: data.estimatedArrivalTime,
                     knowsVehiclePlate: data.knowsVehiclePlate,
                     vehiclePlate: data.vehiclePlate,
-                    
-                    // CORREÇÃO: Usamos o array mapeado com category
                     companions: mappedCompanions,
-                    
                     pets: data.pets.map(p => ({ ...p, weight: p.weight.toString(), age: p.age.toString() })),
                     cabinId: stay.cabinId,
                     dates: { from: new Date(stay.checkInDate), to: new Date(stay.checkOutDate) },
@@ -147,10 +144,7 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                 estimatedArrivalTime: data.estimatedArrivalTime,
                 knowsVehiclePlate: data.knowsVehiclePlate,
                 vehiclePlate: data.vehiclePlate,
-                
-                // Salva com a categoria correta
                 companions: data.companions,
-                
                 pets: data.pets.map(p => ({ ...p, weight: Number(p.weight), age: p.age.toString() })),
             });
             
@@ -161,15 +155,12 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                 checkInDate: data.dates.from.toISOString(),
                 checkOutDate: data.dates.to.toISOString(),
                 numberOfGuests: totalGuests,
-                
-                // Atualiza contagem detalhada
                 guestCount: {
                     adults,
                     children,
                     babies,
                     total: totalGuests
                 },
-                
                 token: data.token,
             });
             

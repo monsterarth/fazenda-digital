@@ -1,5 +1,3 @@
-// components/admin/stays/stay-form-fields.tsx
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -82,7 +80,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                 return;
             }
             
-            form.setValue('address.street', data.logouro, { shouldValidate: true });
+            form.setValue('address.street', data.logradouro || data.logouro, { shouldValidate: true });
             form.setValue('address.neighborhood', data.bairro, { shouldValidate: true });
             form.setValue('address.city', data.localidade, { shouldValidate: true });
             form.setValue('address.state', data.uf, { shouldValidate: true });
@@ -283,14 +281,21 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                         <h4 className="font-medium mb-2">Acompanhantes</h4>
                         {companions.map((field, index) => (
                             <div key={field.id} className="grid grid-cols-12 gap-2 items-end mb-2">
-                                <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (<FormItem className="col-span-6"><FormControl><Input placeholder={`Nome do Acompanhante ${index + 1}`} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (
+                                    <FormItem className="col-span-5">
+                                        <FormControl>
+                                            <Input placeholder={`Nome do Acompanhante ${index + 1}`} {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
                                 
-                                {/* CORREÇÃO: Select de Categoria ACF */}
+                                {/* APENAS CATEGORIA AGORA */}
                                 <FormField 
                                     control={form.control} 
                                     name={`companions.${index}.category`} 
                                     render={({ field }) => (
-                                        <FormItem className="col-span-3">
+                                        <FormItem className="col-span-4">
                                             <Select onValueChange={field.onChange} value={field.value}>
                                                 <FormControl>
                                                     <SelectTrigger>
@@ -298,9 +303,9 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                                     </SelectTrigger>
                                                 </FormControl>
                                                 <SelectContent>
-                                                    <SelectItem value="adult">Adulto</SelectItem>
-                                                    <SelectItem value="child">Criança</SelectItem>
-                                                    <SelectItem value="baby">Free</SelectItem>
+                                                    <SelectItem value="adult">Adulto (+18)</SelectItem>
+                                                    <SelectItem value="child">Criança (6-17)</SelectItem>
+                                                    <SelectItem value="baby">Free (0-5)</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                             <FormMessage />
@@ -312,7 +317,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                 <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                             </div>
                         ))}
-                        {/* CORREÇÃO: Default com category: 'adult' */}
                         <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', category: 'adult', cpf: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
                     </div>
                      <div>

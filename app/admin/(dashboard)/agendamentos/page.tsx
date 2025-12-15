@@ -1,5 +1,3 @@
-// /app/admin/(dashboard)/agendamentos/page.tsx
-
 "use client"
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -37,7 +35,6 @@ type SlotInfo = {
 };
 type Guest = { id: string; guestName: string; cabinName: string; };
 
-// --- Componente de Horário (Slot Visual) ---
 function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
     slotInfo: SlotInfo; onClick: () => void; inSelectionMode: boolean; isSelected: boolean;
 }) {
@@ -68,7 +65,6 @@ function TimeSlotDisplay({ slotInfo, onClick, inSelectionMode, isSelected }: {
     );
 }
 
-// --- Página Principal ---
 export default function AdminBookingsDashboard() {
     const { user, isAdmin } = useAuth();
     const [db, setDb] = useState<firestore.Firestore | null>(null);
@@ -83,6 +79,45 @@ export default function AdminBookingsDashboard() {
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedSlots, setSelectedSlots] = useState<Map<string, SlotInfo>>(new Map());
     const isDateInPast = useMemo(() => isBefore(selectedDate, startOfDay(new Date())), [selectedDate]);
+
+// --- EFEITO NOVO: Marcar notificações como lidas ao entrar na página ---
+    useEffect(() => {
+        const markLogsAsRead = async () => {
+            if (!db) return;
+            
+            try {
+                // DEFINIMOS QUAIS TIPOS DE LOG DEVEM SUMIR AO ENTRAR NESTA PÁGINA
+                const targetTypes = [
+                    'booking_requested',          // Novo pedido (pendente)
+                    'booking_confirmed',          // Novo pedido (auto-confirmado)
+                    'booking_cancelled_by_guest'  // Cancelamento feito pelo hóspede
+                ];
+
+                // Busca logs desses tipos que AINDA NÃO FORAM LIDOS
+                const q = firestore.query(
+                    firestore.collection(db, 'activity_logs'),
+                    firestore.where('type', 'in', targetTypes), 
+                    firestore.where('read', '!=', true) 
+                );
+
+                const snapshot = await firestore.getDocs(q);
+
+                if (snapshot.empty) return;
+
+                const batch = firestore.writeBatch(db);
+                snapshot.docs.forEach((doc) => {
+                    batch.update(doc.ref, { read: true });
+                });
+
+                await batch.commit();
+                console.log(`${snapshot.size} notificações de agendamento marcadas como lidas.`);
+            } catch (error) {
+                console.error("Erro ao marcar notificações como lidas:", error);
+            }
+        };
+
+        markLogsAsRead();
+    }, [db]);
 
     useEffect(() => {
         if (!isAdmin) return;

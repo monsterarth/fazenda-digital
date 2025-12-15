@@ -31,8 +31,7 @@ export async function getGuestHistoryAction(stayId: string): Promise<GuestHistor
         
         const rawStayData = stayDoc.data();
         
-        // CORREÇÃO: Adicionado 'as any' ao final para corrigir o erro de tipo do preCheckInId
-        // mantendo a conversão de datas para evitar erro de serialização do Next.js
+        // Conversão de datas e setup do objeto
         const stayData = { 
             id: stayDoc.id, 
             ...rawStayData,
@@ -42,6 +41,7 @@ export async function getGuestHistoryAction(stayId: string): Promise<GuestHistor
             updatedAt: typeof rawStayData?.updatedAt === 'object' ? rawStayData.updatedAt.toDate().toISOString() : rawStayData?.updatedAt,
         } as any;
 
+        // Busca logs novos
         const logsSnap = await adminDb.collection('message_logs')
             .where('stayId', '==', stayId)
             .orderBy('sentAt', 'desc')
@@ -63,11 +63,19 @@ export async function getGuestHistoryAction(stayId: string): Promise<GuestHistor
             };
         });
 
+        // --- CORREÇÃO AQUI ---
+        // Verificamos tanto nos logs novos quanto no campo antigo communicationStatus
+        const commStatus = stayData.communicationStatus || {};
+
         const flags = {
             preCheckInSent: !!stayData.preCheckInId, 
-            welcomeSent: logs.some(l => l.type === 'whatsappWelcome'),
-            feedbackSent: logs.some(l => l.type === 'whatsappFeedbackRequest'),
-            checkoutInfoSent: logs.some(l => l.type === 'whatsappCheckoutInfo'),
+            
+            // Verifica LOG OU Campo na Estadia
+            welcomeSent: logs.some(l => l.type === 'whatsappWelcome') || !!commStatus.welcomeMessageSentAt,
+            
+            feedbackSent: logs.some(l => l.type === 'whatsappFeedbackRequest') || !!commStatus.feedbackSentAt,
+            
+            checkoutInfoSent: logs.some(l => l.type === 'whatsappCheckoutInfo') || !!commStatus.checkoutInfoSentAt,
         };
 
         return JSON.parse(JSON.stringify({ stay: stayData, logs, flags }));

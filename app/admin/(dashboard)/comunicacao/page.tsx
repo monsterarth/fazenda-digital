@@ -5,7 +5,7 @@ import { toast, Toaster } from 'sonner';
 import { AuthContext } from '@/context/AuthContext';
 import { format, parseISO, isToday, isTomorrow, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import Link from 'next/link'; // Importado Link
+import Link from 'next/link';
 
 // Actions
 import { getCommunicationListsAction, CommunicationLists, CommunicationStaySummary } from '@/app/actions/get-communication-lists';
@@ -17,7 +17,6 @@ import { getProperty } from '@/app/actions/get-property';
 // UI Components
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,8 +24,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { 
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
+import { 
     MessageSquare, Send, Phone, Calendar, User, CheckCircle2, 
-    Clock, RefreshCw, Zap, Loader2, ChevronDown, Archive // Adicionado Archive
+    Clock, RefreshCw, Zap, Loader2, ChevronDown, Archive, AlertTriangle 
 } from 'lucide-react';
 
 export default function CommunicationMonitorPage() {
@@ -37,20 +40,27 @@ export default function CommunicationMonitorPage() {
     const [lists, setLists] = useState<CommunicationLists>({ future: [], current: [], ended: [] });
     const [isLoadingList, setIsLoadingList] = useState(true);
     
-    // Estado para "Carregar Mais"
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [hasMoreEnded, setHasMoreEnded] = useState(true);
 
-    // Estado do Hóspede Selecionado
     const [selectedStayId, setSelectedStayId] = useState<string | null>(null);
     const [historyData, setHistoryData] = useState<GuestHistoryData | null>(null);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     
-    // Estado do Editor
     const [customMessage, setCustomMessage] = useState('');
     const [isSending, startSending] = useTransition();
     const [property, setProperty] = useState<any>(null);
 
+    // --- NOVOS ESTADOS PARA SEGURANÇA ---
+    const [isCooldown, setIsCooldown] = useState(false); // Trava o botão por alguns segundos
+    const [confirmDialog, setConfirmDialog] = useState<{
+        isOpen: boolean;
+        content: string;
+        templateKey?: string;
+        title: string;
+    }>({ isOpen: false, content: '', title: '' });
+
+    // --- CARREGAMENTO DE DADOS ---
     const fetchLists = async () => {
         setIsLoadingList(true);
         const data = await getCommunicationListsAction();
@@ -61,21 +71,15 @@ export default function CommunicationMonitorPage() {
 
     const handleLoadMoreEnded = async () => {
         if (lists.ended.length === 0) return;
-        
         setIsLoadingMore(true);
         const lastStay = lists.ended[lists.ended.length - 1];
-        
         try {
             const olderStays = await getOlderEndedStaysAction(lastStay.checkOutDate);
-            
             if (olderStays.length === 0) {
                 setHasMoreEnded(false);
                 toast.info("Não há mais registros antigos.");
             } else {
-                setLists(prev => ({
-                    ...prev,
-                    ended: [...prev.ended, ...olderStays]
-                }));
+                setLists(prev => ({ ...prev, ended: [...prev.ended, ...olderStays] }));
             }
         } catch (error) {
             toast.error("Erro ao carregar histórico.");
@@ -94,7 +98,6 @@ export default function CommunicationMonitorPage() {
             setHistoryData(null);
             return;
         }
-
         const fetchDetails = async () => {
             setIsLoadingHistory(true);
             const data = await getGuestHistoryAction(selectedStayId);
@@ -102,27 +105,44 @@ export default function CommunicationMonitorPage() {
             setIsLoadingHistory(false);
             setCustomMessage('');
         };
-
         fetchDetails();
     }, [selectedStayId]);
 
-    const formatDateFriendly = (dateStr: string) => {
-        if (!dateStr) return '--';
-        const date = parseISO(dateStr);
-        if (isToday(date)) return `Hoje, ${format(date, 'HH:mm')}`;
-        if (isYesterday(date)) return `Ontem, ${format(date, 'HH:mm')}`;
-        if (isTomorrow(date)) return `Amanhã, ${format(date, 'HH:mm')}`;
-        return format(date, "dd/MM 'às' HH:mm", { locale: ptBR });
+    // --- LÓGICA DE ENVIO SEGURA ---
+
+    // 1. O usuário clica no botão -> Abre o Dialog
+    const requestSend = (content: string, templateKey?: string, title: string = "Confirmar Envio") => {
+        if (!historyData) return;
+        
+        if (isCooldown) {
+            toast.warning("Aguarde alguns segundos antes de enviar novamente.");
+            return;
+        }
+
+        setConfirmDialog({
+            isOpen: true,
+            content,
+            templateKey,
+            title
+        });
     };
 
-    const handleSendMessage = (content: string, templateKey?: string) => {
+    // 2. O usuário confirma no Dialog -> Executa o envio
+    const executeSend = () => {
         if (!historyData || !user?.email) return;
         
+        const { content, templateKey } = confirmDialog;
+        setConfirmDialog({ ...confirmDialog, isOpen: false }); // Fecha dialog imediatamente
+
+        // Ativa o Cooldown imediatamente para evitar cliques duplos
+        setIsCooldown(true);
+
         startSending(async () => {
             const guestPhone = historyData.stay.guestPhone || historyData.stay.tempGuestPhone;
             
             if (!guestPhone) {
                 toast.error("Hóspede sem telefone cadastrado.");
+                setIsCooldown(false);
                 return;
             }
 
@@ -143,7 +163,22 @@ export default function CommunicationMonitorPage() {
             } else {
                 toast.error(result.message);
             }
+
+            // Remove o cooldown após 5 segundos, independente de sucesso ou erro
+            setTimeout(() => {
+                setIsCooldown(false);
+            }, 5000);
         });
+    };
+
+    // Helpers
+    const formatDateFriendly = (dateStr: string) => {
+        if (!dateStr) return '--';
+        const date = parseISO(dateStr);
+        if (isToday(date)) return `Hoje, ${format(date, 'HH:mm')}`;
+        if (isYesterday(date)) return `Ontem, ${format(date, 'HH:mm')}`;
+        if (isTomorrow(date)) return `Amanhã, ${format(date, 'HH:mm')}`;
+        return format(date, "dd/MM 'às' HH:mm", { locale: ptBR });
     };
 
     const getTemplateMessage = (key: string) => {
@@ -190,19 +225,15 @@ export default function CommunicationMonitorPage() {
                     <p className="text-sm text-slate-500">Acompanhe e interaja com seus hóspedes em tempo real.</p>
                 </div>
                 
-                {/* BOTÕES DO CABEÇALHO */}
                 <div className="flex gap-2">
                     <Button variant="ghost" size="sm" onClick={fetchLists} disabled={isLoadingList}>
                         <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingList ? 'animate-spin' : ''}`} /> Atualizar
                     </Button>
-                    
-                    {/* Botão para o Sistema Legado */}
                     <Button variant="outline" size="sm" asChild className="hidden md:flex text-slate-500 hover:text-slate-700">
                         <Link href="/admin/legacycomm">
                             <Archive className="h-4 w-4 mr-2" /> Legado
                         </Link>
                     </Button>
-
                     <Button variant="outline" size="sm" onClick={() => toast.info("API Conectada: v2.4 (Estável)")} className="border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800">
                         <Zap className="h-4 w-4 mr-2 fill-green-600" /> API Online
                     </Button>
@@ -211,7 +242,7 @@ export default function CommunicationMonitorPage() {
 
             <div className="flex flex-col lg:flex-row gap-6 flex-1 overflow-hidden">
                 
-                {/* ESQUERDA: LISTAS (30%) */}
+                {/* ESQUERDA: LISTAS */}
                 <Card className="lg:w-1/3 flex flex-col overflow-hidden h-full border-slate-200 shadow-sm bg-slate-50/50">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col h-full">
                         <div className="px-4 pt-4">
@@ -221,7 +252,6 @@ export default function CommunicationMonitorPage() {
                                 <TabsTrigger value="ended">Fim</TabsTrigger>
                             </TabsList>
                         </div>
-                        
                         <div className="flex-1 overflow-y-auto p-4">
                             {isLoadingList ? (
                                 <div className="space-y-2">
@@ -233,24 +263,15 @@ export default function CommunicationMonitorPage() {
                                         {lists.future.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum check-in próximo.</p>}
                                         {lists.future.map(stay => <StayListItem key={stay.id} stay={stay} />)}
                                     </TabsContent>
-                                    
                                     <TabsContent value="current" className="mt-0 space-y-1">
                                         {lists.current.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum hóspede na casa.</p>}
                                         {lists.current.map(stay => <StayListItem key={stay.id} stay={stay} />)}
                                     </TabsContent>
-                                    
                                     <TabsContent value="ended" className="mt-0 space-y-1">
                                         {lists.ended.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum check-out recente.</p>}
                                         {lists.ended.map(stay => <StayListItem key={stay.id} stay={stay} />)}
-                                        
-                                        {/* BOTÃO CARREGAR MAIS */}
                                         {lists.ended.length > 0 && hasMoreEnded && (
-                                            <Button 
-                                                variant="ghost" 
-                                                className="w-full mt-4 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                onClick={handleLoadMoreEnded}
-                                                disabled={isLoadingMore}
-                                            >
+                                            <Button variant="ghost" className="w-full mt-4 text-xs text-blue-600" onClick={handleLoadMoreEnded} disabled={isLoadingMore}>
                                                 {isLoadingMore ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ChevronDown className="h-4 w-4 mr-2" />}
                                                 Carregar mais antigos
                                             </Button>
@@ -262,7 +283,7 @@ export default function CommunicationMonitorPage() {
                     </Tabs>
                 </Card>
 
-                {/* DIREITA: DETALHES & TIMELINE (70%) */}
+                {/* DIREITA: DETALHES & TIMELINE */}
                 <Card className="lg:w-2/3 flex flex-col overflow-hidden h-full shadow-md border-slate-200">
                     {!selectedStayId ? (
                         <div className="flex flex-col items-center justify-center h-full text-slate-400">
@@ -275,7 +296,6 @@ export default function CommunicationMonitorPage() {
                         </div>
                     ) : historyData ? (
                         <div className="flex flex-col h-full">
-                            {/* Cabeçalho do Hóspede */}
                             <div className="p-6 border-b bg-white flex justify-between items-start flex-shrink-0">
                                 <div>
                                     <h2 className="text-2xl font-bold text-slate-800">{historyData.stay.guestName}</h2>
@@ -285,52 +305,47 @@ export default function CommunicationMonitorPage() {
                                     </div>
                                 </div>
                                 <Button variant="outline" size="sm" asChild>
-                                    <a 
-                                        href={`https://wa.me/${(historyData.stay.guestPhone || "").replace(/\D/g, '')}`} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="text-green-600 border-green-200 hover:bg-green-50"
-                                    >
+                                    <a href={`https://wa.me/${(historyData.stay.guestPhone || "").replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-green-600 border-green-200 hover:bg-green-50">
                                         <Zap className="h-4 w-4 mr-2" /> WhatsApp Web
                                     </a>
                                 </Button>
                             </div>
 
-                            {/* Área Rolável */}
                             <ScrollArea className="flex-1 bg-slate-50/50">
                                 <div className="p-6 space-y-8">
-                                    
-                                    {/* 1. Checklist de Status */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                         <StatusCard 
                                             label="Pré-Check-in" 
                                             done={historyData.flags.preCheckInSent || historyData.stay.status === 'active'} 
-                                            action={() => handleSendMessage(getTemplateMessage('whatsappPreCheckIn'), 'whatsappPreCheckIn')}
+                                            action={() => requestSend(getTemplateMessage('whatsappPreCheckIn'), 'whatsappPreCheckIn', "Enviar Link de Pré-Check-in")}
                                             actionLabel="Enviar Link"
+                                            disabled={isCooldown}
                                         />
                                         <StatusCard 
                                             label="Boas-Vindas" 
                                             done={historyData.flags.welcomeSent} 
-                                            action={() => handleSendMessage(getTemplateMessage('whatsappWelcome'), 'whatsappWelcome')}
+                                            action={() => requestSend(getTemplateMessage('whatsappWelcome'), 'whatsappWelcome', "Enviar Boas-Vindas")}
                                             actionLabel="Enviar Agora"
+                                            disabled={isCooldown}
                                         />
                                         <StatusCard 
                                             label="Info Saída" 
                                             done={historyData.flags.checkoutInfoSent} 
-                                            action={() => handleSendMessage(getTemplateMessage('whatsappCheckoutInfo'), 'whatsappCheckoutInfo')}
+                                            action={() => requestSend(getTemplateMessage('whatsappCheckoutInfo'), 'whatsappCheckoutInfo', "Enviar Informações de Saída")}
                                             actionLabel="Enviar Info"
+                                            disabled={isCooldown}
                                         />
                                         <StatusCard 
                                             label="Feedback" 
                                             done={historyData.flags.feedbackSent} 
-                                            action={() => handleSendMessage(getTemplateMessage('whatsappFeedbackRequest'), 'whatsappFeedbackRequest')}
+                                            action={() => requestSend(getTemplateMessage('whatsappFeedbackRequest'), 'whatsappFeedbackRequest', "Solicitar Avaliação")}
                                             actionLabel="Pedir Avaliação"
+                                            disabled={isCooldown}
                                         />
                                     </div>
 
                                     <Separator />
 
-                                    {/* 2. Timeline de Mensagens */}
                                     <div>
                                         <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
                                             <Clock className="h-4 w-4" /> Histórico de Comunicação
@@ -341,9 +356,7 @@ export default function CommunicationMonitorPage() {
                                             ) : (
                                                 historyData.logs.map(log => (
                                                     <div key={log.id} className="relative pl-6 pb-2 group">
-                                                        {/* Bolinha da timeline */}
                                                         <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-sm" />
-                                                        
                                                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start bg-white p-3 rounded-lg border border-slate-100 shadow-sm group-hover:shadow-md transition-all">
                                                             <div className="flex-1">
                                                                 <p className="text-xs font-semibold text-blue-600 mb-0.5 uppercase tracking-wider">
@@ -367,23 +380,25 @@ export default function CommunicationMonitorPage() {
                                 </div>
                             </ScrollArea>
 
-                            {/* Rodapé: Envio Manual */}
                             <div className="p-4 bg-white border-t flex flex-col gap-2 flex-shrink-0">
                                 <Textarea 
                                     placeholder="Escrever mensagem personalizada..." 
                                     value={customMessage}
                                     onChange={(e) => setCustomMessage(e.target.value)}
                                     className="min-h-[80px] resize-none bg-slate-50 focus:bg-white transition-colors"
+                                    disabled={isCooldown}
                                 />
                                 <div className="flex justify-between items-center">
-                                    <span className="text-xs text-slate-400">Enter para nova linha</span>
+                                    <span className="text-xs text-slate-400">
+                                        {isCooldown ? "Aguarde um momento..." : "Enter para nova linha"}
+                                    </span>
                                     <Button 
-                                        onClick={() => handleSendMessage(customMessage)} 
-                                        disabled={!customMessage.trim() || isSending}
+                                        onClick={() => requestSend(customMessage, 'custom_message', "Enviar Mensagem Manual")} 
+                                        disabled={!customMessage.trim() || isSending || isCooldown}
                                         className="bg-blue-600 hover:bg-blue-700 text-white"
                                     >
                                         {isSending ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Send className="h-4 w-4 mr-2"/>}
-                                        Enviar Mensagem
+                                        {isCooldown ? `Aguarde...` : 'Enviar Mensagem'}
                                     </Button>
                                 </div>
                             </div>
@@ -391,12 +406,35 @@ export default function CommunicationMonitorPage() {
                     ) : null}
                 </Card>
             </div>
+
+            {/* DIALOG DE CONFIRMAÇÃO */}
+            <AlertDialog open={confirmDialog.isOpen} onOpenChange={(isOpen) => !isOpen && setConfirmDialog({ ...confirmDialog, isOpen: false })}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Você está prestes a enviar uma mensagem para <strong>{historyData?.stay.guestName}</strong> via WhatsApp.
+                            <br/><br/>
+                            <span className="font-semibold text-xs uppercase text-slate-500">Preview:</span>
+                            <div className="mt-1 p-2 bg-slate-100 rounded text-xs text-slate-700 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono">
+                                {confirmDialog.content}
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={executeSend} className="bg-blue-600 hover:bg-blue-700">
+                            Confirmar Envio
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
 
-// Componente Auxiliar: Card de Status
-function StatusCard({ label, done, action, actionLabel }: { label: string, done: boolean, action: () => void, actionLabel: string }) {
+// Componente Auxiliar: Card de Status (Agora aceita disabled)
+function StatusCard({ label, done, action, actionLabel, disabled }: { label: string, done: boolean, action: () => void, actionLabel: string, disabled: boolean }) {
     return (
         <div className={`p-3 rounded-lg border flex flex-col items-center justify-center text-center gap-2 transition-all
             ${done ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-sm'}
@@ -411,7 +449,13 @@ function StatusCard({ label, done, action, actionLabel }: { label: string, done:
             <span className={`text-sm font-medium ${done ? 'text-green-800' : 'text-slate-600'}`}>{label}</span>
             
             {!done && (
-                <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 -mb-1" onClick={action}>
+                <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-6 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 -mb-1" 
+                    onClick={action}
+                    disabled={disabled}
+                >
                     {actionLabel}
                 </Button>
             )}
@@ -419,7 +463,6 @@ function StatusCard({ label, done, action, actionLabel }: { label: string, done:
     );
 }
 
-// Helper para nomes amigáveis
 function getTemplateName(type: string) {
     const map: Record<string, string> = {
         'whatsappWelcome': 'Boas-Vindas',

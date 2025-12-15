@@ -43,7 +43,7 @@ export default function RootLayout({
               <main className="flex-grow">{children}</main>
               <footer className="w-full py-4 px-4 text-center">
                 <p className="text-xs text-muted-foreground">
-                  Fazenda Digital 2025 © Synapse Beta V2.8.3 — Desenvolvido por{" "}
+                  Fazenda Digital 2025 © Synapse Beta V2.8.3.1 — Desenvolvido por{" "}
                   <a
                     href="https://instagram.com/petrytech"
                     target="_blank"

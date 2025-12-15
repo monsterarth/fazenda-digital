@@ -12,7 +12,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Loader2, CheckCircle, AlertCircle, PawPrint, User, Users, Baby } from "lucide-react";
 import { createFastStayAction } from "@/app/actions/create-fast-stay";
-import { addDays, format } from "date-fns"; // Importe necessário
+import { addDays, format } from "date-fns"; 
 
 // Validação de CPF
 function validateCPF(cpf: string): boolean {
@@ -235,11 +235,14 @@ export const CreateStayModal = () => {
                             >
                                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                                 <SelectContent>
-                                    {cabins.length > 0 ? (
-                                        cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)
-                                    ) : (
-                                        <SelectItem value="loading" disabled>Carregando...</SelectItem>
-                                    )}
+                                    {/* CORREÇÃO: ScrollArea manual para a lista de cabanas */}
+                                    <div className="max-h-[200px] overflow-y-auto">
+                                        {cabins.length > 0 ? (
+                                            cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)
+                                        ) : (
+                                            <SelectItem value="loading" disabled>Carregando...</SelectItem>
+                                        )}
+                                    </div>
                                 </SelectContent>
                             </Select>
                         </div>

@@ -1,4 +1,3 @@
-//components\admin\stays\pending-checkins-list.tsx
 "use client"
 
 import React, { useState } from "react"
@@ -76,7 +75,7 @@ import { useAuth } from "@/context/AuthContext"
 import { validateCheckinAction } from "@/app/actions/validate-checkin"
 import { CopyButton } from "@/components/ui/copy-button"
 
-// Helper para exibição amigável
+// Helper para traduzir a categoria
 const getCategoryLabel = (cat: string) => {
     switch(cat) {
         case 'adult': return 'Adulto';
@@ -117,9 +116,17 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
 
   const handleOpenModal = (checkIn: PreCheckIn) => {
     setSelectedCheckIn(checkIn)
+    
+    // Datas padrão
+    let fromDate = new Date();
+    let toDate = addDays(new Date(), 2);
+
+    // CORREÇÃO 1: Cast para 'any' para acessar cabinId que existe no banco mas não no tipo estrito
+    const prefilledCabinId = (checkIn as any).cabinId || "";
+    
     form.reset({
-      cabinId: "",
-      dates: { from: new Date(), to: addDays(new Date(), 2) },
+      cabinId: prefilledCabinId, 
+      dates: { from: fromDate, to: toDate },
     })
     setIsModalOpen(true)
   }
@@ -305,7 +312,7 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
                       <ul className="list-disc list-inside text-sm space-y-1">
                         {selectedCheckIn.companions.map((c, i) => (
                           <li key={i}>
-                            {/* MUDANÇA AQUI: Exibição da Categoria */}
+                            {/* CORREÇÃO 2: Uso de category em vez de age */}
                             {c.fullName} <span className="text-muted-foreground">({getCategoryLabel(c.category as string)})</span>
                           </li>
                         ))}

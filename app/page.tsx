@@ -4,11 +4,12 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useForm, SubmitHandler } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { setCookie } from 'cookies-next';
 import Link from 'next/link';
+// Usamos Image apenas para a logo, não para o fundo
 import Image from 'next/image';
 
 import { useProperty } from '@/context/PropertyContext';
@@ -17,17 +18,25 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Button } from '@/components/ui/button';
 import { toast, Toaster } from 'sonner';
-import { Loader2, KeyRound } from 'lucide-react';
+import { Loader2, KeyRound, Clock, Home } from 'lucide-react';
+
+import { checkStayStatusAction, StayStatusResponse } from '@/app/actions/check-stay-status';
+import { PreCheckinForm } from '@/components/pre-checkin-form';
 
 const loginSchema = z.object({
   token: z.string().length(6, "O código deve ter 6 dígitos."),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+type ViewState = 'LOADING' | 'LOGIN' | 'FORM' | 'WAITING' | 'ENDED';
 
-function GuestLoginContent() {
+function GuestPortalContent() {
   const { property, loading: propertyLoading } = useProperty();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [view, setView] = useState<ViewState>('LOGIN');
+  const [stayData, setStayData] = useState<any>(null);
+  const [currentToken, setCurrentToken] = useState<string>("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -36,116 +45,203 @@ function GuestLoginContent() {
     defaultValues: { token: "" },
   });
 
-  const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
-    setIsSubmitting(true);
-    const toastId = toast.loading("Verificando acesso...");
+  const handleTokenProcessing = async (token: string) => {
+    if(!token || token.length < 6) return;
 
+    setIsProcessing(true);
+    setCurrentToken(token);
+    const toastId = toast.loading("Verificando código...");
+
+    try {
+      const status: StayStatusResponse = await checkStayStatusAction(token);
+
+      if (!status.valid) {
+        toast.error(status.message || "Código inválido", { id: toastId });
+        setIsProcessing(false);
+        return;
+      }
+
+      toast.dismiss(toastId);
+
+      switch (status.action) {
+        case 'GO_TO_FORM':
+          setStayData(status.stayData);
+          setView('FORM');
+          break;
+        case 'SHOW_WAITING':
+          setStayData(status.stayData);
+          setView('WAITING');
+          break;
+        case 'SHOW_ENDED':
+          setView('ENDED');
+          break;
+        case 'DO_LOGIN':
+          await performLogin(token);
+          break;
+        default:
+          toast.error("Status desconhecido.");
+      }
+    } catch (error) {
+      console.error("Erro ao verificar token:", error);
+      toast.error("Erro de conexão.", { id: toastId });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const performLogin = async (token: string) => {
+    const toastId = toast.loading("Entrando...");
     try {
       const response = await fetch('/api/auth/guest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: data.token }),
+        body: JSON.stringify({ token }),
       });
-
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Falha na autenticação. Verifique o código.');
-      }
-
+      if (!response.ok) throw new Error(result.error);
+      
       setCookie('guest-token', result.customToken, { maxAge: 60 * 60 * 24 });
-      toast.success("Acesso liberado! Redirecionando...", { id: toastId });
+      toast.success("Bem-vindo!", { id: toastId });
       router.push('/dashboard');
-
     } catch (error: any) {
-      console.error("Login error:", error);
-      toast.error("Falha no acesso", {
-        id: toastId,
-        description: error.message,
-      });
-      // SE FALHAR, E O TOKEN VEIO DA URL, REDIRECIONA PARA LIMPAR A URL
-      if (searchParams.get('token')) {
-        router.replace('/');
-      }
-    } finally {
-      setIsSubmitting(false);
+      toast.error("Falha ao entrar", { id: toastId, description: error.message });
     }
   };
 
   useEffect(() => {
     const tokenFromUrl = searchParams.get('token');
-    if (tokenFromUrl && tokenFromUrl.length === 6) {
+    if (tokenFromUrl && tokenFromUrl.length >= 3) {
       form.setValue('token', tokenFromUrl);
-      onSubmit({ token: tokenFromUrl });
+      setTimeout(() => handleTokenProcessing(tokenFromUrl), 500);
     }
   }, [searchParams]);
 
-  if (propertyLoading || searchParams.get('token')) {
+  if (propertyLoading) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4">
-        <Loader2 className="h-10 w-10 text-brand-dark-green animate-spin" />
-        <p className="text-brand-dark-green font-semibold">Validando acesso via QR Code...</p>
+      <div className="flex flex-col items-center justify-center gap-4 text-white p-8 bg-black/40 rounded-lg backdrop-blur-md">
+        <Loader2 className="h-10 w-10 animate-spin" />
+        <p className="font-semibold text-lg shadow-black drop-shadow-md">Carregando...</p>
       </div>
     );
   }
 
+  const safeProperty = property || { 
+    id: 'default', 
+    name: 'Portal do Hóspede', 
+    logoUrl: '', 
+    messages: { preCheckInSuccessTitle: 'Sucesso', preCheckInSuccessSubtitle: 'Dados enviados' } 
+  } as any;
+
+  // 1. TELA: FORMULÁRIO PRE-CHECK-IN
+  if (view === 'FORM') {
+    return (
+      <div className="w-full max-w-4xl animate-in fade-in zoom-in-95 duration-500 p-4">
+        {/* Container semi-transparente para o formulário */}
+        <div className="bg-white/95 rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden">
+             <PreCheckinForm property={safeProperty} prefilledData={stayData} token={currentToken} />
+        </div>
+      </div>
+    );
+  }
+
+  // 2. TELA: AGUARDANDO VALIDAÇÃO
+  if (view === 'WAITING') {
+    return (
+      <Card className="w-full max-w-md bg-white/95 backdrop-blur-sm shadow-xl border-yellow-400 border-t-4 animate-in fade-in zoom-in-95">
+        <CardHeader className="text-center">
+            <div className="mx-auto bg-yellow-100 p-3 rounded-full w-fit mb-2">
+                <Clock className="h-8 w-8 text-yellow-600" />
+            </div>
+            <CardTitle className="text-2xl text-gray-800">Cadastro Recebido!</CardTitle>
+            <CardDescription className="text-base text-gray-600">
+                Olá, <strong>{stayData?.guestName?.split(' ')[0]}</strong>.
+            </CardDescription>
+        </CardHeader>
+        <CardContent className="text-center space-y-4">
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+              <p className="text-sm text-gray-600">
+                  Já recebemos seus dados para a <strong>{stayData?.cabinName}</strong>.<br/>
+                  Aguarde a liberação na recepção para acessar o portal.
+              </p>
+            </div>
+            <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
+                Verificar Status Agora
+            </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // 3. TELA: ESTADIA ENCERRADA
+  if (view === 'ENDED') {
+    return (
+      <Card className="w-full max-w-md bg-white/95 backdrop-blur-sm shadow-xl animate-in fade-in zoom-in-95">
+        <CardHeader className="text-center">
+            <div className="mx-auto bg-gray-100 p-3 rounded-full w-fit mb-2">
+                <Home className="h-8 w-8 text-gray-500" />
+            </div>
+            <CardTitle>Estadia Encerrada</CardTitle>
+            <CardDescription>Obrigado pela visita!</CardDescription>
+        </CardHeader>
+        <CardContent className="text-center">
+            <Button asChild className="w-full">
+                <Link href="/">Voltar ao Início</Link>
+            </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // 4. TELA: LOGIN PADRÃO (INICIAL)
   return (
-    <Card className="z-10 w-full max-w-md bg-white/80 backdrop-blur-sm shadow-xl border-brand-light-green border-2">
-      <CardHeader className="text-center">
-        {property?.logoUrl && (
-          <Image
-            priority
-            src={property.logoUrl}
-            alt={property.name}
-            width={96}
-            height={96}
-            className="mx-auto mb-4 rounded-md shadow-lg"
-          />
+    <Card className="w-full max-w-md bg-white/90 backdrop-blur-md shadow-2xl border-t-4 border-green-600 animate-in fade-in zoom-in-95">
+      <CardHeader className="text-center pb-2">
+        {safeProperty.logoUrl ? (
+          <div className="flex justify-center mb-4">
+             <Image src={safeProperty.logoUrl} alt={safeProperty.name} width={100} height={100} className="rounded-lg shadow-sm" />
+          </div>
+        ) : (
+           <div className="h-16 w-16 bg-green-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+             <KeyRound className="h-8 w-8 text-green-700"/>
+           </div>
         )}
-        <CardTitle className="text-2xl text-brand-dark-green font-sans-serif">Portal do Hóspede</CardTitle>
-        <CardDescription className="text-brand-dark-green/90">
-          Experiências para descobrir. Insira seu código de acesso para continuar.
+        <CardTitle className="text-2xl font-bold text-gray-800">Portal do Hóspede</CardTitle>
+        <CardDescription className="text-gray-600 font-medium">
+          Insira seu código de acesso para continuar.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit((data) => handleTokenProcessing(data.token))} className="space-y-6">
             <FormField
               control={form.control}
               name="token"
               render={({ field }) => (
                 <FormItem className="flex flex-col items-center">
-                  <FormLabel className="text-brand-dark-green">Código de Acesso</FormLabel>
+                  <FormLabel className="text-green-800 font-semibold mb-2">Código de Acesso</FormLabel>
                   <FormControl>
-                    <InputOTP maxLength={6} {...field}>
-                      <InputOTPGroup className="space-x-2">
-                        <InputOTPSlot index={0} className="border-brand-mid-green focus-visible:ring-brand-mid-green" />
-                        <InputOTPSlot index={1} className="border-brand-mid-green focus-visible:ring-brand-mid-green" />
-                        <InputOTPSlot index={2} className="border-brand-mid-green focus-visible:ring-brand-mid-green" />
-                      </InputOTPGroup>
-                      <InputOTPGroup className="space-x-2">
-                        <InputOTPSlot index={3} className="border-brand-mid-green focus-visible:ring-brand-mid-green" />
-                        <InputOTPSlot index={4} className="border-brand-mid-green focus-visible:ring-brand-mid-green" />
-                        <InputOTPSlot index={5} className="border-brand-mid-green focus-visible:ring-brand-mid-green" />
+                    <InputOTP maxLength={6} {...field} disabled={isProcessing}>
+                      <InputOTPGroup className="gap-2">
+                        {[0,1,2,3,4,5].map(i => (
+                            <InputOTPSlot 
+                                key={i} 
+                                index={i} 
+                                className="h-12 w-10 text-xl border-2 border-gray-300 focus:border-green-600 focus:ring-green-600 rounded-md bg-white text-gray-800" 
+                            />
+                        ))}
                       </InputOTPGroup>
                     </InputOTP>
                   </FormControl>
-                  <FormMessage className="text-brand-error" />
+                  <FormMessage />
                 </FormItem>
               )}
             />
             <Button
               type="submit"
-              className="w-full bg-brand-dark-green text-white hover:bg-brand-mid-green transition-colors duration-200"
-              size="lg"
-              disabled={isSubmitting}
+              className="w-full bg-green-700 hover:bg-green-800 text-white font-bold h-12 text-lg shadow-md transition-all mt-2"
+              disabled={isProcessing}
             >
-              {isSubmitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <KeyRound className="mr-2 h-4 w-4" />
-              )}
-              Entrar
+              {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "ACESSAR"}
             </Button>
           </form>
         </Form>
@@ -154,38 +250,40 @@ function GuestLoginContent() {
   );
 }
 
-export default function GuestLoginPage() {
+export default function Page() {
   return (
-    <main className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
-      <div className="absolute inset-0 z-0">
-        <Image
-          src="https://od6apn3gvpg0jwyr.public.blob.vercel-storage.com/CAU_0530.jpg"
-          alt="Paisagem natural da Fazenda do Rosa"
-          layout="fill"
-          objectFit="cover"
-          quality={100}
-          className="pointer-events-none"
-        />
-        <div className="absolute inset-0 bg-brand-dark-green opacity-50"></div>
-      </div>
+    <main 
+      className="relative min-h-screen w-full flex items-center justify-center p-4 overflow-y-auto overflow-x-hidden bg-cover bg-center bg-no-repeat bg-fixed"
+      style={{
+        backgroundImage: `url('https://od6apn3gvpg0jwyr.public.blob.vercel-storage.com/CAU_0530.jpg')`,
+        backgroundColor: '#1a1a1a'
+      }}
+    >
+      {/* Overlay escuro para garantir leitura */}
+      <div className="absolute inset-0 bg-black/60 z-0 pointer-events-none"></div>
+
       <Toaster richColors position="top-center" />
       
-      {/* Suspense é necessário para usar useSearchParams */}
-      <Suspense fallback={
-        <div className="flex items-center justify-center">
-            <Loader2 className="h-10 w-10 text-white animate-spin" />
-        </div>
-      }>
-        <GuestLoginContent />
-      </Suspense>
+      {/* Conteúdo com z-index para flutuar sobre o overlay */}
+      <div className="relative z-10 w-full flex justify-center py-10">
+        <Suspense fallback={
+           <div className="flex flex-col items-center gap-3 text-white bg-black/30 p-6 rounded-xl backdrop-blur-sm">
+              <Loader2 className="h-10 w-10 animate-spin" />
+              <span className="font-medium">Iniciando Portal...</span>
+           </div>
+        }>
+          <GuestPortalContent />
+        </Suspense>
+      </div>
 
-      <Link
-        href="/admin/login"
-        className="absolute bottom-2 right-2 text-white/10 text-xs hover:text-white/50 transition-colors"
-        aria-label="Acesso do administrador"
-      >
-        Admin
-      </Link>
+      <div className="fixed bottom-4 right-4 z-20">
+        <Link
+          href="/admin/login"
+          className="text-white/40 text-xs hover:text-white hover:underline transition-colors"
+        >
+          Área Administrativa
+        </Link>
+      </div>
     </main>
   );
 }

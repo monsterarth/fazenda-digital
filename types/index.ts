@@ -61,6 +61,12 @@ export interface Stay {
   checkInDate: string;
   checkOutDate: string;
   numberOfGuests: number;
+  guestCount?: {
+      adults: number;
+      children: number;
+      babies: number;
+      total: number;
+  };
   token: string;
   status: 'pending_validation' | 'active' | 'checked_out' | 'canceled';
   preCheckInId: string;
@@ -101,7 +107,7 @@ export interface Address {
 
 export interface Companion {
   fullName: string;
-  age: number | string;
+  category: 'adult' | 'child' | 'baby'; // Substitui 'age'  
   cpf?: string;
 }
 

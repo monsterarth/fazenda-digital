@@ -18,9 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useAuth } from '@/context/AuthContext';
 import { createActivityLog } from '@/lib/activity-logger';
-// ## INÍCIO DA CORREÇÃO ##
-import { useModalStore } from '@/hooks/use-modal-store'; // Alterado de useModal
-// ## FIM DA CORREÇÃO ##
+import { useModalStore } from '@/hooks/use-modal-store';
 import { getFirebaseDb } from '@/lib/firebase';
 
 interface EditStayDialogProps {
@@ -29,9 +27,7 @@ interface EditStayDialogProps {
 }
 
 export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property }) => {
-    // ## INÍCIO DA CORREÇÃO ##
-    const { isOpen, onClose, type, data } = useModalStore(); // Alterado de useModal
-    // ## FIM DA CORREÇÃO ##
+    const { isOpen, onClose, type, data } = useModalStore();
     const { user } = useAuth();
     const { stay } = data;
 
@@ -44,7 +40,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
         resolver: zodResolver(fullStaySchema),
     });
 
-    // (Resto do componente sem alterações)
     useEffect(() => {
         const fetchPreCheckIn = async () => {
             if (!stay || !stay.preCheckInId) {
@@ -61,6 +56,22 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
             if (docSnap.exists()) {
                 const data = docSnap.data() as PreCheckIn;
                 setPreCheckIn(data);
+                
+                // Mapeamento inteligente para edição (compatibilidade com dados antigos)
+                const mappedCompanions = (data.companions || []).map((c: any) => {
+                    // Se já tiver category, usa. Se não, infere pelo age.
+                    let category: 'adult' | 'child' | 'baby' = 'adult';
+                    if (c.category) {
+                        category = c.category;
+                    } else if (c.age) {
+                        const age = Number(c.age);
+                        if (age >= 18) category = 'adult';
+                        else if (age >= 6) category = 'child';
+                        else category = 'baby';
+                    }
+                    return { ...c, category };
+                });
+
                 form.reset({
                     leadGuestName: data.leadGuestName,
                     isForeigner: data.isForeigner,
@@ -72,7 +83,10 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                     estimatedArrivalTime: data.estimatedArrivalTime,
                     knowsVehiclePlate: data.knowsVehiclePlate,
                     vehiclePlate: data.vehiclePlate,
-                    companions: data.companions.map(c => ({ ...c, age: c.age.toString() })),
+                    
+                    // CORREÇÃO: Usamos o array mapeado com category
+                    companions: mappedCompanions,
+                    
                     pets: data.pets.map(p => ({ ...p, weight: p.weight.toString(), age: p.age.toString() })),
                     cabinId: stay.cabinId,
                     dates: { from: new Date(stay.checkInDate), to: new Date(stay.checkOutDate) },
@@ -111,6 +125,18 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
             const preCheckInRef = firestore.doc(db, 'preCheckIns', stay.preCheckInId);
             const stayRef = firestore.doc(db, 'stays', stay.id);
 
+            // Recalcular Guest Count (ACF)
+            let adults = 1;
+            let children = 0;
+            let babies = 0;
+            
+            data.companions?.forEach(c => {
+                if (c.category === 'adult') adults++;
+                else if (c.category === 'child') children++;
+                else if (c.category === 'baby') babies++;
+            });
+            const totalGuests = adults + children + babies;
+
             batch.update(preCheckInRef, {
                 leadGuestName: data.leadGuestName,
                 isForeigner: data.isForeigner,
@@ -121,7 +147,10 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                 estimatedArrivalTime: data.estimatedArrivalTime,
                 knowsVehiclePlate: data.knowsVehiclePlate,
                 vehiclePlate: data.vehiclePlate,
-                companions: data.companions.map(c => ({ ...c, age: Number(c.age) })),
+                
+                // Salva com a categoria correta
+                companions: data.companions,
+                
                 pets: data.pets.map(p => ({ ...p, weight: Number(p.weight), age: p.age.toString() })),
             });
             
@@ -131,7 +160,16 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                 cabinName: selectedCabin.name,
                 checkInDate: data.dates.from.toISOString(),
                 checkOutDate: data.dates.to.toISOString(),
-                numberOfGuests: 1 + (data.companions?.length || 0),
+                numberOfGuests: totalGuests,
+                
+                // Atualiza contagem detalhada
+                guestCount: {
+                    adults,
+                    children,
+                    babies,
+                    total: totalGuests
+                },
+                
                 token: data.token,
             });
             
@@ -192,11 +230,7 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                                         <FormField
                                             control={form.control}
                                             name="token"
-                                            render={({
-                                                field,
-                                            }: {
-                                                field: import("react-hook-form").ControllerRenderProps<FullStayFormValues, "token">;
-                                            }) => (
+                                            render={({ field }) => (
                                                 <FormItem>
                                                     <FormLabel>Senha de Acesso (Token)</FormLabel>
                                                     <FormControl>

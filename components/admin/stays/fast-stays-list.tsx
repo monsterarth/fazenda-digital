@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { Send, Phone, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { Send, Phone, Loader2, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react'; // Ícone CheckCircle2 adicionado
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { resendFastStayWhatsapp } from '@/app/actions/resend-whatsapp';
 import { deleteFastStayAction } from '@/app/actions/delete-fast-stay';
+import { CounterCheckinModal } from './counter-checkin-modal'; // Importando o Modal
 
 interface FastStaysListProps {
     stays: Stay[];
@@ -44,6 +45,9 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
     // Estado para Exclusão
     const [stayToDelete, setStayToDelete] = useState<Stay | null>(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+    // Estado para Check-in de Balcão
+    const [selectedStayForCheckin, setSelectedStayForCheckin] = useState<Stay | null>(null);
 
     // --- FUNÇÕES DE REENVIO ---
     const handleOpenResend = (stay: Stay) => {
@@ -131,6 +135,17 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
                                     <TableCell>{s.guestPhone || s.tempGuestPhone}</TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">
+                                            {/* BOTÃO DE CHECK-IN NO BALCÃO */}
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="text-green-600 border-green-200 hover:bg-green-50 h-8"
+                                                onClick={() => setSelectedStayForCheckin(stay)}
+                                                title="Realizar Check-in de Balcão"
+                                            >
+                                                <CheckCircle2 className="w-3 h-3 mr-1" /> Check-in
+                                            </Button>
+
                                             <Button 
                                                 size="sm" 
                                                 variant="outline" 
@@ -216,6 +231,15 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* MODAL DE CHECK-IN DE BALCÃO */}
+            {selectedStayForCheckin && (
+                <CounterCheckinModal 
+                    stay={selectedStayForCheckin}
+                    isOpen={!!selectedStayForCheckin}
+                    onClose={() => setSelectedStayForCheckin(null)}
+                />
+            )}
         </>
     );
 };

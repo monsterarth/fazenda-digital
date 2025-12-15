@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react'; // ++ IMPORTADO useEffect ++
+import React, { useState, useEffect } from 'react';
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
 import { FullStayFormValues } from '@/lib/schemas/stay-schema';
 import { Cabin, Guest } from '@/types';
@@ -30,8 +30,6 @@ interface StayFormFieldsProps {
     onUseFoundGuest: () => void;
 }
 
-// -- CONSTANTE DE PAÍSES REMOVIDA --
-// const countries = ["Argentina", "Uruguai", "Chile", "Estados Unidos", "Portugal", "Alemanha"];
 const generateSimpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, onCpfBlur, isLookingUp, foundGuest, onUseFoundGuest }) => {
@@ -40,7 +38,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
     const { fields: pets, append: appendPet, remove: removePet } = useFieldArray({ control: form.control, name: "pets" });
     const [isLoadingCep, setIsLoadingCep] = useState(false);
 
-    // ++ INÍCIO DA CORREÇÃO: Estados para a lista de países ++
     const [countriesList, setCountriesList] = useState<string[]>([]);
     const [isLoadingCountries, setIsLoadingCountries] = useState(false);
 
@@ -60,7 +57,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                 setCountriesList(names);
             } catch (error) {
                 console.error("Erro ao buscar países:", error);
-                // Lista de fallback caso a API falhe
                 setCountriesList(["Brasil", "Argentina", "Uruguai", "Chile", "Paraguai", "Estados Unidos", "Portugal", "Alemanha", "França", "Outro"]);
             } finally {
                 setIsLoadingCountries(false);
@@ -69,8 +65,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
 
         fetchCountries();
     }, []); 
-    // ++ FIM DA CORREÇÃO ++
-
 
     const handleCepLookup = async (cep: string) => {
         if (isForeigner || !cep) return;
@@ -159,7 +153,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {isForeigner ? (
                             <>
-                                {/* ++ INÍCIO DA CORREÇÃO: Campo de País atualizado ++ */}
                                 <FormField name="country" control={form.control} render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>País</FormLabel>
@@ -184,7 +177,6 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                         <FormMessage />
                                     </FormItem>
                                 )} />
-                                {/* ++ FIM DA CORREÇÃO ++ */}
                                 <FormField name="leadGuestDocument" control={form.control} render={({ field }) => (<FormItem><FormLabel>Passaporte / Documento</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             </>
                         ) : (
@@ -292,12 +284,36 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                         {companions.map((field, index) => (
                             <div key={field.id} className="grid grid-cols-12 gap-2 items-end mb-2">
                                 <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (<FormItem className="col-span-6"><FormControl><Input placeholder={`Nome do Acompanhante ${index + 1}`} {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                <FormField control={form.control} name={`companions.${index}.age`} render={({ field }) => (<FormItem className="col-span-2"><FormControl><Input type="number" placeholder="Idade" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                <FormField control={form.control} name={`companions.${index}.cpf`} render={({ field }) => (<FormItem className="col-span-3"><FormControl><Input placeholder="CPF (Opcional)" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                
+                                {/* CORREÇÃO: Select de Categoria ACF */}
+                                <FormField 
+                                    control={form.control} 
+                                    name={`companions.${index}.category`} 
+                                    render={({ field }) => (
+                                        <FormItem className="col-span-3">
+                                            <Select onValueChange={field.onChange} value={field.value}>
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Categoria" />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="adult">Adulto</SelectItem>
+                                                    <SelectItem value="child">Criança</SelectItem>
+                                                    <SelectItem value="baby">Free</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} 
+                                />
+
+                                <FormField control={form.control} name={`companions.${index}.cpf`} render={({ field }) => (<FormItem className="col-span-2"><FormControl><Input placeholder="CPF" {...field} /></FormControl><FormMessage /></FormItem>)} />
                                 <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                             </div>
                         ))}
-                        <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: '', cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
+                        {/* CORREÇÃO: Default com category: 'adult' */}
+                        <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', category: 'adult', cpf: '' })}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
                     </div>
                      <div>
                         <h4 className="font-medium mb-2">Pets</h4>

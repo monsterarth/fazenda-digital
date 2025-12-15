@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin';
+import { unstable_noStore as noStore } from 'next/cache';
 
 export type StayStatusResponse = {
     valid: boolean;
@@ -10,6 +11,8 @@ export type StayStatusResponse = {
 };
 
 export async function checkStayStatusAction(token: string): Promise<StayStatusResponse> {
+    noStore(); // Garante que não haja cache na validação
+    
     try {
         // 1. Validação básica
         if (!token || token.length < 3) {
@@ -32,12 +35,21 @@ export async function checkStayStatusAction(token: string): Promise<StayStatusRe
         const data = doc.data();
         const status = data.status || 'pending_guest_data'; // Fallback seguro
 
-        console.log(`[CheckStatus] Estadia encontrada. Status: ${status}`);
+        console.log(`[CheckStatus] Estadia encontrada. Status: ${status} | Pets: ${JSON.stringify(data.pets)}`);
 
         // 3. Roteamento Inteligente (State Machine)
         
         // CASO A: Hóspede ainda não preencheu os dados
         if (status === 'pending_guest_data') {
+            
+            // Normalização rápida dos pets para garantir integridade
+            let normalizedPets: any = 0;
+            if (Array.isArray(data.pets)) {
+                normalizedPets = data.pets;
+            } else {
+                normalizedPets = Number(data.pets) || 0;
+            }
+
             return {
                 valid: true,
                 action: 'GO_TO_FORM',
@@ -52,7 +64,11 @@ export async function checkStayStatusAction(token: string): Promise<StayStatusRe
                     // Passamos as datas para mostrar no cabeçalho do form se quiser
                     checkInDate: data.checkInDate, 
                     checkOutDate: data.checkOutDate,
-                    guestCount: data.guestCount
+                    guestCount: data.guestCount,
+                    
+                    // --- CORREÇÃO AQUI: Passando os dados de Pets e Placa ---
+                    pets: normalizedPets,
+                    vehiclePlate: data.vehiclePlate || ''
                 }
             };
         }

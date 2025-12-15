@@ -15,7 +15,6 @@ function PreCheckInContent() {
     const token = searchParams.get('token');
     const { property, loading: propertyLoading } = useProperty();
     
-    // Estado para guardar dados pré-carregados da estadia
     const [prefilledData, setPrefilledData] = useState<any>(null);
     const [isLoadingData, setIsLoadingData] = useState(!!token);
 
@@ -25,6 +24,7 @@ function PreCheckInContent() {
 
             try {
                 const data = await getStayByToken(token);
+                
                 if (data) {
                     setPrefilledData(data);
                     toast.success(`Olá, ${data.guestName.split(' ')[0]}!`, {
@@ -34,7 +34,7 @@ function PreCheckInContent() {
                     toast.error("Reserva não encontrada ou token expirado.");
                 }
             } catch (error) {
-                console.error(error);
+                console.error("Erro ao carregar dados da estadia:", error);
             } finally {
                 setIsLoadingData(false);
             }
@@ -83,7 +83,6 @@ function PreCheckInContent() {
                 </p>
             </div>
             
-            {/* Passamos o token e os dados encontrados para o formulário */}
             <PreCheckinForm 
                 property={property} 
                 prefilledData={prefilledData} 

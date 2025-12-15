@@ -1,3 +1,4 @@
+//app\actions\validate-checkin.ts
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin';
@@ -5,7 +6,7 @@ import { PreCheckIn, Stay, Cabin, Guest, Property } from '@/types';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath } from 'next/cache';
 import { normalizeString } from '@/lib/utils';
-import { sendWhatsAppMessage } from '@/lib/whatsapp-client'; // Importamos nosso client
+import { sendWhatsAppMessage } from '@/lib/whatsapp-client';
 
 const generateToken = (): string => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -19,113 +20,211 @@ interface ValidationData {
 
 export async function validateCheckinAction(checkInId: string, data: ValidationData, adminEmail: string) {
     try {
-        // 1. Buscas iniciais no Banco de Dados
-        const preCheckInRef = adminDb.collection('preCheckIns').doc(checkInId);
-        const preCheckInSnap = await preCheckInRef.get();
-        if (!preCheckInSnap.exists) {
-            throw new Error("Pré-check-in não encontrado. Pode já ter sido validado.");
-        }
-        const selectedCheckIn = { ...preCheckInSnap.data(), id: preCheckInSnap.id } as PreCheckIn;
+        console.log(`[Validate] Iniciando validação para ID: ${checkInId}`);
 
+        // 1. Identificar a Fonte (Se é uma Estadia já existente ou um Pré-Check-in isolado)
+        let stayRef = adminDb.collection('stays').doc(checkInId);
+        let preCheckInRef = adminDb.collection('preCheckIns').doc(checkInId);
+
+        const [staySnap, preCheckInSnap] = await Promise.all([
+            stayRef.get(),
+            preCheckInRef.get()
+        ]);
+
+        let sourceData: any = null;
+        let isExistingStay = false;
+        let preCheckInId: string | null = null;
+
+        // LÓGICA DE DETECÇÃO DE DUPLICIDADE
+        if (staySnap.exists) {
+            // CENÁRIO 1: O ID passado JÁ É de uma estadia (Fluxo Fast Stay)
+            console.log("[Validate] Documento encontrado na coleção 'stays'. Atualizando estadia existente.");
+            sourceData = { ...staySnap.data(), id: staySnap.id };
+            isExistingStay = true;
+            
+            // Se tiver um preCheckInId vinculado na estadia, atualizamos ele também
+            if (sourceData.preCheckInId) {
+                preCheckInId = sourceData.preCheckInId;
+                preCheckInRef = adminDb.collection('preCheckIns').doc(sourceData.preCheckInId);
+            }
+        } else if (preCheckInSnap.exists) {
+            // CENÁRIO 2: O ID passado é de um Pré-Check-in (Fluxo Web Padrão)
+            console.log("[Validate] Documento encontrado na coleção 'preCheckIns'.");
+            sourceData = { ...preCheckInSnap.data(), id: preCheckInSnap.id };
+            preCheckInId = preCheckInSnap.id;
+
+            // Verificar se esse Pré-Check-in já tem uma estadia criada (Prevenção extra)
+            if (sourceData.stayId) {
+                console.log(`[Validate] Este pré-check-in já possui a estadia ${sourceData.stayId}. Alternando para modo de atualização.`);
+                stayRef = adminDb.collection('stays').doc(sourceData.stayId);
+                isExistingStay = true;
+            } else {
+                console.log("[Validate] Criando NOVA estadia a partir do pré-check-in.");
+                stayRef = adminDb.collection('stays').doc(); // Gera novo ID apenas aqui
+                isExistingStay = false;
+            }
+        } else {
+            throw new Error("Documento de origem (Estadia ou Pré-Check-in) não encontrado.");
+        }
+
+        // 2. Buscar Dados da Cabana e Propriedade (Comum a ambos)
         const cabinRef = adminDb.collection('cabins').doc(data.cabinId);
         const cabinSnap = await cabinRef.get();
-        if (!cabinSnap.exists) {
-            throw new Error("Cabana selecionada não foi encontrada.");
-        }
+        if (!cabinSnap.exists) throw new Error("Cabana selecionada não foi encontrada.");
         const selectedCabin = { id: cabinSnap.id, ...cabinSnap.data() } as Cabin;
 
-        // Buscamos as configurações da propriedade para pegar o Template do WhatsApp
         const propertySnap = await adminDb.collection('properties').doc('default').get();
         const propertyData = propertySnap.exists ? (propertySnap.data() as Property) : null;
 
-        // 2. Normalização de dados
-        const normalizedGuestName = normalizeString(selectedCheckIn.leadGuestName);
-        const normalizedCompanions = selectedCheckIn.companions?.map(c => ({
+        // 3. Normalização e CÁLCULO DE GUEST COUNT (ACF)
+        const rawName = sourceData.leadGuestName || sourceData.guestName || "Hóspede";
+        const normalizedGuestName = normalizeString(rawName);
+        
+        const rawCompanions = sourceData.companions || [];
+        const normalizedCompanions = rawCompanions.map((c: any) => ({
             ...c,
             fullName: normalizeString(c.fullName)
-        })) || [];
+        }));
 
-        // 3. Preparação do Batch (Escrita em Lote)
+        // LÓGICA ACF: Conta o hóspede principal como Adulto + Acompanhantes
+        let adults = 1; // Hóspede principal conta como adulto
+        let children = 0;
+        let babies = 0;
+
+        normalizedCompanions.forEach((c: any) => {
+            if (c.category === 'adult') adults++;
+            else if (c.category === 'child') children++;
+            else if (c.category === 'baby') babies++;
+            else {
+                // Fallback para legado (se vier idade numérica antiga)
+                const age = parseInt(c.age);
+                if (!isNaN(age)) {
+                    if (age >= 18) adults++;
+                    else if (age >= 6) children++;
+                    else babies++;
+                } else {
+                    adults++; // Padrão se não souber
+                }
+            }
+        });
+
+        const totalGuests = adults + children + babies; // Total de almas para capacidade
+
+        // 4. Preparação do Batch
         const batch = adminDb.batch();
-
-        const stayRef = adminDb.collection('stays').doc();
-        const token = generateToken();
         const checkInTimestamp = Timestamp.fromDate(new Date(data.dates.from));
         
-        const newStay: Omit<Stay, 'id'> = {
+        // Se a estadia já existe, mantemos o token dela. Se nova, geramos um.
+        const token = (isExistingStay && sourceData.token) ? sourceData.token : generateToken();
+
+        const stayPayload: any = {
+            status: 'active', // AQUI ESTÁ A MÁGICA: Independente de onde veio, vira 'active'
             guestName: normalizedGuestName,
             cabinId: selectedCabin.id,
             cabinName: selectedCabin.name,
             checkInDate: data.dates.from.toISOString(),
             checkOutDate: data.dates.to.toISOString(),
-            numberOfGuests: 1 + (normalizedCompanions.length || 0),
+            
+            // Grava a estrutura detalhada agora!
+            numberOfGuests: totalGuests,
+            guestCount: {
+                adults,
+                children,
+                babies,
+                total: totalGuests
+            },
+            
             token: token,
-            status: 'active',
-            preCheckInId: selectedCheckIn.id,
-            createdAt: checkInTimestamp,
-            pets: selectedCheckIn.pets || [],
+            pets: sourceData.pets || [],
+            updatedAt: Timestamp.now(),
         };
-        batch.set(stayRef, newStay);
 
-        batch.update(preCheckInRef, { 
-            status: 'validado', 
-            stayId: stayRef.id,
-            leadGuestName: normalizedGuestName,
-            companions: normalizedCompanions,
-        });
-
-        const numericCpf = selectedCheckIn.leadGuestDocument.replace(/\D/g, '');
-        const guestRef = adminDb.collection('guests').doc(numericCpf);
-        const guestSnap = await guestRef.get();
-
-        if (guestSnap.exists) {
-            const guestData = guestSnap.data() as Guest;
-            batch.update(guestRef, {
-                stayHistory: [...(guestData.stayHistory || []), stayRef.id],
-                updatedAt: checkInTimestamp,
-                name: normalizedGuestName,
-                email: selectedCheckIn.leadGuestEmail,
-                phone: selectedCheckIn.leadGuestPhone,
-                address: selectedCheckIn.address,
-            });
-        } else {
-            const newGuest: Omit<Guest, 'id'> = {
-                name: normalizedGuestName,
-                document: numericCpf,
-                email: selectedCheckIn.leadGuestEmail,
-                phone: selectedCheckIn.leadGuestPhone,
-                address: selectedCheckIn.address,
-                isForeigner: selectedCheckIn.isForeigner,
-                country: selectedCheckIn.address.country,
-                createdAt: checkInTimestamp,
-                updatedAt: checkInTimestamp,
-                stayHistory: [stayRef.id],
-            };
-            batch.set(guestRef, newGuest);
+        // Campos que só inserimos na criação (para não sobrescrever dados existentes se for update)
+        if (!isExistingStay) {
+            stayPayload.createdAt = checkInTimestamp;
+            stayPayload.preCheckInId = preCheckInId;
         }
 
+        if (isExistingStay) {
+            batch.update(stayRef, stayPayload);
+        } else {
+            batch.set(stayRef, stayPayload);
+        }
+
+        // Atualiza o Status do Pré-Check-in (se existir referência)
+        if (preCheckInId) {
+            batch.update(preCheckInRef, { 
+                status: 'validado', 
+                stayId: stayRef.id, // Garante o link reverso
+                leadGuestName: normalizedGuestName,
+                companions: normalizedCompanions,
+            });
+        }
+
+        // 5. Atualização/Criação do Perfil do Hóspede (Guest)
+        // Precisamos do CPF/Documento. No FastStay pode estar em 'guestId' ou 'cpf' ou 'leadGuestDocument'
+        const rawDoc = sourceData.leadGuestDocument || sourceData.guestId || sourceData.cpf;
+        
+        if (rawDoc) {
+            const numericCpf = rawDoc.replace(/\D/g, '');
+            if (numericCpf) {
+                const guestRef = adminDb.collection('guests').doc(numericCpf);
+                const guestSnap = await guestRef.get();
+
+                const guestCommonData = {
+                    name: normalizedGuestName,
+                    email: sourceData.leadGuestEmail || sourceData.email || "",
+                    phone: sourceData.leadGuestPhone || sourceData.guestPhone || "",
+                    address: sourceData.address || {},
+                    updatedAt: Timestamp.now(),
+                };
+
+                if (guestSnap.exists) {
+                    const guestData = guestSnap.data() as Guest;
+                    // Adiciona ao histórico sem duplicar
+                    const history = new Set(guestData.stayHistory || []);
+                    history.add(stayRef.id);
+
+                    batch.update(guestRef, {
+                        ...guestCommonData,
+                        stayHistory: Array.from(history),
+                    });
+                } else {
+                    batch.set(guestRef, {
+                        ...guestCommonData,
+                        document: numericCpf,
+                        isForeigner: !!sourceData.isForeigner,
+                        country: sourceData.address?.country || 'Brasil',
+                        createdAt: Timestamp.now(),
+                        stayHistory: [stayRef.id],
+                    });
+                }
+            }
+        }
+
+        // Log de Atividade
         const logRef = adminDb.collection('activity_logs').doc();
         batch.set(logRef, {
             timestamp: Timestamp.now(),
             type: 'checkin_validated',
             actor: { type: 'admin', identifier: adminEmail },
-            details: `Pré-check-in de ${normalizedGuestName} validado.`,
+            details: `Estadia de ${normalizedGuestName} validada via ${isExistingStay ? 'Atualização Fast Stay' : 'Novo Check-in'}.`,
             link: '/admin/stays'
         });
 
-        // 4. Executa a gravação no banco
+        // 6. Executa a gravação
         await batch.commit();
 
-        // 5. Integração WhatsApp (Pós-gravação)
-        // Só executamos se o commit acima não der erro.
+        // 7. Integração WhatsApp (Boas Vindas)
         let whatsappStatus = "não enviado";
-        
-        if (propertyData && propertyData.messages?.whatsappWelcome && selectedCheckIn.leadGuestPhone) {
+        const guestPhone = sourceData.leadGuestPhone || sourceData.guestPhone;
+
+        // Só envia mensagem se tiver telefone e configuração ativa
+        if (propertyData && propertyData.messages?.whatsappWelcome && guestPhone) {
             try {
                 const firstName = normalizedGuestName.split(' ')[0];
                 const portalLink = `https://portal.fazendadorosa.com.br/?token=${token}`;
                 
-                // Variáveis disponíveis para substituição no template
                 const replacements: { [key: string]: string } = {
                     '{guestName}': firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase(),
                     '{propertyName}': propertyData.name || 'Fazenda Digital',
@@ -134,43 +233,35 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
                     '{wifiPassword}': selectedCabin.wifiPassword || 'Não informado',
                     '{portalLink}': portalLink,
                     '{token}': token,
-                    // Adicionando variáveis extras que podem ser úteis
-                    '{checkInTime}': '15:00', // Padrão, ou pegar de propertyData se existir
+                    '{checkInTime}': '15:00',
                     '{gateCode}': 'Verificar no Portal' 
                 };
 
                 let messageBody = propertyData.messages.whatsappWelcome;
 
-                // Executa as substituições
                 Object.entries(replacements).forEach(([key, value]) => {
                     messageBody = messageBody.replace(new RegExp(key, 'g'), value);
                 });
 
-                console.log(`[Validation] Tentando enviar WhatsApp para ${selectedCheckIn.leadGuestPhone}`);
-                
-                // Dispara o envio via Docker
-                const zapResult = await sendWhatsAppMessage(selectedCheckIn.leadGuestPhone, messageBody);
+                console.log(`[Validation] Enviando WhatsApp para ${guestPhone}`);
+                const zapResult = await sendWhatsAppMessage(guestPhone, messageBody);
                 
                 if (zapResult.success) {
                     whatsappStatus = "enviado com sucesso";
                 } else {
                     whatsappStatus = `erro no envio: ${zapResult.error}`;
-                    console.error("[Validation] Erro WhatsApp:", zapResult.error);
                 }
-
             } catch (zapError) {
-                console.error("[Validation] Erro ao processar envio de WhatsApp:", zapError);
-                whatsappStatus = "erro inesperado no envio";
+                console.error("[Validation] Erro envio WhatsApp:", zapError);
             }
         }
 
-        // 6. Revalidação de Cache e Retorno
         revalidatePath('/admin/stays');
         revalidatePath('/admin/hospedes');
 
         return { 
             success: true, 
-            message: `Estadia validada! WhatsApp: ${whatsappStatus}.`, 
+            message: `Estadia validada com sucesso! (${isExistingStay ? 'Atualizada' : 'Criada'}). WhatsApp: ${whatsappStatus}.`, 
             token: token 
         };
 

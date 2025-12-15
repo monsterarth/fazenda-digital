@@ -1,10 +1,13 @@
+//lib\schemas\stay-schema.ts
 import { z } from 'zod';
 import { isValidCPF } from '@/lib/validators';
-import { normalizeString } from '@/lib/utils'; // IMPORTANDO A FUNÇÃO
+import { normalizeString } from '@/lib/utils';
 
 const companionSchema = z.object({
-    fullName: z.string().min(1, "Nome do acompanhante é obrigatório.").transform(normalizeString), // APLICANDO A TRANSFORMAÇÃO
-    age: z.string().min(1, "Idade é obrigatória."),
+    fullName: z.string().min(1, "Nome do acompanhante é obrigatório.").transform(normalizeString),
+    category: z.enum(['adult', 'child', 'baby'], {
+        errorMap: () => ({ message: "Selecione a categoria (Adulto, Criança ou Free)." })
+    }),
     cpf: z.string().optional()
 });
 
@@ -20,7 +23,7 @@ const petSchema = z.object({
 
 export const fullStaySchema = z.object({
     // Pre-check-in
-    leadGuestName: z.string().min(3, "O nome completo é obrigatório.").transform(normalizeString), // APLICANDO A TRANSFORMAÇÃO
+    leadGuestName: z.string().min(3, "O nome completo é obrigatório.").transform(normalizeString),
     isForeigner: z.boolean(),
     leadGuestDocument: z.string().min(3, "O documento é obrigatório."),
     country: z.string().optional(),
@@ -50,14 +53,10 @@ export const fullStaySchema = z.object({
         to: z.date({ required_error: "Data de check-out é obrigatória." }),
     }),
     
-    // ++ INÍCIO DA CORREÇÃO ++
-    // O token é opcional no schema para permitir a criação da estadia,
-    // pois ele é gerado no backend e não está presente no formulário de criação.
     token: z.string()
         .length(6, "O token de acesso deve ter 6 dígitos.")
         .regex(/^\d{6}$/, "O token deve conter apenas números.")
         .optional(),
-    // ++ FIM DA CORREÇÃO ++
 
 }).superRefine((data, ctx) => {
     if (!data.isForeigner && !isValidCPF(data.leadGuestDocument)) {
@@ -70,3 +69,25 @@ export const fullStaySchema = z.object({
 });
 
 export type FullStayFormValues = z.infer<typeof fullStaySchema>;
+
+// --- SCHEMA DO CHECK-IN DE BALCÃO ---
+export const counterCheckinSchema = z.object({
+    stayId: z.string(),
+    guestName: z.string().min(3, "Nome do hóspede é obrigatório.").transform(normalizeString),
+    guestPhone: z.string().optional(),
+    
+    // CPF OBRIGATÓRIO AQUI
+    guestDocument: z.string().min(11, "CPF é obrigatório para cadastrar o hóspede."), 
+    
+    vehiclePlate: z.string().optional(),
+    
+    checkInDate: z.date(),
+    checkOutDate: z.date(),
+    
+    adults: z.coerce.number().min(1),
+    children: z.coerce.number().default(0),
+    babies: z.coerce.number().default(0),
+    pets: z.coerce.number().default(0),
+});
+
+export type CounterCheckinFormValues = z.infer<typeof counterCheckinSchema>;

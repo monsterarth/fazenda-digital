@@ -42,11 +42,14 @@ const preCheckInSchema = z.object({
     estimatedArrivalTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Selecione um horário válido."),
     knowsVehiclePlate: z.boolean(),
     vehiclePlate: z.string().optional(),
+    
+    // Schema de Acompanhantes (ACF)
     companions: z.array(z.object({
         fullName: z.string().min(3, "Nome do acompanhante é obrigatório."),
-        age: z.string().min(1, "Idade é obrigatória."),
+        category: z.enum(['adult', 'child', 'baby'], { required_error: "Selecione a categoria." }),
         cpf: z.string().optional()
     })).optional(),
+    
     pets: z.array(z.object({
         id: z.string(),
         name: z.string().min(2, "Nome do pet é obrigatório."),
@@ -80,7 +83,6 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
     const [isLoadingCep, setIsLoadingCep] = useState(false);
     const [isSubmitSuccessful, setIsSubmitSuccessful] = useState(false);
     
-    // NOVO: Controle de bloqueio dos campos
     const [isLocked, setIsLocked] = useState(false);
     
     const [countriesList, setCountriesList] = useState<string[]>([]);
@@ -96,16 +98,62 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
         },
     });
 
-    // --- POPULAR CAMPOS E ATIVAR BLOQUEIO ---
+    // --- POPULAR CAMPOS E GERAR SLOTS (Lógica Revisada e Corrigida) ---
     useEffect(() => {
         if (prefilledData) {
-            console.log("Preenchendo formulário...", prefilledData);
+            console.log("Inicializando formulário. Dados recebidos:", prefilledData);
             
-            // Ativa o bloqueio pois temos dados confiáveis do sistema
             setIsLocked(true);
 
-            // Reseta o formulário com os dados
-            form.reset({
+            // --- 1. ACOMPANHANTES (HUMANOS) ---
+            let initialCompanions = prefilledData.companions || [];
+
+            // Se não houver acompanhantes salvos, mas tivermos a contagem (guestCount)
+            if (initialCompanions.length === 0 && prefilledData.guestCount) {
+                const { adults = 1, children = 0, babies = 0 } = prefilledData.guestCount;
+                
+                // O hóspede principal (Lead) é 1 adulto, então subtraímos 1 dos slots de acompanhantes
+                const extraAdults = Math.max(0, Number(adults) - 1);
+                const childrenCount = Number(children);
+                const babiesCount = Number(babies);
+                
+                const adultSlots = Array.from({ length: extraAdults }).map(() => ({ fullName: '', category: 'adult' as const, cpf: '' }));
+                const childSlots = Array.from({ length: childrenCount }).map(() => ({ fullName: '', category: 'child' as const, cpf: '' }));
+                const babySlots = Array.from({ length: babiesCount }).map(() => ({ fullName: '', category: 'baby' as const, cpf: '' }));
+                
+                initialCompanions = [...adultSlots, ...childSlots, ...babySlots];
+            }
+
+            // --- 2. PETS (LÓGICA BLINDADA) ---
+            let initialPets: any[] = [];
+            const rawPets = prefilledData.pets;
+
+            console.log("Processando pets. Valor bruto do documento:", rawPets);
+
+            if (Array.isArray(rawPets)) {
+                // Já é uma lista de pets (caso de edição)
+                initialPets = rawPets;
+            } else {
+                // Caso seja número ou string numérica (Fast Stay)
+                const petsCount = Number(rawPets);
+                if (!isNaN(petsCount) && petsCount > 0) {
+                    console.log(`Gerando ${petsCount} slots para pets.`);
+                    initialPets = Array.from({ length: petsCount }).map(() => ({
+                        id: generateSimpleId(),
+                        name: '',
+                        species: 'cachorro',
+                        breed: '',
+                        weight: '',
+                        age: '',
+                        notes: ''
+                    }));
+                } else {
+                    console.log("Nenhum slot de pet gerado (count é 0 ou inválido).");
+                }
+            }
+
+            // --- 3. RESET DO FORMULÁRIO ---
+            const formData = {
                 leadGuestName: prefilledData.guestName || '',
                 leadGuestPhone: prefilledData.guestPhone ? prefilledData.guestPhone.replace(/\D/g, '') : '',
                 leadGuestDocument: prefilledData.guestId ? prefilledData.guestId.replace(/\D/g, '') : '',
@@ -114,14 +162,17 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                 isForeigner: false, 
                 country: 'Brasil',
                 
-                // Endereço e outros campos
                 address: { cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '' },
                 estimatedArrivalTime: '16:00',
                 knowsVehiclePlate: true,
                 vehiclePlate: '',
-                companions: [], 
-                pets: []
-            });
+                
+                companions: initialCompanions, 
+                pets: initialPets
+            };
+
+            console.log("Resetando formulário com:", formData);
+            form.reset(formData);
         }
     }, [prefilledData, form]);
 
@@ -215,7 +266,11 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                 ...restOfData,
                 address: { ...data.address, country: isForeigner ? data.country || '' : 'Brasil' },
                 pets: data.pets?.map(p => ({ ...p, weight: parseFloat(p.weight) || 0 })) || [],
-                companions: data.companions?.filter(c => c.fullName.trim() !== '').map(c => ({...c, age: parseInt(c.age, 10) || 0 })) || [],
+                // @ts-ignore
+                companions: data.companions?.filter(c => c.fullName.trim() !== '').map(c => ({
+                    ...c, 
+                    category: c.category 
+                })) || [],
                 status: 'pendente',
                 createdAt: firestore.Timestamp.now(),
             };
@@ -277,7 +332,6 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                                     )}
                                 </div>
 
-                                {/* Banner Informativo se estiver travado */}
                                 {isLocked && (
                                     <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex items-start gap-3 text-sm text-blue-800">
                                         <Lock className="h-5 w-5 mt-0.5 flex-shrink-0" />
@@ -377,7 +431,6 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                                  </div>
                             </div>
                         )}
-                        {/* Passo 2 e 3 sem mudanças (Chegada e Acompanhantes) */}
                         {currentStep === 2 && (
                              <div className="space-y-4 animate-in fade-in-0">
                                  <h3 className="text-lg font-semibold flex items-center gap-2"><Car />Detalhes da Chegada</h3>
@@ -397,13 +450,52 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                                         <h3 className="text-lg font-semibold border-b pb-2 mb-4">Acompanhantes</h3>
                                         {companions.map((field, index) => (
                                             <div key={field.id} className="grid grid-cols-12 gap-2 items-end mb-2">
-                                                <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (<FormItem className="col-span-6"><FormLabel className={cn(index !== 0 && "sr-only")}>Nome</FormLabel><FormControl><Input placeholder={`Acompanhante ${index + 1}`} {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                <FormField control={form.control} name={`companions.${index}.age`} render={({ field }) => (<FormItem className="col-span-2"><FormLabel className={cn(index !== 0 && "sr-only")}>Idade</FormLabel><FormControl><Input type="number" placeholder="Idade" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                <FormField control={form.control} name={`companions.${index}.cpf`} render={({ field }) => (<FormItem className="col-span-3"><FormLabel className={cn(index !== 0 && "sr-only")}>CPF</FormLabel><FormControl><Input placeholder="CPF (Opcional)" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                                <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                                {/* CAMPO NOME */}
+                                                <FormField control={form.control} name={`companions.${index}.fullName`} render={({ field }) => (
+                                                    <FormItem className="col-span-5">
+                                                        <FormLabel className={cn(index !== 0 && "sr-only")}>Nome</FormLabel>
+                                                        <FormControl><Input placeholder={`Acompanhante ${index + 1}`} {...field} /></FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
+                                                
+                                                {/* CAMPO CATEGORIA (ACF) */}
+                                                <FormField control={form.control} name={`companions.${index}.category`} render={({ field }) => (
+                                                    <FormItem className="col-span-4">
+                                                        <FormLabel className={cn(index !== 0 && "sr-only")}>Categoria</FormLabel>
+                                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                            <FormControl>
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Selecione" />
+                                                                </SelectTrigger>
+                                                            </FormControl>
+                                                            <SelectContent>
+                                                                <SelectItem value="adult">Adulto (+18)</SelectItem>
+                                                                <SelectItem value="child">Criança (6-17)</SelectItem>
+                                                                <SelectItem value="baby">Free (0-5)</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
+
+                                                {/* CAMPO CPF */}
+                                                <FormField control={form.control} name={`companions.${index}.cpf`} render={({ field }) => (
+                                                    <FormItem className="col-span-2">
+                                                        <FormLabel className={cn(index !== 0 && "sr-only")}>CPF</FormLabel>
+                                                        <FormControl><Input placeholder="Opcional" {...field} /></FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
+                                                
+                                                <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => removeCompanion(index)}>
+                                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                                </Button>
                                             </div>
                                         ))}
-                                        <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', age: '', cpf: ''})}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante</Button>
+                                        <Button type="button" variant="outline" size="sm" onClick={() => appendCompanion({ fullName: '', category: 'adult', cpf: ''})}>
+                                            <PlusCircle className="mr-2 h-4 w-4" /> Adicionar Acompanhante
+                                        </Button>
                                     </div>
                                     <div>
                                          <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2"><PawPrint />Pets</h3>

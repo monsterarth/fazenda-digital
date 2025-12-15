@@ -1,4 +1,3 @@
-// app/actions/create-stay.ts
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin';
@@ -20,8 +19,31 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
 
     const batch = adminDb.batch();
     
+    // --- LÓGICA ACF (CÁLCULO DE HÓSPEDES) ---
+    let adults = 1; // Hóspede principal conta como 1 adulto
+    let children = 0;
+    let babies = 0;
+
+    const companions = data.companions || [];
+    
+    companions.forEach(c => {
+        if (c.category === 'adult') adults++;
+        else if (c.category === 'child') children++;
+        else if (c.category === 'baby') babies++;
+    });
+
+    const totalGuests = adults + children + babies;
+
     // 1. Criar Pré-Check-In
     const preCheckInRef = adminDb.collection('preCheckIns').doc();
+    
+    // Convertemos os pets corretamente (peso string -> number)
+    const formattedPets = data.pets?.map(p => ({
+        ...p, 
+        weight: Number(p.weight), 
+        age: p.age.toString()
+    })) || [];
+
     const preCheckInData: Omit<PreCheckIn, 'id' | 'stayId'> = {
       leadGuestName: data.leadGuestName,
       isForeigner: data.isForeigner,
@@ -32,8 +54,11 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
       estimatedArrivalTime: data.estimatedArrivalTime,
       knowsVehiclePlate: data.knowsVehiclePlate,
       vehiclePlate: data.vehiclePlate,
-      companions: data.companions?.map(c => ({...c, age: Number(c.age)})) || [],
-      pets: data.pets?.map(p => ({...p, weight: Number(p.weight), age: p.age.toString()})) || [],
+      
+      // CORREÇÃO: Passamos os companions direto, pois já possuem 'category'
+      companions: companions, 
+      
+      pets: formattedPets,
       status: 'validado_admin',
       createdAt: Timestamp.now(),
     };
@@ -43,23 +68,34 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
     const stayRef = adminDb.collection('stays').doc();
     const token = generateToken();
     const checkInTimestamp = Timestamp.fromDate(new Date(data.dates.from));
+    
     const newStay: Omit<Stay, 'id'> = {
       guestName: data.leadGuestName,
       cabinId: selectedCabin.id,
       cabinName: selectedCabin.name,
       checkInDate: data.dates.from.toISOString(),
       checkOutDate: data.dates.to.toISOString(),
-      numberOfGuests: 1 + (data.companions?.length || 0),
+      
+      numberOfGuests: totalGuests,
+      // NOVO: Estrutura detalhada de contagem
+      guestCount: {
+          adults,
+          children,
+          babies,
+          total: totalGuests
+      },
+
       token: token,
       status: 'active',
       preCheckInId: preCheckInRef.id,
       createdAt: checkInTimestamp,
-      pets: data.pets?.map(p => ({...p, weight: Number(p.weight), age: p.age.toString()})) || [],
+      pets: formattedPets,
     };
+    
     batch.set(stayRef, newStay);
     batch.update(preCheckInRef, { stayId: stayRef.id });
     
-    // Lógica para criar/atualizar o Hóspede (Guest)
+    // 3. Lógica para criar/atualizar o Hóspede (Guest)
     const numericCpf = data.leadGuestDocument.replace(/\D/g, '');
     const guestRef = adminDb.collection('guests').doc(numericCpf);
     const guestSnap = await guestRef.get();
@@ -67,8 +103,12 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
     if (guestSnap.exists) {
         // Hóspede já existe, atualiza o histórico
         const guestData = guestSnap.data() as Guest;
+        // Set para evitar duplicidade de IDs
+        const historySet = new Set(guestData.stayHistory || []);
+        historySet.add(stayRef.id);
+
         batch.update(guestRef, {
-            stayHistory: [...(guestData.stayHistory || []), stayRef.id],
+            stayHistory: Array.from(historySet),
             updatedAt: checkInTimestamp,
             name: data.leadGuestName,
             email: data.leadGuestEmail,
@@ -79,7 +119,7 @@ export async function createStayAction(data: FullStayFormValues, adminEmail: str
         // Hóspede não existe, cria um novo
         const newGuest: Omit<Guest, 'id'> = {
             name: data.leadGuestName,
-            document: numericCpf, // CORREÇÃO: Alterado de 'cpf' para 'document'
+            document: numericCpf,
             email: data.leadGuestEmail,
             phone: data.leadGuestPhone,
             address: { ...data.address, country: data.address.country ?? (data.isForeigner ? (data.country || 'N/A') : 'Brasil') },

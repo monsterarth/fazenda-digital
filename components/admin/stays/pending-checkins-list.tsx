@@ -1,3 +1,4 @@
+//components\admin\stays\pending-checkins-list.tsx
 "use client"
 
 import React, { useState } from "react"
@@ -73,7 +74,17 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useAuth } from "@/context/AuthContext"
 import { validateCheckinAction } from "@/app/actions/validate-checkin"
-import { CopyButton } from "@/components/ui/copy-button" // ++ ADICIONADO ++
+import { CopyButton } from "@/components/ui/copy-button"
+
+// Helper para exibição amigável
+const getCategoryLabel = (cat: string) => {
+    switch(cat) {
+        case 'adult': return 'Adulto';
+        case 'child': return 'Criança';
+        case 'baby': return 'Free';
+        default: return cat;
+    }
+};
 
 const validationSchema = z.object({
   cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
@@ -149,7 +160,6 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
     toast.info("Funcionalidade de recusa em desenvolvimento.")
   }
 
-  // ++ FUNÇÃO ADICIONADA PARA FORMATAR O ENDEREÇO ++
   const formatAddress = (address: PreCheckIn["address"]) => {
     if (!address) return "Endereço não informado"
     const { street, number, complement, neighborhood, city, state, cep } =
@@ -211,7 +221,6 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
             </DialogHeader>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
               <div className="space-y-6">
-                {/* ++ SEÇÃO DO RESPONSÁVEL ATUALIZADA ++ */}
                 <section>
                   <h4 className="font-semibold flex items-center gap-2 mb-2 pb-2 border-b">
                     <User />
@@ -253,7 +262,6 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
                   </div>
                 </section>
 
-                {/* ++ SEÇÃO DE ENDEREÇO ATUALIZADA ++ */}
                 <section>
                   <h4 className="font-semibold flex items-center gap-2 mb-2 pb-2 border-b">
                     <Home />
@@ -297,7 +305,8 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
                       <ul className="list-disc list-inside text-sm space-y-1">
                         {selectedCheckIn.companions.map((c, i) => (
                           <li key={i}>
-                            {c.fullName} ({c.age} anos)
+                            {/* MUDANÇA AQUI: Exibição da Categoria */}
+                            {c.fullName} <span className="text-muted-foreground">({getCategoryLabel(c.category as string)})</span>
                           </li>
                         ))}
                       </ul>

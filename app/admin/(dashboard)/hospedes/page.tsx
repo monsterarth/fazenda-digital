@@ -1,59 +1,98 @@
-// app/admin/(dashboard)/hospedes/page.tsx
+"use client";
 
-// A diretiva "use client" foi removida. Este é novamente um Componente de Servidor.
-import { adminDb } from '@/lib/firebase-admin';
+import { useState, useEffect } from 'react';
+import { getFirebaseDb } from '@/lib/firebase'; // Padrão seguro
+import { collection, query, orderBy, onSnapshot, Firestore } from 'firebase/firestore'; 
 import { Guest } from '@/types';
 import { GuestsList } from '@/components/admin/guests/guests-list';
+import { Loader2, Users } from 'lucide-react';
+import { toast } from 'sonner';
 
-// Adicionamos esta linha para garantir que a página sempre busque dados novos a cada visita,
-// sem usar cache de dados.
-export const dynamic = 'force-dynamic';
+export default function GuestsPage() {
+    const [guests, setGuests] = useState<Guest[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [db, setDb] = useState<Firestore | null>(null);
 
-// A função que busca os dados no servidor foi reintroduzida.
-async function getGuests(): Promise<Guest[]> {
-  try {
-    const guestsRef = adminDb.collection('guests');
-    const querySnapshot = await guestsRef.orderBy('name', 'asc').get();
+    useEffect(() => {
+        let unsubscribe: () => void;
 
-    if (querySnapshot.empty) {
-      return [];
+        const init = async () => {
+            try {
+                const firestoreDb = await getFirebaseDb();
+                setDb(firestoreDb);
+
+                if (!firestoreDb) {
+                    toast.error("Erro de conexão.");
+                    setLoading(false);
+                    return;
+                }
+
+                // Query em tempo real
+                const q = query(collection(firestoreDb, 'guests'), orderBy('name', 'asc'));
+                
+                unsubscribe = onSnapshot(q, (snapshot) => {
+                    const guestsData = snapshot.docs.map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            // Converte Timestamps para number/Date se necessário no front
+                            // O Firestore Client SDK já lida bem com isso, mas é bom garantir
+                            createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now(),
+                            updatedAt: data.updatedAt?.toMillis ? data.updatedAt.toMillis() : Date.now(),
+                            lastStay: data.lastStay?.toMillis ? data.lastStay.toMillis() : null
+                        } as unknown as Guest;
+                    });
+                    setGuests(guestsData);
+                    setLoading(false);
+                }, (error) => {
+                    console.error("Erro no listener de hóspedes:", error);
+                    toast.error("Falha ao carregar lista.");
+                    setLoading(false);
+                });
+
+            } catch (error) {
+                console.error("Erro ao inicializar:", error);
+                setLoading(false);
+            }
+        };
+
+        init();
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-96 gap-4">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <p className="text-muted-foreground">Carregando base de hóspedes...</p>
+            </div>
+        );
     }
 
-    // Mapeamos e serializamos os dados, garantindo que tudo seja seguro para o cliente.
-    // Esta versão é robusta e ignora documentos malformados sem quebrar a página.
-    const guests = querySnapshot.docs.reduce((acc: Guest[], doc) => {
-      try {
-        const data = doc.data();
-        
-        if (!data.createdAt || !data.updatedAt) {
-          console.warn(`[getGuests] Documento ${doc.id} ignorado por falta de timestamps.`);
-          return acc;
-        }
+    return (
+        <div className="container mx-auto p-6 space-y-8">
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                        <Users className="h-8 w-8 text-primary" />
+                        Base de Hóspedes
+                    </h1>
+                    <p className="text-muted-foreground mt-1">
+                        Gerencie o histórico e perfis dos seus clientes.
+                    </p>
+                </div>
+                <div className="bg-primary/10 px-4 py-2 rounded-lg">
+                    <span className="text-2xl font-bold text-primary">{guests.length}</span>
+                    <span className="ml-2 text-sm text-primary/80">cadastros</span>
+                </div>
+            </header>
 
-        acc.push({
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt.toMillis(),
-          updatedAt: data.updatedAt.toMillis(),
-        } as unknown as Guest);
-      } catch (e) {
-        console.error(`[getGuests] Falha ao processar o documento ${doc.id}:`, e);
-      }
-      return acc;
-    }, []);
-    
-    return guests;
-
-  } catch (error) {
-    console.error("[getGuests] Falha ao buscar hóspedes no servidor:", error);
-    return [];
-  }
-}
-
-export default async function GuestsPage() {
-  const guests = await getGuests();
-  
-  // O componente da lista (que é um componente de cliente) recebe os dados
-  // como uma propriedade inicial.
-  return <GuestsList initialGuests={guests} />;
+            {/* A lista agora recebe os dados carregados pelo cliente */}
+            <GuestsList initialGuests={guests} />
+        </div>
+    );
 }

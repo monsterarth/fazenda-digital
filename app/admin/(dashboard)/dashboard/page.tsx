@@ -1,14 +1,20 @@
-// app/admin/(dashboard)/dashboard/page.tsx
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react'; 
-import { db } from '@/lib/firebase';
-// ## INÍCIO DA CORREÇÃO ##
-// Removido 'subHours', Adicionado 'format' de date-fns
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, Timestamp, orderBy, limit } from 'firebase/firestore'; 
-import { format } from 'date-fns'; // <-- ADICIONADO
-// ## FIM DA CORREÇÃO ##
+import { getFirebaseDb } from '@/lib/firebase';
+import { 
+    collection, 
+    query, 
+    where, 
+    onSnapshot, 
+    doc, 
+    updateDoc, 
+    Timestamp, 
+    orderBy, 
+    limit,
+    Firestore 
+} from 'firebase/firestore'; 
+import { format } from 'date-fns'; 
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,13 +26,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast, Toaster } from 'sonner';
-// ++ ATUALIZADO: Importa 'Filter' e 'Wrench' (Manutenção) ++
 import { 
     Utensils, CalendarCheck, UserPlus, Info, Loader2, Settings, ShieldX, 
     UserCheck, Star, Trash2, CalendarX, KeyRound, LogOut, Send, XCircle,
     CheckCircle, Clock, TriangleAlert, Filter, Wrench
 } from 'lucide-react';
-// ++ ATUALIZADO: Importa DropdownMenu para o filtro ++
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -41,7 +45,6 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 
-// ... (schema 'breakfastSettingsSchema' não muda) ...
 const breakfastSettingsSchema = z.object({
     type: z.enum(['on-site', 'delivery']),
     orderingStartTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Formato inválido (HH:MM)"),
@@ -49,7 +52,6 @@ const breakfastSettingsSchema = z.object({
 });
 type BreakfastSettingsFormValues = z.infer<typeof breakfastSettingsSchema>;
 
-// ++ ATUALIZADO: Tipo ActivityLog agora inclui 'maintenance_task_deleted' ++
 type ActivityLog = {
     id: string;
     timestamp: Timestamp;
@@ -78,15 +80,16 @@ type ActivityLog = {
       | 'maintenance_task_status_changed'
       | 'maintenance_task_completed'
       | 'maintenance_task_archived'
-      | 'maintenance_task_deleted'; // <-- ADIÇÃO DA ÚLTIMA RESPOSTA
+      | 'maintenance_task_deleted'; 
     actor: { type: 'guest' | 'admin'; identifier: string; };
     details: string;
-    link: string;
+    link?: string; // TORNAMOS OPCIONAL NA TIPAGEM PARA EVITAR ERROS
 };
 
-// ... (Componente 'BreakfastSettingsModal' não muda) ...
-const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boolean, onClose: () => void, propertyInfo: Property | null }) => {
+const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo, db }: { isOpen: boolean, onClose: () => void, propertyInfo: Property | null, db: Firestore }) => {
     if (!propertyInfo?.breakfast) return null;
+    
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const form = useForm<BreakfastSettingsFormValues>({
         resolver: zodResolver(breakfastSettingsSchema),
         defaultValues: {
@@ -95,6 +98,7 @@ const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boo
             orderingEndTime: propertyInfo.breakfast.orderingEndTime,
         },
     });
+
     const handleSaveChanges: SubmitHandler<BreakfastSettingsFormValues> = async (data) => {
         const toastId = toast.loading("Salvando alterações...");
         try {
@@ -110,58 +114,96 @@ const BreakfastSettingsModal = ({ isOpen, onClose, propertyInfo }: { isOpen: boo
             toast.error("Falha ao salvar.", { id: toastId, description: error.message });
         }
     };
+
     return (
-        <Dialog open={isOpen} onOpenChange={onClose}><DialogContent><DialogHeader><DialogTitle>Configurações do Café da Manhã</DialogTitle><DialogDescription>Altere rapidamente a modalidade e horários para novos pedidos.</DialogDescription></DialogHeader><Form {...form}><form onSubmit={form.handleSubmit(handleSaveChanges)} className="space-y-4 pt-4"><FormField control={form.control} name="type" render={({ field }) => (<FormItem><FormLabel>Modalidade</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="on-site">Servido no Salão</SelectItem><SelectItem value="delivery">Entrega de Cestas</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} /><div className="grid grid-cols-2 gap-4"><FormField control={form.control} name="orderingStartTime" render={({ field }) => (<FormItem><FormLabel>Início dos Pedidos</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} /><FormField control={form.control} name="orderingEndTime" render={({ field }) => (<FormItem><FormLabel>Horário Limite</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} /></div><DialogFooter className="pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button><Button type="submit" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar</Button></DialogFooter></form></Form></DialogContent></Dialog>
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Configurações do Café da Manhã</DialogTitle>
+                    <DialogDescription>Altere rapidamente a modalidade e horários.</DialogDescription>
+                </DialogHeader>
+                <Form {...form}>
+                    <form onSubmit={form.handleSubmit(handleSaveChanges)} className="space-y-4 pt-4">
+                        <FormField control={form.control} name="type" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Modalidade</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="on-site">Servido no Salão</SelectItem>
+                                        <SelectItem value="delivery">Entrega de Cestas</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField control={form.control} name="orderingStartTime" render={({ field }) => (
+                                <FormItem><FormLabel>Início dos Pedidos</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                            <FormField control={form.control} name="orderingEndTime" render={({ field }) => (
+                                <FormItem><FormLabel>Horário Limite</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                        </div>
+                        <DialogFooter className="pt-4">
+                            <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+                            <Button type="submit" disabled={form.formState.isSubmitting}>
+                                {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </Form>
+            </DialogContent>
+        </Dialog>
     );
 };
 
-// ... (Componente 'DashboardStatCard' não muda) ...
 const DashboardStatCard = ({ title, value, icon, link, description }: { title: string, value: number, icon: React.ReactNode, link: string, description: string }) => (
-    <Link href={link} className="block"><Card className="hover:border-primary transition-colors h-full"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">{title}</CardTitle>{icon}</CardHeader><CardContent><div className="text-2xl font-bold">{value}</div><p className="text-xs text-muted-foreground">{description}</p></CardContent></Card></Link>
+    <Link href={link} className="block">
+        <Card className="hover:border-primary transition-colors h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{title}</CardTitle>
+                {icon}
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">{value}</div>
+                <p className="text-xs text-muted-foreground">{description}</p>
+            </CardContent>
+        </Card>
+    </Link>
 );
 
-// ++ ATUALIZADO: 'activityTypeMap' agora inclui 'maintenance_task_deleted' ++
 const activityTypeMap: Record<ActivityLog['type'] | 'default', { icon: React.ReactNode; title: string; color: string; }> = {
-    // Check-in
     checkin_submitted: { icon: <UserPlus className="h-5 w-5" />, title: "Pré-Check-in Recebido", color: "bg-blue-100 text-blue-800" },
     checkin_validated: { icon: <UserCheck className="h-5 w-5" />, title: "Check-in Validado", color: "bg-green-100 text-green-800" },
     checkin_rejected: { icon: <ShieldX className="h-5 w-5" />, title: "Check-in Recusado", color: "bg-red-100 text-red-800" },
-    // Café
     cafe_ordered: { icon: <Utensils className="h-5 w-5" />, title: "Novo Pedido de Café", color: "bg-blue-100 text-blue-800" },
-    // Agendamentos
     booking_requested: { icon: <CalendarCheck className="h-5 w-5" />, title: "Novo Agendamento", color: "bg-blue-100 text-blue-800" },
     booking_cancelled_by_guest: { icon: <CalendarX className="h-5 w-5" />, title: "Agend. Cancelado (Hósp.)", color: "bg-yellow-100 text-yellow-800" },
     booking_confirmed: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Confirmado", color: "bg-green-100 text-green-800" },
     booking_created_by_admin: { icon: <CalendarCheck className="h-5 w-5" />, title: "Agendamento Criado", color: "bg-green-100 text-green-800" },
     booking_declined: { icon: <CalendarX className="h-5 w-5" />, title: "Agendamento Recusado", color: "bg-red-100 text-red-800" },
     booking_cancelled_by_admin: { icon: <Trash2 className="h-5 w-5" />, title: "Agend. Cancelado (Admin)", color: "bg-red-100 text-red-800" },
-    // Pesquisas
     survey_submitted: { icon: <Star className="h-5 w-5" />, title: "Nova Avaliação", color: "bg-blue-100 text-blue-800" },
-    // Solicitações
     request_created: { icon: <Send className="h-5 w-5" />, title: "Nova Solicitação", color: "bg-blue-100 text-blue-800" },
     request_cancelled: { icon: <XCircle className="h-5 w-5" />, title: "Solicitação Cancelada", color: "bg-yellow-100 text-yellow-800" },
     request_in_progress: { icon: <Clock className="h-5 w-5" />, title: "Solicitação em Andamento", color: "bg-purple-100 text-purple-800" },
     request_completed: { icon: <CheckCircle className="h-5 w-5" />, title: "Solicitação Concluída", color: "bg-green-100 text-green-800" },
     request_deleted: { icon: <Trash2 className="h-5 w-5" />, title: "Solicitação Excluída", color: "bg-red-100 text-red-800" },
-    // Estadias
     stay_created_manually: { icon: <UserPlus className="h-5 w-5" />, title: "Estadia Criada", color: "bg-green-100 text-green-800" },
     stay_ended: { icon: <LogOut className="h-5 w-5" />, title: "Estadia Encerrada", color: "bg-red-100 text-red-800" },
     stay_token_updated: { icon: <KeyRound className="h-5 w-5" />, title: "Token Alterado", color: "bg-purple-100 text-purple-800" },
-    // Manutenção
     maintenance_task_created: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Criada", color: "bg-gray-100 text-gray-800" },
     maintenance_task_assigned: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Delegada", color: "bg-gray-100 text-gray-800" },
     maintenance_task_status_changed: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Atualizada", color: "bg-gray-100 text-gray-800" },
     maintenance_task_completed: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Concluída", color: "bg-gray-100 text-gray-800" },
     maintenance_task_archived: { icon: <Wrench className="h-5 w-5" />, title: "Tarefa Arquivada", color: "bg-gray-100 text-gray-800" },
-    maintenance_task_deleted: { icon: <Trash2 className="h-5 w-5" />, title: "Tarefa Excluída", color: "bg-red-100 text-red-800" }, // <-- ADIÇÃO DA ÚLTIMA RESPOSTA
-    // Default
+    maintenance_task_deleted: { icon: <Trash2 className="h-5 w-5" />, title: "Tarefa Excluída", color: "bg-red-100 text-red-800" },
     default: { icon: <Info className="h-5 w-5" />, title: "Nova Atividade", color: "bg-muted text-muted-foreground" }
 };
 
-// ... (FilterCategory não muda) ...
 type FilterCategory = 'checkin' | 'cafe' | 'booking' | 'survey' | 'request' | 'stay' | 'task' | 'other';
 
-// ++ ATUALIZADO: 'activityCategoryMap' agora inclui 'maintenance_task_deleted' ++
 const activityCategoryMap: Record<ActivityLog['type'], FilterCategory> = {
     checkin_submitted: 'checkin',
     checkin_validated: 'checkin',
@@ -187,10 +229,9 @@ const activityCategoryMap: Record<ActivityLog['type'], FilterCategory> = {
     maintenance_task_status_changed: 'task',
     maintenance_task_completed: 'task',
     maintenance_task_archived: 'task',
-    maintenance_task_deleted: 'task', // <-- ADIÇÃO DA ÚLTIMA RESPOSTA
+    maintenance_task_deleted: 'task',
 };
 
-// ... (filterConfig não muda) ...
 const filterConfig: Record<FilterCategory, string> = {
     checkin: "Check-ins",
     cafe: "Pedidos de Café",
@@ -202,9 +243,9 @@ const filterConfig: Record<FilterCategory, string> = {
     other: "Outros", 
 };
 
-
 export default function DashboardPage() {
-    // ... (Hooks de estado, stats, propertyInfo, etc. não mudam) ...
+    const [db, setDb] = useState<Firestore | null>(null);
+    
     const [stats, setStats] = useState({ 
         pendingOrders: 0, 
         pendingBookings: 0, 
@@ -221,7 +262,6 @@ export default function DashboardPage() {
     const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
     const router = useRouter(); 
 
-    // ... (Estado dos filtros não muda) ...
     const [filters, setFilters] = useState({
         checkin: true,
         cafe: true,
@@ -229,63 +269,82 @@ export default function DashboardPage() {
         survey: true,
         request: true,
         stay: true,
-        task: false, // <-- Desativado por padrão
+        task: false,
         other: true,
     });
 
-    // ... (handleFilterChange não muda) ...
     const handleFilterChange = (category: FilterCategory, checked: boolean) => {
-        setFilters(prev => ({
-            ...prev,
-            [category]: checked,
-        }));
+        setFilters(prev => ({ ...prev, [category]: checked }));
     };
 
-    // ... (useEffect para buscar dados não muda) ...
     useEffect(() => {
-        const qOrders = query(collection(db, "breakfastOrders"), where("status", "==", "pending"));
-        const qCheckIns = query(collection(db, "preCheckIns"), where("status", "==", "pendente"));
-        const qRequests = query(collection(db, "requests"), where("status", "==", "pending"));
-        const todayStr = format(new Date(), 'yyyy-MM-dd');
-        const qBookings = query(
-            collection(db, "bookings"), 
-            where("date", "==", todayStr)
-        );
-        const unsubOrdersStats = onSnapshot(qOrders, (snapshot) => setStats(prev => ({ ...prev, pendingOrders: snapshot.size })));
-        const unsubCheckInsStats = onSnapshot(qCheckIns, (snapshot) => setStats(prev => ({ ...prev, pendingCheckIns: snapshot.size })));
-        const unsubBookingsStats = onSnapshot(qBookings, (snapshot) => {
-            setStats(prev => ({ ...prev, pendingBookings: snapshot.size }));
-        });
-        const unsubRequestsStats = onSnapshot(qRequests, (snapshot) => {
-            const newCount = snapshot.size;
-            if (newCount > pendingRequestsRef.current) {
-                audioRef.current?.play(); 
-                setHasNewRequest(true);   
-                setIsNewRequestModalOpen(true); 
+        let unsubOrdersStats: () => void;
+        let unsubCheckInsStats: () => void;
+        let unsubBookingsStats: () => void;
+        let unsubRequestsStats: () => void;
+        let unsubLogs: () => void;
+        let unsubProp: () => void;
+
+        const init = async () => {
+            try {
+                const firestoreDb = await getFirebaseDb();
+                setDb(firestoreDb);
+
+                if (!firestoreDb) {
+                    toast.error("Erro ao conectar ao banco de dados.");
+                    return;
+                }
+
+                const qOrders = query(collection(firestoreDb, "breakfastOrders"), where("status", "==", "pending"));
+                const qCheckIns = query(collection(firestoreDb, "preCheckIns"), where("status", "==", "pendente"));
+                const qRequests = query(collection(firestoreDb, "requests"), where("status", "==", "pending"));
+                const todayStr = format(new Date(), 'yyyy-MM-dd');
+                const qBookings = query(collection(firestoreDb, "bookings"), where("date", "==", todayStr));
+                
+                unsubOrdersStats = onSnapshot(qOrders, (snapshot) => setStats(prev => ({ ...prev, pendingOrders: snapshot.size })));
+                unsubCheckInsStats = onSnapshot(qCheckIns, (snapshot) => setStats(prev => ({ ...prev, pendingCheckIns: snapshot.size })));
+                unsubBookingsStats = onSnapshot(qBookings, (snapshot) => setStats(prev => ({ ...prev, pendingBookings: snapshot.size })));
+                
+                unsubRequestsStats = onSnapshot(qRequests, (snapshot) => {
+                    const newCount = snapshot.size;
+                    if (newCount > pendingRequestsRef.current) {
+                        audioRef.current?.play(); 
+                        setHasNewRequest(true);   
+                        setIsNewRequestModalOpen(true); 
+                    }
+                    pendingRequestsRef.current = newCount;
+                    setStats(prev => ({ ...prev, pendingRequests: newCount }));
+                });
+
+                const qLogs = query(collection(firestoreDb, "activity_logs"), orderBy("timestamp", "desc"), limit(20));
+                unsubLogs = onSnapshot(qLogs, (snapshot) => {
+                    const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog));
+                    setActivityFeed(logs);
+                    setLoading(false); 
+                });
+
+                unsubProp = onSnapshot(doc(firestoreDb, 'properties', 'default'), (doc) => {
+                    if (doc.exists()) setPropertyInfo(doc.data() as Property);
+                });
+
+            } catch (error) {
+                console.error("Erro no Dashboard:", error);
+                setLoading(false);
             }
-            pendingRequestsRef.current = newCount;
-            setStats(prev => ({ ...prev, pendingRequests: newCount }));
-        });
-        const qLogs = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"), limit(20));
-        const unsubLogs = onSnapshot(qLogs, (snapshot) => {
-            const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog));
-            setActivityFeed(logs);
-            if(loading) setLoading(false); 
-        });
-        const unsubProp = onSnapshot(doc(db, 'properties', 'default'), (doc) => {
-            if (doc.exists()) setPropertyInfo(doc.data() as Property);
-        });
+        };
+
+        init();
+
         return () => {
-            unsubOrdersStats(); 
-            unsubBookingsStats(); 
-            unsubCheckInsStats();
-            unsubRequestsStats(); 
-            unsubLogs();
-            unsubProp();
+            if (unsubOrdersStats) unsubOrdersStats(); 
+            if (unsubBookingsStats) unsubBookingsStats(); 
+            if (unsubCheckInsStats) unsubCheckInsStats();
+            if (unsubRequestsStats) unsubRequestsStats(); 
+            if (unsubLogs) unsubLogs();
+            if (unsubProp) unsubProp();
         };
     }, []); 
     
-    // ... (useMemo para filtrar não muda) ...
     const filteredActivityFeed = useMemo(() => {
         return activityFeed.filter(log => {
             const category = activityCategoryMap[log.type] || 'other';
@@ -293,10 +352,10 @@ export default function DashboardPage() {
         });
     }, [activityFeed, filters]); 
 
-    // ... (Renderização do return, loading, breakfastMode, etc. não mudam) ...
     if (loading) {
         return <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin"/></div>
     }
+
     const breakfastMode = propertyInfo?.breakfast?.type === 'on-site' ? 'Servido no Salão' : 'Entrega de Cestas';
 
     return (
@@ -330,7 +389,8 @@ export default function DashboardPage() {
             </Dialog>
 
             <Toaster richColors position="top-center" />
-            <BreakfastSettingsModal isOpen={isBreakfastModalOpen} onClose={() => setIsBreakfastModalOpen(false)} propertyInfo={propertyInfo} />
+            {db && <BreakfastSettingsModal isOpen={isBreakfastModalOpen} onClose={() => setIsBreakfastModalOpen(false)} propertyInfo={propertyInfo} db={db} />}
+            
             <div className="space-y-6">
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 
@@ -433,8 +493,11 @@ export default function DashboardPage() {
                                                 ? `${log.details} por ${log.actor.identifier}`
                                                 : log.details;
 
+                                            // CORREÇÃO CRÍTICA DO LINK UNDEFINED
+                                            const href = log.link || '#';
+
                                             return (
-                                                <Link href={log.link} key={log.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-muted/50 transition-colors">
+                                                <Link href={href} key={log.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-muted/50 transition-colors">
                                                     <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", activityInfo.color)}>
                                                         {activityInfo.icon}
                                                     </div>

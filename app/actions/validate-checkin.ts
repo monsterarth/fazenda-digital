@@ -1,4 +1,3 @@
-//app\actions\validate-checkin.ts
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin';
@@ -108,7 +107,7 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
             }
         });
 
-        const totalGuests = adults + children + babies; // Total de almas para capacidade
+        const totalGuests = adults + children + babies;
 
         // 4. Preparação do Batch
         const batch = adminDb.batch();
@@ -118,14 +117,13 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
         const token = (isExistingStay && sourceData.token) ? sourceData.token : generateToken();
 
         const stayPayload: any = {
-            status: 'active', // AQUI ESTÁ A MÁGICA: Independente de onde veio, vira 'active'
+            status: 'active',
             guestName: normalizedGuestName,
             cabinId: selectedCabin.id,
             cabinName: selectedCabin.name,
             checkInDate: data.dates.from.toISOString(),
             checkOutDate: data.dates.to.toISOString(),
             
-            // Grava a estrutura detalhada agora!
             numberOfGuests: totalGuests,
             guestCount: {
                 adults,
@@ -139,7 +137,6 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
             updatedAt: Timestamp.now(),
         };
 
-        // Campos que só inserimos na criação (para não sobrescrever dados existentes se for update)
         if (!isExistingStay) {
             stayPayload.createdAt = checkInTimestamp;
             stayPayload.preCheckInId = preCheckInId;
@@ -155,14 +152,13 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
         if (preCheckInId) {
             batch.update(preCheckInRef, { 
                 status: 'validado', 
-                stayId: stayRef.id, // Garante o link reverso
+                stayId: stayRef.id,
                 leadGuestName: normalizedGuestName,
                 companions: normalizedCompanions,
             });
         }
 
         // 5. Atualização/Criação do Perfil do Hóspede (Guest)
-        // Precisamos do CPF/Documento. No FastStay pode estar em 'guestId' ou 'cpf' ou 'leadGuestDocument'
         const rawDoc = sourceData.leadGuestDocument || sourceData.guestId || sourceData.cpf;
         
         if (rawDoc) {
@@ -181,7 +177,6 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
 
                 if (guestSnap.exists) {
                     const guestData = guestSnap.data() as Guest;
-                    // Adiciona ao histórico sem duplicar
                     const history = new Set(guestData.stayHistory || []);
                     history.add(stayRef.id);
 
@@ -248,6 +243,31 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
                 
                 if (zapResult.success) {
                     whatsappStatus = "enviado com sucesso";
+                    
+                    // --- CORREÇÃO: REGISTRO DO LOG PARA TIMELINE ---
+                    try {
+                        // A) Log na coleção message_logs (Para a Timeline funcionar)
+                        await adminDb.collection('message_logs').add({
+                            type: 'whatsappWelcome', // ID CRUCIAL
+                            content: messageBody,
+                            guestName: normalizedGuestName,
+                            stayId: stayRef.id,
+                            actor: adminEmail, 
+                            sentAt: Timestamp.now(),
+                            status: 'sent_via_api',
+                            phone: guestPhone
+                        });
+
+                        // B) Atualiza status na estadia (Redundância)
+                        await stayRef.update({
+                            'communicationStatus.welcomeMessageSentAt': Timestamp.now()
+                        });
+                        
+                    } catch (logErr) {
+                        console.error("Erro ao registrar log de boas-vindas:", logErr);
+                    }
+                    // --------------------------------------------------
+
                 } else {
                     whatsappStatus = `erro no envio: ${zapResult.error}`;
                 }
@@ -258,6 +278,7 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
 
         revalidatePath('/admin/stays');
         revalidatePath('/admin/hospedes');
+        revalidatePath('/admin/comunicacao'); // Garante que o painel atualize
 
         return { 
             success: true, 

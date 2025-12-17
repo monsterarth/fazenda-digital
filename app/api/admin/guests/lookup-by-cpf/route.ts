@@ -1,48 +1,60 @@
-// app/api/admin/guests/lookup-by-cpf/route.ts
-
-import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { PreCheckIn } from '@/types';
+import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
     try {
-        const { cpf } = await request.json();
+        const body = await request.json();
+        const { cpf } = body;
 
         if (!cpf) {
-            return new NextResponse("CPF é obrigatório.", { status: 400 });
+            return NextResponse.json({ error: 'CPF não fornecido' }, { status: 400 });
         }
+
+        const cleanCpf = cpf.replace(/\D/g, '');
         
-        const numericCpf = cpf.replace(/\D/g, '');
-        if (numericCpf.length !== 11) {
-             return new NextResponse("CPF inválido.", { status: 400 });
+        let guestData: any = null;
+
+        // 1. Busca Direta (Mais confiável)
+        const docRef = await adminDb.collection('guests').doc(cleanCpf).get();
+        if (docRef.exists) {
+            guestData = docRef.data();
+        } 
+        
+        // 2. Busca por Campo CPF (Fallback)
+        if (!guestData) {
+            const querySnap = await adminDb.collection('guests')
+                .where('cpf', '==', cleanCpf)
+                .limit(1)
+                .get();
+            if (!querySnap.empty) {
+                guestData = querySnap.docs[0].data();
+            }
         }
 
-        const preCheckInsRef = adminDb.collection('preCheckIns');
-        const q = preCheckInsRef.where('leadGuestDocument', '==', numericCpf).limit(1);
-        const querySnapshot = await q.get();
-
-        if (querySnapshot.empty) {
-            return NextResponse.json(null);
+        // 3. Busca por Campo Document (Legado)
+        if (!guestData) {
+             const querySnap = await adminDb.collection('guests')
+                .where('document', '==', cleanCpf)
+                .limit(1)
+                .get();
+            if (!querySnap.empty) {
+                guestData = querySnap.docs[0].data();
+            }
         }
 
-        const preCheckInData = querySnapshot.docs[0].data() as PreCheckIn;
+        if (guestData) {
+            return NextResponse.json({
+                name: guestData.name,
+                phone: guestData.phone,
+                email: guestData.email,
+                id: cleanCpf
+            });
+        }
 
-        // CORREÇÃO: Retorna o campo 'document' para ser consistente com o tipo Guest
-        const recurringGuestData = {
-            id: querySnapshot.docs[0].id,
-            name: preCheckInData.leadGuestName,
-            document: preCheckInData.leadGuestDocument, // Alterado de 'cpf' para 'document'
-            email: preCheckInData.leadGuestEmail,
-            phone: preCheckInData.leadGuestPhone,
-            isForeigner: preCheckInData.isForeigner,
-            country: preCheckInData.address.country,
-            address: preCheckInData.address,
-        };
-
-        return NextResponse.json(recurringGuestData);
+        return NextResponse.json(null);
 
     } catch (error) {
-        console.error("Erro ao buscar hóspede por CPF:", error);
-        return new NextResponse("Erro interno do servidor.", { status: 500 });
+        console.error('[API LOOKUP] Erro:', error);
+        return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
     }
 }

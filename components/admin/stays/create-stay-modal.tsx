@@ -14,7 +14,6 @@ import { Loader2, CheckCircle, AlertCircle, PawPrint, User, Users, Baby } from "
 import { createFastStayAction } from "@/app/actions/create-fast-stay";
 import { addDays, format } from "date-fns"; 
 
-// Validação de CPF
 function validateCPF(cpf: string): boolean {
     cpf = cpf.replace(/[^\d]+/g, '');
     if (cpf.length !== 11 || !!cpf.match(/(\d)\1{10}/)) return false;
@@ -26,7 +25,6 @@ function validateCPF(cpf: string): boolean {
     sum = 0;
     for (let i = 1; i <= 10; i++) sum += parseInt(cpf.substring(i-1, i)) * (12 - i);
     remainder = (sum * 10) % 11;
-    if (remainder === 10 || remainder === 11) remainder = 0;
     if (remainder !== parseInt(cpf.substring(10, 11))) return false;
     return true;
 }
@@ -40,7 +38,6 @@ export const CreateStayModal = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [cpfError, setCpfError] = useState(false);
     
-    // Cálculos de data inicial
     const today = new Date();
     const defaultCheckIn = addDays(today, 2);
     const defaultCheckOut = addDays(defaultCheckIn, 2);
@@ -50,7 +47,6 @@ export const CreateStayModal = () => {
         guestName: "",
         guestPhone: "",
         cabinId: "",
-        // Formata para YYYY-MM-DD que é o padrão do input type="date"
         checkInDate: format(defaultCheckIn, 'yyyy-MM-dd'),
         checkOutDate: format(defaultCheckOut, 'yyyy-MM-dd'),
         adults: 2,
@@ -59,7 +55,6 @@ export const CreateStayModal = () => {
         pets: 0
     });
 
-    // Resetar datas sempre que o modal abrir
     useEffect(() => {
         if (isModalOpen) {
             const dCheckIn = addDays(new Date(), 2);
@@ -85,14 +80,17 @@ export const CreateStayModal = () => {
         }
         setCpfError(false);
         setIsSearching(true);
+        
         try {
             const response = await fetch('/api/admin/guests/lookup-by-cpf', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cpf: cleanCpf }),
             });
+
             if (response.ok) {
                 const guest = await response.json();
+                
                 if (guest) {
                     toast.success("Hóspede encontrado!");
                     setFormData(prev => ({
@@ -112,7 +110,6 @@ export const CreateStayModal = () => {
     };
 
     const handleClose = () => {
-        // Reseta o form para os padrões ao fechar
         const dCheckIn = addDays(new Date(), 2);
         const dCheckOut = addDays(dCheckIn, 2);
         
@@ -176,14 +173,13 @@ export const CreateStayModal = () => {
         <Dialog open={isModalOpen} onOpenChange={handleClose}>
             <DialogContent className="sm:max-w-[650px]">
                 <DialogHeader>
-                    <DialogTitle>Estadia Rápida (ACFP)</DialogTitle>
+                    <DialogTitle>Estadia Rápida</DialogTitle>
                     <DialogDescription>
                         Preencha os dados básicos e a ocupação completa (incluindo pets).
                     </DialogDescription>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="grid gap-4 py-2">
-                    {/* Linha 1: CPF */}
                     <div className={`grid grid-cols-4 gap-4 items-end p-3 rounded-md border ${cpfError ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
                         <div className="col-span-2">
                             <Label className={cpfError ? "text-red-700" : "text-blue-900 font-semibold"}>CPF (Opcional)</Label>
@@ -205,7 +201,6 @@ export const CreateStayModal = () => {
                         </div>
                     </div>
 
-                    {/* Linha 2: Dados Básicos */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>Nome Completo *</Label>
@@ -221,11 +216,11 @@ export const CreateStayModal = () => {
                                 value={formData.guestPhone}
                                 onChange={(e) => setFormData({...formData, guestPhone: e.target.value})}
                                 placeholder="31 99999-9999"
+                                className="bg-white"
                             />
                         </div>
                     </div>
 
-                    {/* Linha 3: Reserva (Com datas automáticas) */}
                     <div className="grid grid-cols-3 gap-4">
                         <div className="col-span-1">
                             <Label>Cabana *</Label>
@@ -235,7 +230,6 @@ export const CreateStayModal = () => {
                             >
                                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                                 <SelectContent>
-                                    {/* CORREÇÃO: ScrollArea manual para a lista de cabanas */}
                                     <div className="max-h-[200px] overflow-y-auto">
                                         {cabins.length > 0 ? (
                                             cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)
@@ -256,7 +250,6 @@ export const CreateStayModal = () => {
                         </div>
                     </div>
 
-                    {/* Linha 4: Ocupação (ACFP) */}
                     <div className="bg-gray-50 p-3 rounded-md border border-gray-100">
                         <Label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Ocupação (ACFP)</Label>
                         <div className="grid grid-cols-4 gap-3">

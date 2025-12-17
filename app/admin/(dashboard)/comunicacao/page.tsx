@@ -21,7 +21,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { 
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
@@ -29,8 +28,65 @@ import {
 } from "@/components/ui/alert-dialog";
 import { 
     MessageSquare, Send, Phone, Calendar, User, CheckCircle2, 
-    Clock, RefreshCw, Zap, Loader2, ChevronDown, Archive, AlertTriangle 
+    Clock, RefreshCw, Zap, Loader2, ChevronDown, Archive, Wifi,
+    ArrowLeft, MoreVertical
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+// --- LÓGICA DE VARIÁVEIS ---
+const processMessageVariables = (template: string, stay: any, property: any) => {
+    if (!template) return '';
+    if (!stay) return template;
+
+    const formatGuestName = (fullName: string) => {
+        if (!fullName) return 'Hóspede';
+        const firstName = fullName.split(' ')[0];
+        return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+    };
+
+    const checkoutDateFormatted = stay.checkOutDate 
+        ? format(parseISO(stay.checkOutDate), "dd/MM/yyyy") 
+        : '--/--/----';
+    
+    const checkoutTime = stay.checkoutTime || "12:00"; 
+    const deadlineTime = property?.orderingEndTime || "22:00";
+    const baseUrl = "https://portal.fazendadorosa.com.br";
+    const tokenParams = `?token=${stay.token}`;
+    const wifiSsid = stay.cabin?.wifiSsid || stay.wifiSsid || "Não informado";
+    const wifiPass = stay.cabin?.wifiPassword || stay.wifiPassword || "Não informada";
+
+    const variables: Record<string, string> = {
+        '{propertyName}': property?.name || "Fazenda do Rosa",
+        '{guestName}': formatGuestName(stay.guestName),
+        '{token}': stay.token || "------",
+        '{preCheckInLink}': `${baseUrl}/${tokenParams}`,
+        '{portalLink}': `${baseUrl}/${tokenParams}`,
+        '{feedbackLink}': `${baseUrl}/s/default_survey${tokenParams}`,
+        '{wifiSsid}': wifiSsid,
+        '{wifiPassword}': wifiPass,
+        '{deadline}': deadlineTime,
+        '{checkoutDate}': checkoutDateFormatted,
+        '{checkoutTime}': checkoutTime,
+        '{serviceName}': "Serviço", 
+        '{serviceDate}': format(new Date(), "dd/MM"),
+        '{serviceTime}': format(new Date(), "HH:mm"),
+        '{serviceDuration}': "--",
+        '{requestName}': "Solicitação"
+    };
+
+    let processedMessage = template;
+    Object.keys(variables).forEach(key => {
+        const regex = new RegExp(key, 'gi'); 
+        processedMessage = processedMessage.replace(regex, variables[key]);
+    });
+
+    return processedMessage;
+};
 
 export default function CommunicationMonitorPage() {
     const authContext = useContext(AuthContext);
@@ -51,8 +107,7 @@ export default function CommunicationMonitorPage() {
     const [isSending, startSending] = useTransition();
     const [property, setProperty] = useState<any>(null);
 
-    // --- NOVOS ESTADOS PARA SEGURANÇA ---
-    const [isCooldown, setIsCooldown] = useState(false); // Trava o botão por alguns segundos
+    const [isCooldown, setIsCooldown] = useState(false); 
     const [confirmDialog, setConfirmDialog] = useState<{
         isOpen: boolean;
         content: string;
@@ -60,13 +115,18 @@ export default function CommunicationMonitorPage() {
         title: string;
     }>({ isOpen: false, content: '', title: '' });
 
-    // --- CARREGAMENTO DE DADOS ---
+    // --- CARREGAMENTO ---
     const fetchLists = async () => {
         setIsLoadingList(true);
-        const data = await getCommunicationListsAction();
-        setLists(data);
-        setIsLoadingList(false);
-        setHasMoreEnded(true); 
+        try {
+            const data = await getCommunicationListsAction();
+            setLists(data);
+            setHasMoreEnded(true); 
+        } catch (error) {
+            toast.error("Erro ao carregar lista.");
+        } finally {
+            setIsLoadingList(false);
+        }
     };
 
     const handleLoadMoreEnded = async () => {
@@ -77,12 +137,12 @@ export default function CommunicationMonitorPage() {
             const olderStays = await getOlderEndedStaysAction(lastStay.checkOutDate);
             if (olderStays.length === 0) {
                 setHasMoreEnded(false);
-                toast.info("Não há mais registros antigos.");
+                toast.info("Fim do histórico.");
             } else {
                 setLists(prev => ({ ...prev, ended: [...prev.ended, ...olderStays] }));
             }
         } catch (error) {
-            toast.error("Erro ao carregar histórico.");
+            toast.error("Erro no histórico.");
         } finally {
             setIsLoadingMore(false);
         }
@@ -90,7 +150,7 @@ export default function CommunicationMonitorPage() {
 
     useEffect(() => {
         fetchLists();
-        getProperty().then(p => setProperty(p));
+        getProperty().then(p => setProperty(p)).catch(console.error);
     }, []);
 
     useEffect(() => {
@@ -100,277 +160,321 @@ export default function CommunicationMonitorPage() {
         }
         const fetchDetails = async () => {
             setIsLoadingHistory(true);
-            const data = await getGuestHistoryAction(selectedStayId);
-            setHistoryData(data);
-            setIsLoadingHistory(false);
-            setCustomMessage('');
+            try {
+                const data = await getGuestHistoryAction(selectedStayId);
+                setHistoryData(data);
+                setCustomMessage('');
+            } catch (error) {
+                toast.error("Erro ao abrir conversa.");
+            } finally {
+                setIsLoadingHistory(false);
+            }
         };
         fetchDetails();
     }, [selectedStayId]);
 
-    // --- LÓGICA DE ENVIO SEGURA ---
-
-    // 1. O usuário clica no botão -> Abre o Dialog
-    const requestSend = (content: string, templateKey?: string, title: string = "Confirmar Envio") => {
+    // --- ENVIO ---
+    const requestSend = (rawContent: string, templateKey?: string, title: string = "Confirmar") => {
         if (!historyData) return;
-        
         if (isCooldown) {
-            toast.warning("Aguarde alguns segundos antes de enviar novamente.");
+            toast.warning("Aguarde...");
             return;
         }
-
-        setConfirmDialog({
-            isOpen: true,
-            content,
-            templateKey,
-            title
-        });
+        const processedContent = processMessageVariables(rawContent, historyData.stay, property);
+        setConfirmDialog({ isOpen: true, content: processedContent, templateKey, title });
     };
 
-    // 2. O usuário confirma no Dialog -> Executa o envio
     const executeSend = () => {
         if (!historyData || !user?.email) return;
-        
         const { content, templateKey } = confirmDialog;
-        setConfirmDialog({ ...confirmDialog, isOpen: false }); // Fecha dialog imediatamente
-
-        // Ativa o Cooldown imediatamente para evitar cliques duplos
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
         setIsCooldown(true);
 
         startSending(async () => {
             const guestPhone = historyData.stay.guestPhone || historyData.stay.tempGuestPhone;
-            
             if (!guestPhone) {
-                toast.error("Hóspede sem telefone cadastrado.");
+                toast.error("Sem telefone.");
                 setIsCooldown(false);
                 return;
             }
+            try {
+                const result = await sendCommunicationAction({
+                    phone: guestPhone,
+                    message: content, 
+                    guestName: historyData.stay.guestName,
+                    stayId: historyData.stay.id,
+                    adminEmail: user.email!,
+                    templateKey
+                });
 
-            const result = await sendCommunicationAction({
-                phone: guestPhone,
-                message: content,
-                guestName: historyData.stay.guestName,
-                stayId: historyData.stay.id,
-                adminEmail: user.email!,
-                templateKey
-            });
-
-            if (result.success) {
-                toast.success("Enviado com sucesso!");
-                setCustomMessage('');
-                const updated = await getGuestHistoryAction(historyData.stay.id);
-                setHistoryData(updated);
-            } else {
-                toast.error(result.message);
+                if (result.success) {
+                    toast.success("Enviado!");
+                    setCustomMessage('');
+                    const updated = await getGuestHistoryAction(historyData.stay.id);
+                    setHistoryData(updated);
+                } else {
+                    toast.error(result.message || "Erro.");
+                }
+            } catch (error) {
+                toast.error("Erro conexão.");
+            } finally {
+                setTimeout(() => setIsCooldown(false), 5000);
             }
-
-            // Remove o cooldown após 5 segundos, independente de sucesso ou erro
-            setTimeout(() => {
-                setIsCooldown(false);
-            }, 5000);
         });
     };
 
-    // Helpers
+    // --- UTILS UI ---
     const formatDateFriendly = (dateStr: string) => {
         if (!dateStr) return '--';
         const date = parseISO(dateStr);
-        if (isToday(date)) return `Hoje, ${format(date, 'HH:mm')}`;
-        if (isYesterday(date)) return `Ontem, ${format(date, 'HH:mm')}`;
-        if (isTomorrow(date)) return `Amanhã, ${format(date, 'HH:mm')}`;
-        return format(date, "dd/MM 'às' HH:mm", { locale: ptBR });
+        if (isToday(date)) return format(date, 'HH:mm');
+        if (isYesterday(date)) return `Ontem ${format(date, 'HH:mm')}`;
+        return format(date, "dd/MM HH:mm");
     };
 
-    const getTemplateMessage = (key: string) => {
-        if (!property?.messages?.[key]) return '';
-        let msg = property.messages[key];
-        const stay = historyData?.stay;
-        if (!stay) return msg;
+    const getRawTemplate = (key: string) => property?.messages?.[key] || '';
 
-        msg = msg.replace('{guestName}', stay.guestName.split(' ')[0]);
-        msg = msg.replace('{cabinName}', stay.cabinName);
-        msg = msg.replace('{token}', stay.token);
-        msg = msg.replace('{portalLink}', `https://portal.fazendadorosa.com.br/?token=${stay.token}`);
-        
-        return msg;
-    };
-
+    // --- COMPONENTES INTERNOS ---
     const StayListItem = ({ stay }: { stay: CommunicationStaySummary }) => (
         <div 
             onClick={() => setSelectedStayId(stay.id)}
-            className={`p-3 rounded-lg cursor-pointer border transition-all hover:shadow-md mb-2
-                ${selectedStayId === stay.id ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-300' : 'bg-white border-slate-200 hover:border-blue-200'}
+            className={`
+                group flex flex-col p-3 border-b cursor-pointer transition-colors relative
+                ${selectedStayId === stay.id ? 'bg-blue-50/80 border-blue-200' : 'bg-white hover:bg-slate-50 border-slate-100'}
             `}
         >
-            <div className="flex justify-between items-start">
-                <h4 className="font-semibold text-sm text-slate-800 truncate pr-2">{stay.guestName}</h4>
-                <Badge variant="outline" className="text-[10px] h-5 px-1 bg-white">{stay.cabinName}</Badge>
+            <div className="flex justify-between items-center mb-1">
+                <span className={`text-sm font-medium truncate ${selectedStayId === stay.id ? 'text-blue-900' : 'text-slate-700'}`}>
+                    {stay.guestName}
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                    {format(parseISO(stay.checkInDate), 'dd/MM')} - {format(parseISO(stay.checkOutDate), 'dd/MM')}
+                </span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                <Calendar className="h-3 w-3" />
-                <span>{format(parseISO(stay.checkInDate), 'dd/MM')} - {format(parseISO(stay.checkOutDate), 'dd/MM')}</span>
+            <div className="flex justify-between items-center">
+                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 border-slate-200 font-normal ${selectedStayId === stay.id ? 'bg-white' : 'bg-slate-50'}`}>
+                    {stay.cabinName}
+                </Badge>
+                {selectedStayId === stay.id && <div className="absolute right-0 top-0 bottom-0 w-1 bg-blue-500" />}
             </div>
         </div>
     );
 
     return (
-        <div className="container mx-auto p-4 h-[calc(100vh-2rem)] flex flex-col">
+        /* MUDANÇA PRINCIPAL AQUI: h-[100dvh] e overflow-hidden */
+        <div className="flex flex-col h-[100dvh] bg-slate-50/50 overflow-hidden md:-m-8 -m-4"> 
             <Toaster richColors position="top-center" />
             
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                        <MessageSquare className="h-6 w-6 text-blue-600" /> Monitor de Jornada
-                    </h1>
-                    <p className="text-sm text-slate-500">Acompanhe e interaja com seus hóspedes em tempo real.</p>
+            {/* --- HEADER (Fixo, não encolhe) --- */}
+            <header className="flex-none flex items-center justify-between px-4 py-2 bg-white border-b z-20 h-14 shadow-sm">
+                <div className="flex items-center gap-2">
+                    {/* Botão Voltar (Mobile) */}
+                    {selectedStayId && (
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="md:hidden -ml-2 h-9 w-9 text-slate-600" 
+                            onClick={() => setSelectedStayId(null)}
+                        >
+                            <ArrowLeft className="h-5 w-5" />
+                        </Button>
+                    )}
+                    
+                    <div className="flex items-center gap-2">
+                        <div className="bg-blue-100 p-1.5 rounded-md">
+                            <MessageSquare className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <h1 className="text-sm font-bold text-slate-800 hidden xs:block">
+                            Comms
+                        </h1>
+                    </div>
                 </div>
                 
-                <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={fetchLists} disabled={isLoadingList}>
-                        <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingList ? 'animate-spin' : ''}`} /> Atualizar
+                <div className="flex items-center gap-2">
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={fetchLists} 
+                        disabled={isLoadingList}
+                        className="h-8 px-2 text-xs"
+                    >
+                        <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isLoadingList ? 'animate-spin' : ''}`} /> 
+                        <span className="hidden sm:inline">Atualizar</span>
                     </Button>
-                    <Button variant="outline" size="sm" asChild className="hidden md:flex text-slate-500 hover:text-slate-700">
-                        <Link href="/admin/legacycomm">
-                            <Archive className="h-4 w-4 mr-2" /> Legado
-                        </Link>
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => toast.info("API Conectada: v2.4 (Estável)")} className="border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800">
-                        <Zap className="h-4 w-4 mr-2 fill-green-600" /> API Online
-                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500">
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                             <DropdownMenuItem asChild>
+                                <Link href="/admin/legacycomm" className="cursor-pointer">
+                                    <Archive className="h-4 w-4 mr-2" /> Versão Legada
+                                </Link>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
-            </div>
+            </header>
 
-            <div className="flex flex-col lg:flex-row gap-6 flex-1 overflow-hidden">
+            {/* --- BODY (Ocupa o resto da tela) --- */}
+            <div className="flex flex-1 overflow-hidden relative w-full">
                 
-                {/* ESQUERDA: LISTAS */}
-                <Card className="lg:w-1/3 flex flex-col overflow-hidden h-full border-slate-200 shadow-sm bg-slate-50/50">
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col h-full">
-                        <div className="px-4 pt-4">
-                            <TabsList className="w-full grid grid-cols-3">
-                                <TabsTrigger value="future">Futuros</TabsTrigger>
-                                <TabsTrigger value="current">Atuais</TabsTrigger>
-                                <TabsTrigger value="ended">Fim</TabsTrigger>
+                {/* --- COLUNA ESQUERDA: LISTA --- */}
+                <div className={`
+                    w-full md:w-80 bg-white border-r flex flex-col transition-transform duration-300 absolute inset-0 md:relative z-10
+                    ${selectedStayId ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
+                `}>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+                        <div className="px-2 pt-2 pb-2 border-b flex-none">
+                            <TabsList className="w-full grid grid-cols-3 h-8">
+                                <TabsTrigger value="future" className="text-xs px-0">Futuros</TabsTrigger>
+                                <TabsTrigger value="current" className="text-xs px-0">Atuais</TabsTrigger>
+                                <TabsTrigger value="ended" className="text-xs px-0">Fim</TabsTrigger>
                             </TabsList>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4">
+                        {/* ScrollArea Nativo com flex-1 e min-h-0 */}
+                        <div className="flex-1 overflow-y-auto min-h-0">
                             {isLoadingList ? (
-                                <div className="space-y-2">
-                                    {[1,2,3,4].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+                                <div className="p-3 space-y-2">
+                                    {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
                                 </div>
                             ) : (
-                                <>
-                                    <TabsContent value="future" className="mt-0 space-y-1">
-                                        {lists.future.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum check-in próximo.</p>}
+                                <div>
+                                    <TabsContent value="future" className="mt-0">
+                                        {lists.future.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Vazio</p>}
                                         {lists.future.map(stay => <StayListItem key={stay.id} stay={stay} />)}
                                     </TabsContent>
-                                    <TabsContent value="current" className="mt-0 space-y-1">
-                                        {lists.current.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum hóspede na casa.</p>}
+                                    <TabsContent value="current" className="mt-0">
+                                        {lists.current.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Vazio</p>}
                                         {lists.current.map(stay => <StayListItem key={stay.id} stay={stay} />)}
                                     </TabsContent>
-                                    <TabsContent value="ended" className="mt-0 space-y-1">
-                                        {lists.ended.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum check-out recente.</p>}
+                                    <TabsContent value="ended" className="mt-0">
+                                        {lists.ended.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Vazio</p>}
                                         {lists.ended.map(stay => <StayListItem key={stay.id} stay={stay} />)}
                                         {lists.ended.length > 0 && hasMoreEnded && (
-                                            <Button variant="ghost" className="w-full mt-4 text-xs text-blue-600" onClick={handleLoadMoreEnded} disabled={isLoadingMore}>
-                                                {isLoadingMore ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ChevronDown className="h-4 w-4 mr-2" />}
-                                                Carregar mais antigos
+                                            <Button variant="ghost" className="w-full h-10 text-xs text-blue-600 rounded-none" onClick={handleLoadMoreEnded} disabled={isLoadingMore}>
+                                                {isLoadingMore ? <Loader2 className="h-3 w-3 animate-spin" /> : "Carregar +"}
                                             </Button>
                                         )}
                                     </TabsContent>
-                                </>
+                                </div>
                             )}
                         </div>
                     </Tabs>
-                </Card>
+                </div>
 
-                {/* DIREITA: DETALHES & TIMELINE */}
-                <Card className="lg:w-2/3 flex flex-col overflow-hidden h-full shadow-md border-slate-200">
+                {/* --- COLUNA DIREITA: DETALHES --- */}
+                <div className={`
+                    flex-1 flex flex-col bg-slate-50 absolute inset-0 md:relative z-20 md:z-0 transition-transform duration-300 md:translate-x-0
+                    ${selectedStayId ? 'translate-x-0' : 'translate-x-full'}
+                `}>
                     {!selectedStayId ? (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                            <User className="h-16 w-16 mb-4 opacity-20" />
-                            <p>Selecione um hóspede ao lado para ver detalhes.</p>
+                        <div className="hidden md:flex flex-col items-center justify-center h-full text-slate-300">
+                            <User className="h-12 w-12 mb-2 opacity-20" />
+                            <p className="text-sm">Selecione um hóspede</p>
                         </div>
                     ) : isLoadingHistory ? (
-                        <div className="flex items-center justify-center h-full">
-                            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                        <div className="flex items-center justify-center h-full bg-white">
+                            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                         </div>
                     ) : historyData ? (
-                        <div className="flex flex-col h-full">
-                            <div className="p-6 border-b bg-white flex justify-between items-start flex-shrink-0">
+                        <div className="flex flex-col h-full w-full bg-white md:bg-slate-50/50">
+                            
+                            {/* 1. TOPO DOS DETALHES (Fixo) */}
+                            <div className="flex-none px-4 py-3 bg-white border-b flex justify-between items-start shadow-sm z-10">
                                 <div>
-                                    <h2 className="text-2xl font-bold text-slate-800">{historyData.stay.guestName}</h2>
-                                    <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
-                                        <span className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-full"><Phone size={12}/> {historyData.stay.guestPhone || "Sem fone"}</span>
-                                        <span className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-full"><User size={12}/> {historyData.stay.cabinName}</span>
+                                    <h2 className="text-lg font-bold text-slate-900 leading-tight">
+                                        {historyData.stay.guestName}
+                                    </h2>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <Badge variant="secondary" className="text-[10px] h-5 font-normal bg-slate-100 text-slate-600">
+                                            {historyData.stay.cabinName}
+                                        </Badge>
+                                        <span className="text-xs text-slate-500 font-mono">
+                                            {historyData.stay.guestPhone || "Sem fone"}
+                                        </span>
                                     </div>
                                 </div>
-                                <Button variant="outline" size="sm" asChild>
-                                    <a href={`https://wa.me/${(historyData.stay.guestPhone || "").replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-green-600 border-green-200 hover:bg-green-50">
-                                        <Zap className="h-4 w-4 mr-2" /> WhatsApp Web
+                                <Button size="sm" variant="outline" className="h-8 px-2 border-green-200 text-green-700 bg-green-50 hover:bg-green-100 text-xs" asChild>
+                                    <a href={`https://wa.me/${(historyData.stay.guestPhone || "").replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                                        <Zap className="h-3.5 w-3.5 mr-1" /> WhatsApp
                                     </a>
                                 </Button>
                             </div>
 
-                            <ScrollArea className="flex-1 bg-slate-50/50">
-                                <div className="p-6 space-y-8">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                        <StatusCard 
+                            {/* 2. AREA DE ROLAGEM (Flex-1 + min-h-0 + overflow-auto) */}
+                            {/* Isso garante que a rolagem aconteça AQUI dentro e não na página toda */}
+                            <div className="flex-1 overflow-y-auto min-h-0 p-3 bg-slate-50">
+                                <div className="space-y-4 max-w-3xl mx-auto pb-4">
+                                    
+                                    {/* STATUS CARDS */}
+                                    <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-lg border shadow-sm">
+                                        <CompactStatusCard 
                                             label="Pré-Check-in" 
                                             done={historyData.flags.preCheckInSent || historyData.stay.status === 'active'} 
-                                            action={() => requestSend(getTemplateMessage('whatsappPreCheckIn'), 'whatsappPreCheckIn', "Enviar Link de Pré-Check-in")}
-                                            actionLabel="Enviar Link"
-                                            disabled={isCooldown}
+                                            action={() => requestSend(getRawTemplate('whatsappPreCheckIn'), 'whatsappPreCheckIn', "Link Pré-Check-in")}
                                         />
-                                        <StatusCard 
+                                        <CompactStatusCard 
                                             label="Boas-Vindas" 
                                             done={historyData.flags.welcomeSent} 
-                                            action={() => requestSend(getTemplateMessage('whatsappWelcome'), 'whatsappWelcome', "Enviar Boas-Vindas")}
-                                            actionLabel="Enviar Agora"
-                                            disabled={isCooldown}
+                                            action={() => requestSend(getRawTemplate('whatsappWelcome'), 'whatsappWelcome', "Boas-Vindas")}
                                         />
-                                        <StatusCard 
+                                        <CompactStatusCard 
                                             label="Info Saída" 
                                             done={historyData.flags.checkoutInfoSent} 
-                                            action={() => requestSend(getTemplateMessage('whatsappCheckoutInfo'), 'whatsappCheckoutInfo', "Enviar Informações de Saída")}
-                                            actionLabel="Enviar Info"
-                                            disabled={isCooldown}
+                                            action={() => requestSend(getRawTemplate('whatsappCheckoutInfo'), 'whatsappCheckoutInfo', "Info Saída")}
                                         />
-                                        <StatusCard 
+                                        <CompactStatusCard 
                                             label="Feedback" 
                                             done={historyData.flags.feedbackSent} 
-                                            action={() => requestSend(getTemplateMessage('whatsappFeedbackRequest'), 'whatsappFeedbackRequest', "Solicitar Avaliação")}
-                                            actionLabel="Pedir Avaliação"
-                                            disabled={isCooldown}
+                                            action={() => requestSend(getRawTemplate('whatsappFeedbackRequest'), 'whatsappFeedbackRequest', "Pedir Avaliação")}
                                         />
                                     </div>
 
-                                    <Separator />
+                                    {/* WIFI */}
+                                    {(historyData.stay.wifiSsid || historyData.stay.cabin?.wifiSsid) && (
+                                        <div className="bg-white border rounded px-3 py-2 flex items-center justify-between text-xs shadow-sm">
+                                            <div className="flex items-center gap-2 text-blue-700">
+                                                <Wifi className="h-3 w-3" />
+                                                <span className="font-semibold">{historyData.stay.cabin?.wifiSsid || historyData.stay.wifiSsid}</span>
+                                            </div>
+                                            <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
+                                                {historyData.stay.cabin?.wifiPassword || historyData.stay.wifiPassword}
+                                            </code>
+                                        </div>
+                                    )}
 
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                                            <Clock className="h-4 w-4" /> Histórico de Comunicação
+                                    <Separator className="bg-slate-200" />
+
+                                    {/* TIMELINE */}
+                                    <div className="space-y-3">
+                                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider pl-1">
+                                            Histórico
                                         </h3>
-                                        <div className="space-y-4 pl-2 border-l-2 border-slate-200 ml-2">
+                                        <div className="space-y-3">
                                             {historyData.logs.length === 0 ? (
-                                                <p className="text-sm text-slate-400 pl-4 italic">Nenhuma mensagem registrada ainda.</p>
+                                                <p className="text-xs text-slate-400 pl-2 italic">Sem mensagens.</p>
                                             ) : (
                                                 historyData.logs.map(log => (
-                                                    <div key={log.id} className="relative pl-6 pb-2 group">
-                                                        <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-sm" />
-                                                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start bg-white p-3 rounded-lg border border-slate-100 shadow-sm group-hover:shadow-md transition-all">
-                                                            <div className="flex-1">
-                                                                <p className="text-xs font-semibold text-blue-600 mb-0.5 uppercase tracking-wider">
+                                                    <div key={log.id} className="flex gap-3 px-1 group">
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="h-2 w-2 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                                                            <div className="w-px flex-1 bg-slate-200 my-1 group-last:hidden" />
+                                                        </div>
+                                                        <div className="flex-1 bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm text-sm">
+                                                            <div className="flex justify-between items-baseline mb-1">
+                                                                <span className="text-[10px] font-bold text-blue-600 uppercase">
                                                                     {getTemplateName(log.type)}
-                                                                </p>
-                                                                <p className="text-sm text-slate-700 whitespace-pre-wrap line-clamp-3 hover:line-clamp-none transition-all cursor-pointer">
-                                                                    {log.content}
-                                                                </p>
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400">
+                                                                    {formatDateFriendly(log.sentAt)}
+                                                                </span>
                                                             </div>
-                                                            <div className="text-xs text-slate-400 mt-2 sm:mt-0 sm:ml-4 text-right min-w-[80px]">
-                                                                {formatDateFriendly(log.sentAt)}
-                                                                <br/>
-                                                                <span className="opacity-70">{log.actor.split('@')[0]}</span>
-                                                            </div>
+                                                            <p className="text-slate-700 text-xs whitespace-pre-wrap leading-relaxed">
+                                                                {log.content}
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 ))
@@ -378,53 +482,51 @@ export default function CommunicationMonitorPage() {
                                         </div>
                                     </div>
                                 </div>
-                            </ScrollArea>
+                            </div>
 
-                            <div className="p-4 bg-white border-t flex flex-col gap-2 flex-shrink-0">
-                                <Textarea 
-                                    placeholder="Escrever mensagem personalizada..." 
-                                    value={customMessage}
-                                    onChange={(e) => setCustomMessage(e.target.value)}
-                                    className="min-h-[80px] resize-none bg-slate-50 focus:bg-white transition-colors"
-                                    disabled={isCooldown}
-                                />
-                                <div className="flex justify-between items-center">
-                                    <span className="text-xs text-slate-400">
-                                        {isCooldown ? "Aguarde um momento..." : "Enter para nova linha"}
-                                    </span>
+                            {/* 3. RODAPÉ DE ENVIO (Fixo, shrink-0) */}
+                            <div className="flex-none p-3 bg-white border-t z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                                <div className="flex gap-2 items-end max-w-3xl mx-auto">
+                                    <Textarea 
+                                        placeholder="Mensagem..." 
+                                        value={customMessage}
+                                        onChange={(e) => setCustomMessage(e.target.value)}
+                                        className="min-h-[44px] max-h-32 resize-none bg-slate-50 text-sm py-2 focus:bg-white transition-colors"
+                                        rows={1}
+                                        disabled={isCooldown}
+                                    />
                                     <Button 
-                                        onClick={() => requestSend(customMessage, 'custom_message', "Enviar Mensagem Manual")} 
+                                        size="icon"
+                                        onClick={() => requestSend(customMessage, 'custom_message', "Enviar Manual")} 
                                         disabled={!customMessage.trim() || isSending || isCooldown}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                                        className="h-10 w-10 shrink-0 bg-blue-600 hover:bg-blue-700 shadow-sm"
                                     >
-                                        {isSending ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Send className="h-4 w-4 mr-2"/>}
-                                        {isCooldown ? `Aguarde...` : 'Enviar Mensagem'}
+                                        {isSending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}
                                     </Button>
                                 </div>
                             </div>
                         </div>
                     ) : null}
-                </Card>
+                </div>
             </div>
 
-            {/* DIALOG DE CONFIRMAÇÃO */}
+            {/* MODAL DE CONFIRMAÇÃO */}
             <AlertDialog open={confirmDialog.isOpen} onOpenChange={(isOpen) => !isOpen && setConfirmDialog({ ...confirmDialog, isOpen: false })}>
-                <AlertDialogContent>
+                <AlertDialogContent className="w-[95%] max-w-md rounded-lg p-4 gap-4">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Você está prestes a enviar uma mensagem para <strong>{historyData?.stay.guestName}</strong> via WhatsApp.
-                            <br/><br/>
-                            <span className="font-semibold text-xs uppercase text-slate-500">Preview:</span>
-                            <div className="mt-1 p-2 bg-slate-100 rounded text-xs text-slate-700 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono">
-                                {confirmDialog.content}
+                        <AlertDialogTitle className="text-lg">{confirmDialog.title}</AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="text-xs">
+                                <div className="mt-2 p-3 bg-slate-100 rounded-md text-slate-800 max-h-[40vh] overflow-y-auto whitespace-pre-wrap border border-slate-200">
+                                    {confirmDialog.content}
+                                </div>
                             </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={executeSend} className="bg-blue-600 hover:bg-blue-700">
-                            Confirmar Envio
+                    <AlertDialogFooter className="flex-row gap-2 justify-end sm:justify-end">
+                        <AlertDialogCancel className="mt-0 text-xs h-9">Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={executeSend} className="bg-blue-600 h-9 text-xs">
+                            Enviar WhatsApp
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -433,30 +535,31 @@ export default function CommunicationMonitorPage() {
     );
 }
 
-// Componente Auxiliar: Card de Status (Agora aceita disabled)
-function StatusCard({ label, done, action, actionLabel, disabled }: { label: string, done: boolean, action: () => void, actionLabel: string, disabled: boolean }) {
+function CompactStatusCard({ label, done, action }: { label: string, done: boolean, action: () => void }) {
     return (
-        <div className={`p-3 rounded-lg border flex flex-col items-center justify-center text-center gap-2 transition-all
-            ${done ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-sm'}
+        <div className={`
+            flex items-center justify-between p-2 rounded border transition-all select-none
+            ${done ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'}
         `}>
-            {done ? (
-                <CheckCircle2 className="h-6 w-6 text-green-600" />
-            ) : (
-                <div className="h-6 w-6 rounded-full border-2 border-slate-300 flex items-center justify-center">
-                    <div className="h-2 w-2 rounded-full bg-slate-300" />
-                </div>
-            )}
-            <span className={`text-sm font-medium ${done ? 'text-green-800' : 'text-slate-600'}`}>{label}</span>
+            <div className="flex items-center gap-2 overflow-hidden">
+                {done ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                ) : (
+                    <div className="h-3.5 w-3.5 rounded-full border-2 border-slate-300 shrink-0" />
+                )}
+                <span className={`text-xs font-medium truncate ${done ? 'text-green-800' : 'text-slate-600'}`}>
+                    {label}
+                </span>
+            </div>
             
             {!done && (
                 <Button 
                     variant="ghost" 
-                    size="sm" 
-                    className="h-6 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 -mb-1" 
-                    onClick={action}
-                    disabled={disabled}
+                    size="icon" 
+                    className="h-6 w-6 text-blue-600 hover:bg-blue-100 -mr-1" 
+                    onClick={(e) => { e.stopPropagation(); action(); }}
                 >
-                    {actionLabel}
+                    <Send className="h-3 w-3" />
                 </Button>
             )}
         </div>
@@ -467,10 +570,10 @@ function getTemplateName(type: string) {
     const map: Record<string, string> = {
         'whatsappWelcome': 'Boas-Vindas',
         'whatsappPreCheckIn': 'Pré-Check-in',
-        'whatsappFeedbackRequest': 'Pedido de Feedback',
-        'whatsappCheckoutInfo': 'Info de Saída',
+        'whatsappFeedbackRequest': 'Feedback',
+        'whatsappCheckoutInfo': 'Saída',
         'custom_message': 'Manual',
-        'whatsappBookingConfirmed': 'Reserva Confirmada'
+        'whatsappBookingConfirmed': 'Reserva'
     };
     return map[type] || type;
 }

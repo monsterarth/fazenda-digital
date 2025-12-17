@@ -26,11 +26,9 @@ interface FastStayData {
 
 export async function createFastStayAction(data: FastStayData) {
     try {
-        console.log("Criando Fast Stay...", data);
-        
         const token = generateNumericToken();
 
-        // 1. Buscar Cabana e Configuração
+        // 1. Buscar Cabana e Propriedade
         const [cabinSnap, propertySnap] = await Promise.all([
             adminDb.collection('cabins').doc(data.cabinId).get(),
             adminDb.collection('properties').doc('default').get()
@@ -44,36 +42,34 @@ export async function createFastStayAction(data: FastStayData) {
 
         let guestId = null;
 
-        // 2. Lógica do CPF (Atualização de Cadastro)
+        // 2. Lógica do CPF (Atualização de Cadastro com DADOS DA TELA)
         if (data.cpf && data.cpf.length >= 11) {
-            // Remove formatação para garantir consistência
+            // Limpa o CPF para usar como ID
             guestId = data.cpf.replace(/\D/g, '');
             
             const guestRef = adminDb.collection('guests').doc(guestId);
             const guestSnap = await guestRef.get();
             
-            // Dados vitais que sempre atualizamos com o input da recepção
+            // PAYLOAD CRÍTICO: Usamos data.guestPhone (o que está no formulário)
+            // Isso garante que se você editou na tela, o banco é atualizado agora.
             const guestUpdatePayload: any = {
                 name: data.guestName,
-                phone: data.guestPhone, // O telefone da recepção é a verdade absoluta agora
+                phone: data.guestPhone, // <--- AQUI: O valor editado sobrescreve o antigo
                 lastStay: Timestamp.now(),
                 updatedAt: Timestamp.now()
             };
 
             if (guestSnap.exists) {
-                // Hóspede existe: Atualizamos telefone e nome, MANTENDO endereço antigo
+                // Atualiza dados de contato, mantendo histórico e endereço
                 await guestRef.update(guestUpdatePayload);
             } else {
-                // Hóspede novo: Criamos do zero
+                // Cria novo se não existir
                 await guestRef.set({
                     ...guestUpdatePayload,
                     cpf: guestId,
                     createdAt: Timestamp.now(),
                     email: "", 
-                    address: {
-                        street: "", number: "", complement: "", 
-                        neighborhood: "", city: "", state: "", cep: "", country: "Brasil"
-                    } 
+                    address: {} 
                 });
             }
         }
@@ -99,9 +95,9 @@ export async function createFastStayAction(data: FastStayData) {
             cabinId: data.cabinId,
             cabinName: cabinName,
             
-            guestId: guestId, // Vincula o ID (CPF) à estadia
-            guestPhone: data.guestPhone,
-            tempGuestPhone: data.guestPhone, // Backup
+            guestId: guestId, // Vincula ao perfil atualizado acima
+            guestPhone: data.guestPhone, // Salva o telefone novo na estadia também
+            tempGuestPhone: data.guestPhone,
             
             guestCount: {
                 adults: data.guests.adults,
@@ -111,12 +107,11 @@ export async function createFastStayAction(data: FastStayData) {
             },
             
             pets: totalPets, 
-            
             source: 'fast_reception',
             createdAt: Timestamp.now(),
         });
 
-        // 4. Mensagem WhatsApp e Log
+        // 4. Mensagem WhatsApp
         const dynamicLink = `https://portal.fazendadorosa.com.br/pre-check-in?token=${token}`;
         
         let message = `Olá *${data.guestName.split(' ')[0]}*! Sua reserva na *${cabinName}* foi criada. Código de acesso: *${token}*. Confirme seus dados aqui: ${dynamicLink}`;
@@ -139,8 +134,10 @@ export async function createFastStayAction(data: FastStayData) {
 
         const result = await sendWhatsAppMessage(data.guestPhone, message);
         
+        // 5. Registrar Log de Envio (Para aparecer na Timeline)
         if (result.success) {
             try {
+                // Log para o monitor de comunicação
                 await adminDb.collection('message_logs').add({
                     type: 'whatsappPreCheckIn', 
                     content: message,
@@ -152,11 +149,12 @@ export async function createFastStayAction(data: FastStayData) {
                     phone: data.guestPhone
                 });
 
+                // Atualização de status na estadia
                 await stayRef.update({
                     'communicationStatus.preCheckInSentAt': Timestamp.now()
                 });
-            } catch (logError) {
-                console.error("Erro log mensagem:", logError);
+            } catch (error) {
+                // Ignora erro de log para não falhar a operação principal
             }
         }
         

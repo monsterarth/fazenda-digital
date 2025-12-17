@@ -1,5 +1,3 @@
-// components\admin\stays\pending-checkins-list.tsx
-
 "use client"
 
 import React, { useState } from "react"
@@ -7,7 +5,7 @@ import { PreCheckIn, Cabin } from "@/types"
 import { useForm, SubmitHandler } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { format, addDays, parseISO } from "date-fns" // Adicionado parseISO
+import { format, addDays } from "date-fns"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -116,29 +114,64 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
     resolver: zodResolver(validationSchema),
   })
 
+  // Função auxiliar de extração de datas com logs
+  const extractDate = (val: any, label: string): Date | null => {
+    if (!val) return null;
+    
+    let parsedDate: Date | null = null;
+
+    if (val instanceof Date) {
+        parsedDate = val;
+    } else if (typeof val === 'string') {
+        // Tenta construtor nativo primeiro (lida bem com ISO strings completas)
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) {
+            parsedDate = d;
+        }
+    } else if (typeof val === 'object' && val.seconds) {
+        // Tratamento para Timestamps do Firebase
+        parsedDate = new Date(val.seconds * 1000);
+    }
+
+    if (parsedDate) {
+        console.log(`[PendingList] Data extraída (${label}):`, parsedDate.toISOString());
+        return parsedDate;
+    }
+
+    return null;
+  };
+
   const handleOpenModal = (checkIn: PreCheckIn) => {
     setSelectedCheckIn(checkIn)
     
-    // Cast para any para acessar propriedades que podem vir do banco (estadias rápidas)
     const rawCheckIn = checkIn as any;
+    console.log("[PendingList] Abrindo modal para:", rawCheckIn.leadGuestName);
+    console.log("[PendingList] Dados brutos de data:", { 
+        rootIn: rawCheckIn.checkInDate, 
+        rootOut: rawCheckIn.checkOutDate,
+        stayIn: rawCheckIn.stay?.checkInDate,
+        stayOut: rawCheckIn.stay?.checkOutDate
+    });
 
-    // LÓGICA DE DATAS CORRIGIDA:
-    // Se existir checkInDate/checkOutDate no objeto, usa eles. 
-    // Caso contrário, usa o padrão (Hoje até Hoje+2)
-    let fromDate = rawCheckIn.checkInDate 
-        ? parseISO(rawCheckIn.checkInDate) 
-        : new Date();
-        
-    let toDate = rawCheckIn.checkOutDate 
-        ? parseISO(rawCheckIn.checkOutDate) 
-        : addDays(new Date(), 2);
-
-    const prefilledCabinId = rawCheckIn.cabinId || "";
+    // Lógica de Prioridade: 1. Raiz do objeto, 2. Objeto Stay aninhado
+    const checkInDateVal = rawCheckIn.checkInDate || rawCheckIn.stay?.checkInDate;
+    const checkOutDateVal = rawCheckIn.checkOutDate || rawCheckIn.stay?.checkOutDate;
     
+    // Extrai ou usa fallback
+    const fromDate = extractDate(checkInDateVal, 'Check-In') || new Date();
+    const toDate = extractDate(checkOutDateVal, 'Check-Out') || addDays(new Date(), 2);
+
+    const prefilledCabinId = rawCheckIn.cabinId || rawCheckIn.stay?.cabinId || "";
+    
+    // Força o reset do formulário com os novos valores
     form.reset({
       cabinId: prefilledCabinId, 
-      dates: { from: fromDate, to: toDate },
+      dates: { 
+          from: fromDate, 
+          to: toDate 
+      },
     })
+    
     setIsModalOpen(true)
   }
 

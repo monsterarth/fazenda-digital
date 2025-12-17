@@ -7,51 +7,30 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, CheckCircle, AlertCircle, PawPrint, User, Users, Baby } from "lucide-react";
 import { createFastStayAction } from "@/app/actions/create-fast-stay";
-import { addDays, format } from "date-fns"; 
 import { isValidCPF } from "@/lib/validators"; 
 
 export const CreateStayModal = () => {
-    const { isOpen, type, onClose, data } = useModalStore();
-    const cabins = data.cabins || [];
+    const { isOpen, type, onClose } = useModalStore();
     const isModalOpen = isOpen && type === "createStay";
 
     const [isLoading, setIsLoading] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
     const [cpfError, setCpfError] = useState(false);
     
-    const today = new Date();
-    const defaultCheckIn = addDays(today, 2);
-    const defaultCheckOut = addDays(defaultCheckIn, 2);
-
+    // FORMULÁRIO SIMPLIFICADO: Sem datas, sem cabana
     const [formData, setFormData] = useState({
         cpf: "",
         guestName: "",
         guestPhone: "",
-        cabinId: "",
-        checkInDate: format(defaultCheckIn, 'yyyy-MM-dd'),
-        checkOutDate: format(defaultCheckOut, 'yyyy-MM-dd'),
         adults: 2,
         children: 0,
         babies: 0,
         pets: 0
     });
-
-    useEffect(() => {
-        if (isModalOpen) {
-            const dCheckIn = addDays(new Date(), 2);
-            const dCheckOut = addDays(dCheckIn, 2);
-            setFormData(prev => ({
-                ...prev,
-                checkInDate: format(dCheckIn, 'yyyy-MM-dd'),
-                checkOutDate: format(dCheckOut, 'yyyy-MM-dd'),
-            }));
-        }
-    }, [isModalOpen]);
 
     const handleCpfBlur = async () => {
         const cleanCpf = formData.cpf.replace(/\D/g, '');
@@ -78,7 +57,6 @@ export const CreateStayModal = () => {
 
             if (response.ok) {
                 const guest = await response.json();
-                
                 if (guest) {
                     toast.success("Hóspede encontrado!");
                     setFormData(prev => ({
@@ -98,16 +76,10 @@ export const CreateStayModal = () => {
     };
 
     const handleClose = () => {
-        const dCheckIn = addDays(new Date(), 2);
-        const dCheckOut = addDays(dCheckIn, 2);
-        
         setFormData({
             cpf: "", 
             guestName: "", 
             guestPhone: "", 
-            cabinId: "", 
-            checkInDate: format(dCheckIn, 'yyyy-MM-dd'),
-            checkOutDate: format(dCheckOut, 'yyyy-MM-dd'),
             adults: 2, children: 0, babies: 0, pets: 0
         });
         setCpfError(false);
@@ -123,7 +95,7 @@ export const CreateStayModal = () => {
             return;
         }
 
-        if (!formData.guestName || !formData.guestPhone || !formData.cabinId || !formData.checkInDate || !formData.checkOutDate) {
+        if (!formData.guestName || !formData.guestPhone) {
             toast.error("Preencha os campos obrigatórios (*)");
             return;
         }
@@ -134,9 +106,7 @@ export const CreateStayModal = () => {
                 cpf: cleanCpf || undefined,
                 guestName: formData.guestName,
                 guestPhone: formData.guestPhone,
-                cabinId: formData.cabinId,
-                checkInDate: formData.checkInDate,
-                checkOutDate: formData.checkOutDate,
+                // CabinId removido
                 guests: {
                     adults: Number(formData.adults),
                     children: Number(formData.children),
@@ -160,7 +130,6 @@ export const CreateStayModal = () => {
 
     return (
         <Dialog open={isModalOpen} onOpenChange={handleClose}>
-            {/* CORREÇÃO AQUI: onInteractOutside previne fechar ao clicar fora */}
             <DialogContent 
                 className="sm:max-w-[650px]"
                 onInteractOutside={(e) => {
@@ -168,9 +137,9 @@ export const CreateStayModal = () => {
                 }}
             >
                 <DialogHeader>
-                    <DialogTitle>Estadia Rápida</DialogTitle>
+                    <DialogTitle>Estadia Rápida (Open)</DialogTitle>
                     <DialogDescription>
-                        Preencha os dados básicos e a ocupação completa (incluindo pets).
+                        Cria uma reserva em aberto. Cabana e Datas serão definidas depois.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -219,34 +188,7 @@ export const CreateStayModal = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="col-span-1">
-                            <Label>Cabana *</Label>
-                            <Select 
-                                value={formData.cabinId} 
-                                onValueChange={(v) => setFormData({...formData, cabinId: v})}
-                            >
-                                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                <SelectContent>
-                                    <div className="max-h-[200px] overflow-y-auto">
-                                        {cabins.length > 0 ? (
-                                            cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)
-                                        ) : (
-                                            <SelectItem value="loading" disabled>Carregando...</SelectItem>
-                                        )}
-                                    </div>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div>
-                            <Label>Entrada *</Label>
-                            <Input type="date" value={formData.checkInDate} onChange={(e) => setFormData({...formData, checkInDate: e.target.value})} />
-                        </div>
-                        <div>
-                            <Label>Saída *</Label>
-                            <Input type="date" value={formData.checkOutDate} onChange={(e) => setFormData({...formData, checkOutDate: e.target.value})} />
-                        </div>
-                    </div>
+                    {/* SELEÇÃO DE CABANA REMOVIDA */}
 
                     <div className="bg-gray-50 p-3 rounded-md border border-gray-100">
                         <Label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Ocupação (ACFP)</Label>

@@ -1,3 +1,5 @@
+// components\admin\stays\pending-checkins-list.tsx
+
 "use client"
 
 import React, { useState } from "react"
@@ -5,7 +7,7 @@ import { PreCheckIn, Cabin } from "@/types"
 import { useForm, SubmitHandler } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { format, addDays } from "date-fns"
+import { format, addDays, parseISO } from "date-fns" // Adicionado parseISO
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -117,12 +119,21 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
   const handleOpenModal = (checkIn: PreCheckIn) => {
     setSelectedCheckIn(checkIn)
     
-    // Datas padrão
-    let fromDate = new Date();
-    let toDate = addDays(new Date(), 2);
+    // Cast para any para acessar propriedades que podem vir do banco (estadias rápidas)
+    const rawCheckIn = checkIn as any;
 
-    // CORREÇÃO 1: Cast para 'any' para acessar cabinId que existe no banco mas não no tipo estrito
-    const prefilledCabinId = (checkIn as any).cabinId || "";
+    // LÓGICA DE DATAS CORRIGIDA:
+    // Se existir checkInDate/checkOutDate no objeto, usa eles. 
+    // Caso contrário, usa o padrão (Hoje até Hoje+2)
+    let fromDate = rawCheckIn.checkInDate 
+        ? parseISO(rawCheckIn.checkInDate) 
+        : new Date();
+        
+    let toDate = rawCheckIn.checkOutDate 
+        ? parseISO(rawCheckIn.checkOutDate) 
+        : addDays(new Date(), 2);
+
+    const prefilledCabinId = rawCheckIn.cabinId || "";
     
     form.reset({
       cabinId: prefilledCabinId, 
@@ -312,7 +323,6 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
                       <ul className="list-disc list-inside text-sm space-y-1">
                         {selectedCheckIn.companions.map((c, i) => (
                           <li key={i}>
-                            {/* CORREÇÃO 2: Uso de category em vez de age */}
                             {c.fullName} <span className="text-muted-foreground">({getCategoryLabel(c.category as string)})</span>
                           </li>
                         ))}

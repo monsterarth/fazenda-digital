@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { Loader2, CheckCircle, AlertCircle, PawPrint, User, Users, Baby } from "lucide-react";
 import { createFastStayAction } from "@/app/actions/create-fast-stay";
 import { addDays, format } from "date-fns"; 
-import { isValidCPF } from "@/lib/validators"; // <--- IMPORTAÇÃO DA CORREÇÃO
+import { isValidCPF } from "@/lib/validators"; 
 
 export const CreateStayModal = () => {
     const { isOpen, type, onClose, data } = useModalStore();
@@ -60,7 +60,6 @@ export const CreateStayModal = () => {
             return;
         }
 
-        // CORREÇÃO AQUI: Usando o validador centralizado correto
         if (!isValidCPF(cleanCpf)) {
             setCpfError(true);
             toast.error("CPF Inválido");
@@ -119,7 +118,6 @@ export const CreateStayModal = () => {
         e.preventDefault();
         const cleanCpf = formData.cpf.replace(/\D/g, '');
         
-        // CORREÇÃO AQUI: Validação no envio também
         if (cleanCpf.length > 0 && !isValidCPF(cleanCpf)) {
             toast.error("Corrija o CPF antes de continuar.");
             return;
@@ -162,7 +160,13 @@ export const CreateStayModal = () => {
 
     return (
         <Dialog open={isModalOpen} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-[650px]">
+            {/* CORREÇÃO AQUI: onInteractOutside previne fechar ao clicar fora */}
+            <DialogContent 
+                className="sm:max-w-[650px]"
+                onInteractOutside={(e) => {
+                    e.preventDefault();
+                }}
+            >
                 <DialogHeader>
                     <DialogTitle>Estadia Rápida</DialogTitle>
                     <DialogDescription>
@@ -180,7 +184,7 @@ export const CreateStayModal = () => {
                                     value={formData.cpf}
                                     onChange={(e) => {
                                         setFormData({...formData, cpf: e.target.value});
-                                        if(cpfError) setCpfError(false); // Limpa erro ao digitar
+                                        if(cpfError) setCpfError(false); 
                                     }}
                                     onBlur={handleCpfBlur}
                                     className={`pr-8 bg-white ${cpfError ? 'border-red-500' : ''}`}

@@ -1,3 +1,4 @@
+//components\admin\stays\fast-stays-list.tsx
 "use client";
 
 import React, { useState } from 'react';

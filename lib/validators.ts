@@ -1,43 +1,43 @@
-// Função para validação algorítmica de CPF
 export const isValidCPF = (cpf: string | null | undefined): boolean => {
   if (!cpf) return false;
 
-  // Remove caracteres não numéricos
   const cleanCpf = cpf.replace(/[^\d]/g, '');
 
   if (cleanCpf.length !== 11 || /^(\d)\1{10}$/.test(cleanCpf)) {
     return false;
   }
 
+  // Validação do 1º Dígito
   let sum = 0;
-  let remainder;
-
-  for (let i = 1; i <= 9; i++) {
-    sum += parseInt(cleanCpf.substring(i - 1, i)) * (11 - i);
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(cleanCpf.charAt(i)) * (10 - i);
   }
-
-  remainder = (sum * 10) % 11;
-  if (remainder === 10 || remainder === 11) {
-    remainder = 0;
-  }
-
-  if (remainder !== parseInt(cleanCpf.substring(9, 10))) {
+  
+  let remainder = 11 - (sum % 11);
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  
+  if (remainder !== parseInt(cleanCpf.charAt(9))) {
     return false;
   }
 
+  // Validação do 2º Dígito
   sum = 0;
-  for (let i = 1; i <= 10; i++) {
-    sum += parseInt(cleanCpf.substring(i - 1, i)) * (12 - i);
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(cleanCpf.charAt(i)) * (11 - i);
   }
-
-  remainder = (sum * 10) % 11;
-  if (remainder === 10 || remainder === 11) {
-    remainder = 0;
-  }
-
-  if (remainder !== parseInt(cleanCpf.substring(10, 11))) {
+  
+  remainder = 11 - (sum % 11);
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  
+  if (remainder !== parseInt(cleanCpf.charAt(10))) {
     return false;
   }
 
   return true;
 };
+
+export const isValidPhone = (phone: string | null | undefined): boolean => {
+    if (!phone) return false;
+    const cleanPhone = phone.replace(/[^\d]/g, '');
+    return cleanPhone.length >= 10 && cleanPhone.length <= 11;
+}

@@ -31,7 +31,7 @@ export async function getGuestHistoryAction(stayId: string): Promise<GuestHistor
         
         const rawStayData = stayDoc.data();
         
-        // Conversão de datas e setup do objeto
+        // Setup do objeto Stay
         const stayData = { 
             id: stayDoc.id, 
             ...rawStayData,
@@ -41,7 +41,7 @@ export async function getGuestHistoryAction(stayId: string): Promise<GuestHistor
             updatedAt: typeof rawStayData?.updatedAt === 'object' ? rawStayData.updatedAt.toDate().toISOString() : rawStayData?.updatedAt,
         } as any;
 
-        // Busca logs novos
+        // Busca logs
         const logsSnap = await adminDb.collection('message_logs')
             .where('stayId', '==', stayId)
             .orderBy('sentAt', 'desc')
@@ -63,14 +63,14 @@ export async function getGuestHistoryAction(stayId: string): Promise<GuestHistor
             };
         });
 
-        // --- CORREÇÃO AQUI ---
-        // Verificamos tanto nos logs novos quanto no campo antigo communicationStatus
+        // --- CORREÇÃO DE STATUS ---
+        // Garante que communicationStatus seja um objeto, mesmo que venha null
         const commStatus = stayData.communicationStatus || {};
 
         const flags = {
-            preCheckInSent: !!stayData.preCheckInId, 
+            // CORRIGIDO: Agora verifica se existe o LOG OU se existe a data de envio no banco
+            preCheckInSent: logs.some(l => l.type === 'whatsappPreCheckIn') || !!commStatus.preCheckInSentAt,
             
-            // Verifica LOG OU Campo na Estadia
             welcomeSent: logs.some(l => l.type === 'whatsappWelcome') || !!commStatus.welcomeMessageSentAt,
             
             feedbackSent: logs.some(l => l.type === 'whatsappFeedbackRequest') || !!commStatus.feedbackSentAt,

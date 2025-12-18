@@ -1,192 +1,238 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { getFirebaseDb } from '@/lib/firebase';
-import * as firestore from 'firebase/firestore';
-import { PreCheckIn, Stay, Cabin, Property, BreakfastOrder } from '@/types';
-import { toast } from 'sonner';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Users, FileCheck2, PlusCircle, History, Zap } from 'lucide-react'; 
-import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
-import { StaysList } from '@/components/admin/stays/stays-list';
-// Importe o novo componente
-import { FastStaysList } from '@/components/admin/stays/fast-stays-list';
+import Link from 'next/link'; // Importante para a navegação
+import { 
+    RefreshCcw, Plus, History, Calendar, List, Zap, FileCheck2, 
+    ArrowLeft, UserPlus 
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { subDays } from 'date-fns';
-import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/ui/button'; 
-import { useModalStore } from '@/hooks/use-modal-store'; 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useModalStore } from '@/hooks/use-modal-store';
+import { toast } from 'sonner';
 
-export default function ManageStaysPage() {
-    const { isAdmin } = useAuth();
-    const { onOpen } = useModalStore(); 
-    const [db, setDb] = useState<firestore.Firestore | null>(null);
-    
-    const [pendingCheckIns, setPendingCheckIns] = useState<PreCheckIn[]>([]);
-    const [activeStays, setActiveStays] = useState<Stay[]>([]);
-    // Novo Estado para Fast Stays
-    const [fastStays, setFastStays] = useState<Stay[]>([]);
-    
-    const [checkedOutStays, setCheckedOutStays] = useState<Stay[]>([]);
-    const [breakfastOrders, setBreakfastOrders] = useState<BreakfastOrder[]>([]);
-    const [cabins, setCabins] = useState<Cabin[]>([]);
-    const [property, setProperty] = useState<Property | undefined>(undefined);
+// Componentes
+import { SchedulerTimeline } from '@/components/admin/stays/SchedulerTimeline';
+import { StaysList } from '@/components/admin/stays/stays-list';
+import { FastStaysList } from '@/components/admin/stays/fast-stays-list';
+import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
+import { CreateStayDialog } from '@/components/admin/stays/create-stay-dialog'; // Manual (Legacy)
+import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog';
+import { 
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
+
+// Actions e Tipos
+import { getSchedulerData, SchedulerData } from '@/app/actions/get-scheduler-data';
+import { finalizeStayAction } from '@/app/actions/finalize-stay';
+import { Stay } from '@/types';
+import { useAuth } from '@/context/AuthContext';
+
+export default function StaysPage() {
+    const { onOpen } = useModalStore();
+    const { user } = useAuth();
+    const [data, setData] = useState<SchedulerData>({ cabins: [], stays: [], fastStays: [], pendingCheckIns: [] });
     const [loading, setLoading] = useState(true);
+    const [viewDate, setViewDate] = useState(new Date());
+
+    // Estado para ações
+    const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
+    const [isEditOpen, setIsEditOpen] = useState(false);
+    const [isCheckoutAlertOpen, setIsCheckoutAlertOpen] = useState(false);
+
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const startStr = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1).toISOString();
+            const endStr = new Date(viewDate.getFullYear(), viewDate.getMonth() + 2, 0).toISOString();
+            
+            const result = await getSchedulerData(startStr, endStr);
+            setData(result);
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao carregar dados.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        if (!isAdmin) {
-            setLoading(false);
-            return;
+        loadData();
+    }, [viewDate]);
+
+    // --- HANDLERS ---
+    const handleMapAction = (action: string, stay: Stay) => {
+        setSelectedStay(stay);
+        
+        if (action === 'edit' || action === 'details' || action === 'checkin' || action === 'validate') {
+            setIsEditOpen(true);
+        } else if (action === 'checkout') {
+            setIsCheckoutAlertOpen(true);
+        } else if (action === 'whatsapp') {
+             const phone = stay.guest?.phone || stay.guestPhone || ""; 
+             if (phone) {
+                window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
+             } else {
+                toast.error("Telefone não encontrado.");
+             }
         }
+    };
 
-        const initializeListeners = async () => {
-            setLoading(true);
-            const firestoreDb = await getFirebaseDb();
-            setDb(firestoreDb);
-
-            if (!firestoreDb) {
-                toast.error("Falha ao conectar ao banco de dados.");
-                setLoading(false);
-                return;
+    const confirmCheckout = async () => {
+        if (!selectedStay || !user) return;
+        
+        const toastId = toast.loading("Realizando check-out...");
+        try {
+            const result = await finalizeStayAction(selectedStay.id, user.email || 'Admin');
+            if (result.success) {
+                toast.success("Check-out realizado!", { id: toastId });
+                loadData();
+            } else {
+                toast.error("Erro ao finalizar.", { id: toastId });
             }
-
-            const unsubscribers: firestore.Unsubscribe[] = [];
-
-            // 1. Pré-Check-ins Legados (Coleção preCheckIns)
-            const qCheckIns = firestore.query(firestore.collection(firestoreDb, 'preCheckIns'), firestore.where('status', '==', 'pendente'));
-            unsubscribers.push(firestore.onSnapshot(qCheckIns, (snapshot) => {
-                setPendingCheckIns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PreCheckIn)));
-            }));
-
-            // 2. Fast Stays (Coleção stays, status 'pending_guest_data')
-            const qFast = firestore.query(
-                firestore.collection(firestoreDb, 'stays'), 
-                firestore.where('status', '==', 'pending_guest_data'),
-                firestore.orderBy('createdAt', 'desc')
-            );
-            unsubscribers.push(firestore.onSnapshot(qFast, (snapshot) => {
-                setFastStays(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay)));
-            }));
-
-            // 3. Estadias Ativas
-            const qStays = firestore.query(firestore.collection(firestoreDb, 'stays'), firestore.where('status', '==', 'active'), firestore.orderBy('checkInDate', 'asc'));
-            unsubscribers.push(firestore.onSnapshot(qStays, (snapshot) => {
-                setActiveStays(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay)));
-                setLoading(false);
-            }));
-            
-            const sevenDaysAgo = subDays(new Date(), 7);
-            const qCheckedOut = firestore.query(
-                firestore.collection(firestoreDb, 'stays'), 
-                firestore.where('status', '==', 'checked_out'),
-                firestore.where('checkOutDate', '>=', sevenDaysAgo.toISOString().split('T')[0]),
-                firestore.orderBy('checkOutDate', 'desc')
-            );
-            unsubscribers.push(firestore.onSnapshot(qCheckedOut, (snapshot) => {
-                setCheckedOutStays(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Stay)));
-            }));
-            
-            const qCabins = firestore.query(firestore.collection(firestoreDb, 'cabins'), firestore.orderBy('posicao', 'asc'));
-            unsubscribers.push(firestore.onSnapshot(qCabins, (snapshot) => {
-                setCabins(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabin)));
-            }));
-
-            unsubscribers.push(firestore.onSnapshot(firestore.collection(firestoreDb, 'properties'), (snapshot) => {
-                if (!snapshot.empty) {
-                    setProperty({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Property);
-                }
-            }));
-            
-            return () => unsubscribers.forEach(unsub => unsub());
-        };
-
-        initializeListeners();
-    }, [isAdmin]);
+        } catch (error) {
+            toast.error("Erro de conexão.", { id: toastId });
+        } finally {
+            setIsCheckoutAlertOpen(false);
+            setSelectedStay(null);
+        }
+    };
 
     return (
-        <div className="container mx-auto p-4 md:p-6 space-y-8">
-            <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Gestão de Estadias</h1>
-                    <p className="text-muted-foreground">Valide pré-check-ins e acompanhe as estadias ativas.</p>
+        <div className="flex flex-col h-[calc(100vh-2rem)] gap-4 p-4 md:p-6 bg-slate-50/50 w-full overflow-hidden">
+            {/* HEADER */}
+            <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-4 flex-none">
+                <div className="flex items-center gap-4">
+                    {/* BOTÃO VOLTAR AO DASHBOARD */}
+                    <Link href="/admin/dashboard">
+                        <Button variant="outline" size="icon" title="Voltar ao Dashboard">
+                            <ArrowLeft className="h-4 w-4 text-slate-600" />
+                        </Button>
+                    </Link>
+                    
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Gestão de Estadias</h1>
+                        <p className="text-muted-foreground text-sm hidden md:block">
+                            Visão geral de ocupação, check-ins e validações.
+                        </p>
+                    </div>
                 </div>
-                
-                <div className="flex items-center gap-3">
+
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Button variant="outline" size="sm" onClick={loadData} title="Atualizar">
+                        <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                    </Button>
+                    
+                    {/* ESTADIA MANUAL (Antigo Legado) - Agora Secundário */}
                     <Button 
                         variant="ghost" 
                         size="sm" 
-                        className="text-muted-foreground hover:text-foreground"
                         onClick={() => onOpen('createStayLegacy')}
+                        className="hidden md:flex"
                     >
-                        <History className="mr-2 h-4 w-4" />
-                        Modo Legado
+                        <History className="mr-2 h-4 w-4" /> Manual
                     </Button>
 
+                    {/* ESTADIA RÁPIDA - Botão Principal Verde */}
+                    {/* Chama 'createStay' que é o modal de link rápido */}
                     <Button 
-                        onClick={() => onOpen('createStay', { cabins: cabins })} 
+                        onClick={() => onOpen('createStay', { cabins: data.cabins })} 
                         className="bg-green-600 hover:bg-green-700 text-white shadow-sm"
                     >
-                        <PlusCircle className="mr-2 h-5 w-5" />
-                        Nova Estadia Rápida
+                        <Zap className="mr-2 h-4 w-4" /> Estadia Rápida
                     </Button>
+
+                    {/* Modal Manual fica aqui para ser controlado pelo hook se necessário */}
+                    <CreateStayDialog cabins={data.cabins} onSuccess={loadData} />
                 </div>
-            </header>
+            </div>
 
-            {loading ? (
-                <div className="flex items-center justify-center h-64"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
-            ) : (
-                <>
-                    <Tabs defaultValue="active">
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="active">Estadias Ativas ({activeStays.length})</TabsTrigger>
-                            <TabsTrigger value="fast">Aguardando Hóspede ({fastStays.length})</TabsTrigger>
-                            <TabsTrigger value="pending">Validação Pendente ({pendingCheckIns.length})</TabsTrigger>
-                        </TabsList>
-                        
-                        <TabsContent value="active">
-                             <Card className="shadow-md">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2"><Users className="text-green-600"/> Estadias Ativas</CardTitle>
-                                    <CardDescription>Hóspedes com estadias já confirmadas.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <StaysList stays={activeStays} />
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
+            {/* CONTEÚDO */}
+            <div className="flex-1 min-h-0 w-full">
+                <Tabs defaultValue="map" className="h-full flex flex-col w-full">
+                    <TabsList className="grid w-full max-w-2xl grid-cols-4 mb-4 flex-none">
+                        <TabsTrigger value="map"><Calendar className="mr-2 h-4 w-4"/> Mapa</TabsTrigger>
+                        <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/> Lista</TabsTrigger>
+                        <TabsTrigger value="fast"><Zap className="mr-2 h-4 w-4"/> Aguardando</TabsTrigger>
+                        <TabsTrigger value="pending"><FileCheck2 className="mr-2 h-4 w-4"/> Validação</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="map" className="flex-1 min-h-0 mt-0 data-[state=active]:flex flex-col w-full">
+                        <SchedulerTimeline 
+                            cabins={data.cabins}
+                            stays={data.stays}
+                            currentDate={viewDate}
+                            onDateChange={setViewDate}
+                            onAction={handleMapAction}
+                            isLoading={loading}
+                        />
+                    </TabsContent>
 
-                        {/* NOVA ABA DE FAST STAYS */}
-                        <TabsContent value="fast">
-                             <Card className="shadow-md border-blue-100">
-                                <CardHeader className="bg-blue-50/50">
-                                    <CardTitle className="flex items-center gap-2 text-blue-800">
-                                        <Zap className="text-blue-600"/> Links Enviados
-                                    </CardTitle>
-                                    <CardDescription>
-                                        Estadias criadas via Fast Stay que ainda não foram completadas pelo hóspede.
-                                        <br/>Use o botão "Reenviar" para corrigir o número se necessário.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <FastStaysList stays={fastStays} />
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
+                    <TabsContent value="list" className="flex-1 overflow-auto mt-0">
+                        <Card className="shadow-sm border-none">
+                            <CardHeader>
+                                <CardTitle>Estadias Ativas</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <StaysList stays={data.stays.filter(s => s.status === 'active')} />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
 
-                        <TabsContent value="pending">
-                             <Card className="shadow-md">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2"><FileCheck2 className="text-yellow-600"/> Pré-Check-ins (Legado)</CardTitle>
-                                    <CardDescription>Hóspedes que preencheram o formulário e aguardam validação manual.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <PendingCheckInsList pendingCheckIns={pendingCheckIns} cabins={cabins} />
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                    </Tabs>
-                </>
+                    <TabsContent value="fast" className="flex-1 overflow-auto mt-0">
+                        <Card className="shadow-sm border-blue-100 h-full">
+                            <CardHeader className="bg-blue-50/50">
+                                <CardTitle className="text-blue-800">Links Enviados</CardTitle>
+                                <CardDescription>Estadias criadas via Fast Stay aguardando preenchimento.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <FastStaysList stays={data.fastStays} />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="pending" className="flex-1 overflow-auto mt-0">
+                        <Card className="shadow-sm h-full">
+                            <CardHeader>
+                                <CardTitle className="text-yellow-700">Pré-Check-ins Pendentes</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <PendingCheckInsList pendingCheckIns={data.pendingCheckIns} cabins={data.cabins} />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                </Tabs>
+            </div>
+
+            {/* MODAIS */}
+            {selectedStay && (
+                <EditStayDialog 
+                    isOpen={isEditOpen}
+                    onClose={() => { setIsEditOpen(false); setSelectedStay(null); }}
+                    stay={selectedStay}
+                    cabins={data.cabins}
+                    onSuccess={loadData}
+                />
             )}
+
+            <AlertDialog open={isCheckoutAlertOpen} onOpenChange={setIsCheckoutAlertOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Check-out</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Confirmar saída de <b>{selectedStay?.guestName}</b>?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmCheckout} className="bg-red-600 hover:bg-red-700">
+                            Confirmar Saída
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

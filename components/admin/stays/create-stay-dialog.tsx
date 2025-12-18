@@ -6,9 +6,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { fullStaySchema, FullStayFormValues } from '@/lib/schemas/stay-schema';
-// ## INÍCIO DA CORREÇÃO ##
-import { useModalStore } from '@/hooks/use-modal-store'; // Alterado de useModal
-// ## FIM DA CORREÇÃO ##
+import { useModalStore } from '@/hooks/use-modal-store'; 
 import { Cabin, Guest } from '@/types'; 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Form } from '@/components/ui/form';
@@ -16,12 +14,14 @@ import { Button } from '@/components/ui/button';
 import { StayFormFields } from './stay-form-fields';
 import { addDays } from 'date-fns';
 import { toast } from 'sonner';
-import { Loader2, UserPlus, UserCheck } from 'lucide-react';
+import { Loader2, UserPlus } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { createStayAction } from '@/app/actions/create-stay';
 
 interface CreateStayDialogProps {
     cabins: Cabin[];
+    // ## CORREÇÃO: Propriedade opcional adicionada
+    onSuccess?: () => void;
 }
 
 // Função auxiliar (sem alterações)
@@ -35,10 +35,8 @@ const mapGuestToFormValues = (guest: Guest): Partial<FullStayFormValues> => ({
     address: guest.address,
 });
 
-export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) => {
-    // ## INÍCIO DA CORREÇÃO ##
-    const { isOpen, onClose, type, data } = useModalStore(); // Alterado de useModal
-    // ## FIM DA CORREÇÃO ##
+export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins, onSuccess }) => {
+    const { isOpen, onClose, type, data } = useModalStore();
     const { user } = useAuth();
     const { guest } = data;
     const isModalOpen = isOpen && type === 'createStayLegacy';
@@ -67,7 +65,6 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) =>
         },
     });
 
-    // (Resto do componente sem alterações)
     useEffect(() => {
         if (isModalOpen) {
             if (guest) { 
@@ -128,6 +125,8 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins }) =>
         if (result.success) {
             toast.success(result.message, { id: toastId, description: `Token de acesso: ${result.token}` });
             onClose();
+            // ## CORREÇÃO: Chama o callback se existir
+            if (onSuccess) onSuccess();
         } else {
             toast.error("Falha ao criar estadia", { id: toastId, description: result.message });
         }

@@ -68,11 +68,12 @@ export interface Stay {
       total: number;
   };
   token: string;
-  status: 'pending_validation' | 'active' | 'checked_out' | 'canceled';
+status: 'pending_validation' | 'pending_guest_data' | 'active' | 'checked_out' | 'canceled';
   preCheckInId: string;
   createdAt: Timestamp;
   endedAt?: Timestamp;
   endedBy?: string;
+  guestPhone?: string;
   
   guest?: Guest;
   cabin?: Cabin;

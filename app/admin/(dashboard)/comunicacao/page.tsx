@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useContext, useTransition } from 'react';
+import React, { useState, useEffect, useContext, useTransition, useMemo } from 'react';
 import { toast, Toaster } from 'sonner';
 import { AuthContext } from '@/context/AuthContext';
-import { format, parseISO, isToday, isTomorrow, isYesterday } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import Link from 'next/link';
 
 // Actions
@@ -15,10 +14,10 @@ import { sendCommunicationAction } from '@/app/actions/send-communication';
 import { getProperty } from '@/app/actions/get-property';
 
 // UI Components
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
@@ -27,9 +26,9 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle 
 } from "@/components/ui/alert-dialog";
 import { 
-    MessageSquare, Send, Phone, Calendar, User, CheckCircle2, 
-    Clock, RefreshCw, Zap, Loader2, ChevronDown, Archive, Wifi,
-    ArrowLeft, MoreVertical
+    MessageSquare, Send, User, CheckCircle2, 
+    RefreshCw, Zap, Loader2, Archive, Wifi,
+    ArrowLeft, MoreVertical, Search
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -96,6 +95,9 @@ export default function CommunicationMonitorPage() {
     const [lists, setLists] = useState<CommunicationLists>({ future: [], current: [], ended: [] });
     const [isLoadingList, setIsLoadingList] = useState(true);
     
+    // Novo estado para o filtro
+    const [searchTerm, setSearchTerm] = useState('');
+
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [hasMoreEnded, setHasMoreEnded] = useState(true);
 
@@ -173,6 +175,30 @@ export default function CommunicationMonitorPage() {
         fetchDetails();
     }, [selectedStayId]);
 
+    // --- LÓGICA DE FILTRO ATUALIZADA ---
+    const filteredLists = useMemo(() => {
+        const term = searchTerm.toLowerCase().trim();
+        if (!term) return lists;
+
+        const filterFn = (stay: CommunicationStaySummary) => {
+            // Se tiver posição, verifica se o termo de busca é igual à posição
+            // Ex: busca "1" deve achar "01" ou "1"
+            if (stay.cabinPosicao) {
+                if (String(stay.cabinPosicao).includes(term)) return true;
+            }
+            // Fallback para nome da cabana e nome do hóspede
+            return (stay.cabinName?.toLowerCase().includes(term) || 
+                    stay.guestName?.toLowerCase().includes(term));
+        };
+
+        return {
+            future: lists.future.filter(filterFn),
+            current: lists.current.filter(filterFn),
+            ended: lists.ended.filter(filterFn)
+        };
+    }, [lists, searchTerm]);
+
+
     // --- ENVIO ---
     const requestSend = (rawContent: string, templateKey?: string, title: string = "Confirmar") => {
         if (!historyData) return;
@@ -234,34 +260,57 @@ export default function CommunicationMonitorPage() {
 
     const getRawTemplate = (key: string) => property?.messages?.[key] || '';
 
-    // --- COMPONENTES INTERNOS ---
-    const StayListItem = ({ stay }: { stay: CommunicationStaySummary }) => (
-        <div 
-            onClick={() => setSelectedStayId(stay.id)}
-            className={`
-                group flex flex-col p-3 border-b cursor-pointer transition-colors relative
-                ${selectedStayId === stay.id ? 'bg-blue-50/80 border-blue-200' : 'bg-white hover:bg-slate-50 border-slate-100'}
-            `}
-        >
-            <div className="flex justify-between items-center mb-1">
-                <span className={`text-sm font-medium truncate ${selectedStayId === stay.id ? 'text-blue-900' : 'text-slate-700'}`}>
-                    {stay.guestName}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                    {format(parseISO(stay.checkInDate), 'dd/MM')} - {format(parseISO(stay.checkOutDate), 'dd/MM')}
-                </span>
+    // --- NOVO DESIGN DO ITEM DA LISTA (ATUALIZADO PARA USAR POSICAO) ---
+    const StayListItem = ({ stay }: { stay: CommunicationStaySummary }) => {
+        const isSelected = selectedStayId === stay.id;
+        
+        // CORREÇÃO APLICADA: Usar cabinPosicao se existir, formatado com zero à esquerda
+        const cabinNumberDisplay = stay.cabinPosicao 
+            ? String(stay.cabinPosicao).padStart(2, '0') // 1 vira "01"
+            : stay.cabinName.replace(/\D/g, '').substring(0, 3) || "?"; // Fallback apenas se falhar
+        
+        return (
+            <div 
+                onClick={() => setSelectedStayId(stay.id)}
+                className={`
+                    group flex items-center gap-3 p-3 border-b cursor-pointer transition-all relative
+                    ${isSelected ? 'bg-blue-50/80 border-blue-200' : 'bg-white hover:bg-slate-50 border-slate-100'}
+                `}
+            >
+                {/* CABINE - Destaque Principal usando Posição */}
+                <div className={`
+                    h-12 w-14 shrink-0 rounded-lg flex items-center justify-center font-bold text-lg shadow-sm border
+                    ${isSelected 
+                        ? 'bg-blue-600 text-white border-blue-600' 
+                        : 'bg-slate-100 text-slate-700 border-slate-200 group-hover:bg-white group-hover:border-blue-200 group-hover:text-blue-600 transition-colors'}
+                `}>
+                    {cabinNumberDisplay}
+                </div>
+
+                {/* INFO */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <div className="flex justify-between items-start">
+                        <span className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
+                            {stay.guestName}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide truncate max-w-[120px]">
+                            {stay.cabinName}
+                        </span>
+                        <span className="text-[10px] text-slate-400">|</span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                            {format(parseISO(stay.checkInDate), 'dd/MM')} - {format(parseISO(stay.checkOutDate), 'dd/MM')}
+                        </span>
+                    </div>
+                </div>
+                
+                {isSelected && <div className="absolute right-0 top-0 bottom-0 w-1 bg-blue-600" />}
             </div>
-            <div className="flex justify-between items-center">
-                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 border-slate-200 font-normal ${selectedStayId === stay.id ? 'bg-white' : 'bg-slate-50'}`}>
-                    {stay.cabinName}
-                </Badge>
-                {selectedStayId === stay.id && <div className="absolute right-0 top-0 bottom-0 w-1 bg-blue-500" />}
-            </div>
-        </div>
-    );
+        );
+    };
 
     return (
-        /* MUDANÇA PRINCIPAL AQUI: h-[100dvh] e overflow-hidden */
         <div className="flex flex-col h-[100dvh] bg-slate-50/50 overflow-hidden md:-m-8 -m-4"> 
             <Toaster richColors position="top-center" />
             
@@ -285,7 +334,7 @@ export default function CommunicationMonitorPage() {
                             <MessageSquare className="h-4 w-4 text-blue-600" />
                         </div>
                         <h1 className="text-sm font-bold text-slate-800 hidden xs:block">
-                            Comms
+                            Comunicação
                         </h1>
                     </div>
                 </div>
@@ -326,6 +375,20 @@ export default function CommunicationMonitorPage() {
                     w-full md:w-80 bg-white border-r flex flex-col transition-transform duration-300 absolute inset-0 md:relative z-10
                     ${selectedStayId ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
                 `}>
+                    
+                    {/* SEARCH BAR (NOVO) */}
+                    <div className="p-3 pb-0">
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                            <Input 
+                                placeholder="Filtrar por nº cabana..." 
+                                className="pl-9 bg-slate-50 border-slate-200 h-9 text-sm focus-visible:ring-1"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
                         <div className="px-2 pt-2 pb-2 border-b flex-none">
                             <TabsList className="w-full grid grid-cols-3 h-8">
@@ -338,22 +401,22 @@ export default function CommunicationMonitorPage() {
                         <div className="flex-1 overflow-y-auto min-h-0">
                             {isLoadingList ? (
                                 <div className="p-3 space-y-2">
-                                    {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
+                                    {[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
                                 </div>
                             ) : (
                                 <div>
                                     <TabsContent value="future" className="mt-0">
-                                        {lists.future.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Vazio</p>}
-                                        {lists.future.map(stay => <StayListItem key={stay.id} stay={stay} />)}
+                                        {filteredLists.future.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Nada encontrado</p>}
+                                        {filteredLists.future.map(stay => <StayListItem key={stay.id} stay={stay} />)}
                                     </TabsContent>
                                     <TabsContent value="current" className="mt-0">
-                                        {lists.current.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Vazio</p>}
-                                        {lists.current.map(stay => <StayListItem key={stay.id} stay={stay} />)}
+                                        {filteredLists.current.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Nada encontrado</p>}
+                                        {filteredLists.current.map(stay => <StayListItem key={stay.id} stay={stay} />)}
                                     </TabsContent>
                                     <TabsContent value="ended" className="mt-0">
-                                        {lists.ended.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Vazio</p>}
-                                        {lists.ended.map(stay => <StayListItem key={stay.id} stay={stay} />)}
-                                        {lists.ended.length > 0 && hasMoreEnded && (
+                                        {filteredLists.ended.length === 0 && <p className="text-center text-xs text-slate-400 py-8">Nada encontrado</p>}
+                                        {filteredLists.ended.map(stay => <StayListItem key={stay.id} stay={stay} />)}
+                                        {lists.ended.length > 0 && hasMoreEnded && !searchTerm && (
                                             <Button variant="ghost" className="w-full h-10 text-xs text-blue-600 rounded-none" onClick={handleLoadMoreEnded} disabled={isLoadingMore}>
                                                 {isLoadingMore ? <Loader2 className="h-3 w-3 animate-spin" /> : "Carregar +"}
                                             </Button>
@@ -405,7 +468,6 @@ export default function CommunicationMonitorPage() {
                             </div>
 
                             {/* 2. AREA DE ROLAGEM (Flex-1 + min-h-0 + overflow-auto) */}
-                            {/* Isso garante que a rolagem aconteça AQUI dentro e não na página toda */}
                             <div className="flex-1 overflow-y-auto min-h-0 p-3 bg-slate-50">
                                 <div className="space-y-4 max-w-3xl mx-auto pb-4">
                                     

@@ -1,5 +1,3 @@
-// components/admin/stays/edit-stay-dialog.tsx
-
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -18,20 +16,50 @@ import { Separator } from '@/components/ui/separator';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useAuth } from '@/context/AuthContext';
 import { createActivityLog } from '@/lib/activity-logger';
-import { useModalStore } from '@/hooks/use-modal-store';
+import { useModalStore } from '@/hooks/use-modal-store'; 
 import { getFirebaseDb } from '@/lib/firebase';
 
 interface EditStayDialogProps {
     cabins: Cabin[];
     property?: Property;
+    // Tornamos estas props OPCIONAIS para suportar o modo híbrido
+    isOpen?: boolean;
+    onClose?: () => void;
+    stay?: Stay;
+    onSuccess?: () => void;
 }
 
-export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property }) => {
-    const { isOpen, onClose, type, data } = useModalStore();
+export const EditStayDialog: React.FC<EditStayDialogProps> = ({ 
+    cabins, 
+    property,
+    isOpen: propIsOpen,
+    onClose: propOnClose,
+    stay: propStay,
+    onSuccess
+}) => {
+    const { isOpen: storeIsOpen, onClose: storeOnClose, type, data } = useModalStore();
     const { user } = useAuth();
-    const { stay } = data;
 
-    const isModalOpen = isOpen && type === 'editStay' && !!stay;
+    // --- LÓGICA HÍBRIDA ---
+    // Se propIsOpen for undefined, assumimos que estamos no modo "Global Store" (layout.tsx)
+    const isControlled = propIsOpen !== undefined;
+    
+    // Define se o modal está aberto baseando-se no modo
+    const isModalOpen = isControlled 
+        ? !!propIsOpen 
+        : (storeIsOpen && type === 'editStay');
+
+    // Define a função de fechar
+    const handleClose = isControlled 
+        ? (propOnClose || (() => {})) 
+        : storeOnClose;
+
+    // Define qual estadia usar (da prop ou da store)
+    const stay = isControlled 
+        ? propStay 
+        : (type === 'editStay' ? data?.stay : undefined);
+
+    // ----------------------
 
     const [preCheckIn, setPreCheckIn] = useState<PreCheckIn | null>(null);
     const [loadingData, setLoadingData] = useState(true);
@@ -42,8 +70,28 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
 
     useEffect(() => {
         const fetchPreCheckIn = async () => {
-            if (!stay || !stay.preCheckInId) {
-                toast.error("Erro: A estadia não tem um pré-check-in vinculado.");
+            if (!isModalOpen || !stay) return;
+            
+            if (!stay.preCheckInId) {
+                // Caso sem pré-check-in vinculado (legado ou manual)
+                form.reset({
+                    leadGuestName: stay.guestName,
+                    cabinId: stay.cabinId,
+                    dates: { from: new Date(stay.checkInDate), to: new Date(stay.checkOutDate) },
+                    token: stay.token,
+                    // Defaults seguros
+                    isForeigner: false,
+                    leadGuestDocument: '',
+                    country: 'Brasil',
+                    leadGuestEmail: '',
+                    leadGuestPhone: stay.guestPhone || '',
+                    address: { cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '' },
+                    estimatedArrivalTime: '16:00',
+                    knowsVehiclePlate: true,
+                    vehiclePlate: '',
+                    companions: [],
+                    pets: [],
+                });
                 setLoadingData(false);
                 return;
             }
@@ -57,21 +105,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                 const data = docSnap.data() as PreCheckIn;
                 setPreCheckIn(data);
                 
-                // Mapeamento: Converte idade numérica (legado) para categoria ACF
-                const mappedCompanions = (data.companions || []).map((c: any) => {
-                    let category: 'adult' | 'child' | 'baby' = 'adult';
-                    if (c.category) {
-                        category = c.category;
-                    } else if (c.age) {
-                        const age = Number(c.age);
-                        if (age >= 18) category = 'adult';
-                        else if (age >= 6) category = 'child';
-                        else category = 'baby';
-                    }
-                    // Removemos 'age' do objeto para não dar conflito com o schema
-                    return { fullName: c.fullName, category, cpf: c.cpf || '' };
-                });
-
                 form.reset({
                     leadGuestName: data.leadGuestName,
                     isForeigner: data.isForeigner,
@@ -83,8 +116,8 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                     estimatedArrivalTime: data.estimatedArrivalTime,
                     knowsVehiclePlate: data.knowsVehiclePlate,
                     vehiclePlate: data.vehiclePlate,
-                    companions: mappedCompanions,
-                    pets: data.pets.map(p => ({ ...p, weight: p.weight.toString(), age: p.age.toString() })),
+                    companions: data.companions ? data.companions.map(c => ({ ...c })) : [],
+                    pets: data.pets ? data.pets.map(p => ({ ...p, weight: p.weight.toString(), age: p.age.toString() })) : [],
                     cabinId: stay.cabinId,
                     dates: { from: new Date(stay.checkInDate), to: new Date(stay.checkOutDate) },
                     token: stay.token,
@@ -95,7 +128,7 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
             setLoadingData(false);
         };
 
-        if (isModalOpen) {
+        if (isModalOpen && stay) {
             fetchPreCheckIn();
         }
     }, [isModalOpen, stay, form]);
@@ -106,77 +139,64 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
         toast.info("Novo token gerado. Clique em 'Salvar' para aplicar.");
     };
 
-    const handleUpdateStay: SubmitHandler<FullStayFormValues> = async (data) => {
-        if (!preCheckIn || !user || !stay) {
-            toast.error("Dados incompletos para atualizar a estadia.");
+    const handleUpdateStay: SubmitHandler<FullStayFormValues> = async (formData) => {
+        if (!user || !stay) {
+            toast.error("Dados incompletos.");
             return;
         }
 
         const toastId = toast.loading("Atualizando estadia...");
         try {
             const db = await getFirebaseDb();
-            const selectedCabin = cabins.find(c => c.id === data.cabinId);
+            const selectedCabin = cabins.find(c => c.id === formData.cabinId);
             if (!selectedCabin) throw new Error("Cabana não encontrada.");
 
             const batch = firestore.writeBatch(db);
-            const preCheckInRef = firestore.doc(db, 'preCheckIns', stay.preCheckInId);
             const stayRef = firestore.doc(db, 'stays', stay.id);
 
-            // Recalcular Guest Count (ACF)
-            let adults = 1;
-            let children = 0;
-            let babies = 0;
+            // Atualiza pré-check-in se existir
+            if (stay.preCheckInId) {
+                const preCheckInRef = firestore.doc(db, 'preCheckIns', stay.preCheckInId);
+                batch.update(preCheckInRef, {
+                    leadGuestName: formData.leadGuestName,
+                    isForeigner: formData.isForeigner,
+                    leadGuestDocument: formData.leadGuestDocument,
+                    leadGuestEmail: formData.leadGuestEmail,
+                    leadGuestPhone: formData.leadGuestPhone,
+                    address: { ...formData.address, country: formData.isForeigner ? formData.country : 'Brasil' },
+                    estimatedArrivalTime: formData.estimatedArrivalTime,
+                    knowsVehiclePlate: formData.knowsVehiclePlate,
+                    vehiclePlate: formData.vehiclePlate,
+                    companions: formData.companions.map(c => ({ ...c })),
+                    pets: formData.pets.map(p => ({ ...p, weight: Number(p.weight), age: p.age.toString() })),
+                });
+            }
             
-            data.companions?.forEach(c => {
-                if (c.category === 'adult') adults++;
-                else if (c.category === 'child') children++;
-                else if (c.category === 'baby') babies++;
-            });
-            const totalGuests = adults + children + babies;
-
-            batch.update(preCheckInRef, {
-                leadGuestName: data.leadGuestName,
-                isForeigner: data.isForeigner,
-                leadGuestDocument: data.leadGuestDocument,
-                leadGuestEmail: data.leadGuestEmail,
-                leadGuestPhone: data.leadGuestPhone,
-                address: { ...data.address, country: data.isForeigner ? data.country : 'Brasil' },
-                estimatedArrivalTime: data.estimatedArrivalTime,
-                knowsVehiclePlate: data.knowsVehiclePlate,
-                vehiclePlate: data.vehiclePlate,
-                companions: data.companions,
-                pets: data.pets.map(p => ({ ...p, weight: Number(p.weight), age: p.age.toString() })),
-            });
-            
+            // Atualiza a estadia
             batch.update(stayRef, {
-                guestName: data.leadGuestName,
+                guestName: formData.leadGuestName,
                 cabinId: selectedCabin.id,
                 cabinName: selectedCabin.name,
-                checkInDate: data.dates.from.toISOString(),
-                checkOutDate: data.dates.to.toISOString(),
-                numberOfGuests: totalGuests,
-                guestCount: {
-                    adults,
-                    children,
-                    babies,
-                    total: totalGuests
-                },
-                token: data.token,
+                checkInDate: formData.dates.from.toISOString(),
+                checkOutDate: formData.dates.to.toISOString(),
+                numberOfGuests: 1 + (formData.companions?.length || 0),
+                token: formData.token,
             });
             
             await batch.commit();
 
-            if (stay.token !== data.token) {
+            if (stay.token !== formData.token) {
                 await createActivityLog({
                     type: 'stay_token_updated',
                     actor: { type: 'admin', identifier: user.email! },
-                    details: `Token de acesso da estadia de ${data.leadGuestName} foi alterado.`,
+                    details: `Token de acesso da estadia de ${formData.leadGuestName} foi alterado.`,
                     link: '/admin/stays'
                 });
             }
 
             toast.success("Estadia atualizada com sucesso!", { id: toastId });
-            onClose();
+            handleClose();
+            if (onSuccess) onSuccess();
         } catch (error: any) {
             toast.error("Falha ao atualizar a estadia.", { id: toastId, description: error.message });
         }
@@ -184,27 +204,28 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
     
     const handleCpfBlur = () => {}; 
 
-    if (!isModalOpen) {
+    if (!isModalOpen || !stay) {
         return null;
     }
 
     return (
-        <Dialog open={isModalOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-4xl">
-                <DialogHeader>
+        <Dialog open={isModalOpen} onOpenChange={handleClose}>
+            <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
+                <DialogHeader className="p-6 pb-2">
                     <DialogTitle>Detalhes da Estadia de {stay.guestName}</DialogTitle>
                     <DialogDescription>
-                        Visualize ou edite as informações da estadia e do pré-check-in.
+                        Visualize ou edite as informações da estadia.
                     </DialogDescription>
                 </DialogHeader>
+                
                 {loadingData ? (
-                    <div className="flex justify-center items-center h-96">
+                    <div className="flex justify-center items-center h-64">
                         <Loader2 className="h-8 w-8 animate-spin" />
                     </div>
                 ) : (
                     <Form {...form}>
-                        <form id="edit-stay-form" onSubmit={form.handleSubmit(handleUpdateStay)}>
-                            <div className="py-4 max-h-[75vh] overflow-y-auto pr-4 space-y-6">
+                        <form id="edit-stay-form" onSubmit={form.handleSubmit(handleUpdateStay)} className="flex-1 flex flex-col min-h-0">
+                            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
                                <StayFormFields 
                                    form={form} 
                                    cabins={cabins} 
@@ -217,11 +238,15 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                                <Separator />
                                <div>
                                     <h3 className="text-lg font-medium mb-4">Acesso do Hóspede</h3>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                                         <FormField
                                             control={form.control}
                                             name="token"
-                                            render={({ field }) => (
+                                            render={({
+                                                field,
+                                            }: {
+                                                field: import("react-hook-form").ControllerRenderProps<FullStayFormValues, "token">;
+                                            }) => (
                                                 <FormItem>
                                                     <FormLabel>Senha de Acesso (Token)</FormLabel>
                                                     <FormControl>
@@ -240,15 +265,15 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({ cabins, property
                                                 </FormItem>
                                             )}
                                         />
-                                        <Button type="button" variant="outline" size="icon" className="mt-7" onClick={handleGenerateToken}>
-                                            <RefreshCw className="h-4 w-4" />
-                                            <span className="sr-only">Gerar Novo Token</span>
+                                        <Button type="button" variant="outline" size="sm" className="mt-8" onClick={handleGenerateToken}>
+                                            <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                                            Gerar Novo
                                         </Button>
                                     </div>
                                </div>
                             </div>
-                            <DialogFooter className="pt-4 border-t">
-                                <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+                            <DialogFooter className="p-6 border-t mt-auto bg-slate-50/50">
+                                <Button type="button" variant="ghost" onClick={handleClose}>Cancelar</Button>
                                 <Button type="submit" disabled={form.formState.isSubmitting || !form.formState.isDirty}>
                                     {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
                                     Salvar Alterações

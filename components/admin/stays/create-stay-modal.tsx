@@ -42,7 +42,7 @@ export const CreateStayModal = () => {
     
     // Cálculos de data inicial (Padrão: Daqui a 2 dias)
     const today = new Date();
-    const defaultCheckIn = addDays(today, 0); // Padrão hoje para agilidade
+    const defaultCheckIn = addDays(today, 0); 
     const defaultCheckOut = addDays(defaultCheckIn, 1);
 
     const [formData, setFormData] = useState({
@@ -164,7 +164,11 @@ export const CreateStayModal = () => {
 
     return (
         <Dialog open={isModalOpen} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-[650px]">
+            {/* CORREÇÃO 1: Adicionado onPointerDownOutside para impedir fechar ao clicar fora */}
+            <DialogContent 
+                className="sm:max-w-[650px]"
+                onPointerDownOutside={(e) => e.preventDefault()}
+            >
                 <DialogHeader>
                     <DialogTitle>Estadia Rápida</DialogTitle>
                     <DialogDescription>
@@ -224,7 +228,9 @@ export const CreateStayModal = () => {
                                 onValueChange={(v) => setFormData({...formData, cabinId: v})}
                             >
                                 <SelectTrigger className="bg-white"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                <SelectContent>
+                                
+                                {/* CORREÇÃO 2: Adicionado max-h para limitar altura e permitir scroll */}
+                                <SelectContent className="max-h-[300px]">
                                     {cabins.length > 0 ? (
                                         cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)
                                     ) : (

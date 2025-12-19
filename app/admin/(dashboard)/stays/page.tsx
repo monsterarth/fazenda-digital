@@ -3,12 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
-    RefreshCcw, Plus, History, Calendar, List, Zap, FileCheck2, 
-    ArrowLeft, UserPlus 
+    RefreshCcw, History, Calendar, List, Zap, FileCheck2, 
+    ArrowLeft, Maximize2, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog'; // Importando Dialog
 import { useModalStore } from '@/hooks/use-modal-store';
 import { toast } from 'sonner';
 
@@ -19,7 +20,7 @@ import { FastStaysList } from '@/components/admin/stays/fast-stays-list';
 import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
 import { CreateStayDialog } from '@/components/admin/stays/create-stay-dialog'; 
 import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog';
-import { SendWhatsappDialog } from '@/components/admin/stays/send-whatsapp-dialog'; // NOVO IMPORT
+import { SendWhatsappDialog } from '@/components/admin/stays/send-whatsapp-dialog';
 import { 
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle 
@@ -42,7 +43,10 @@ export default function StaysPage() {
     const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isCheckoutAlertOpen, setIsCheckoutAlertOpen] = useState(false);
-    const [isWhatsappOpen, setIsWhatsappOpen] = useState(false); // NOVO ESTADO
+    const [isWhatsappOpen, setIsWhatsappOpen] = useState(false);
+    
+    // NOVO: Estado para controlar o Mapa em Tela Cheia
+    const [isMapFullScreen, setIsMapFullScreen] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
@@ -73,12 +77,10 @@ export default function StaysPage() {
         } else if (action === 'checkout') {
             setIsCheckoutAlertOpen(true);
         } else if (action === 'whatsapp') {
-             // Abre link direto (como no mapa)
              const phone = stay.guest?.phone || stay.guestPhone || ""; 
              if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
              else toast.error("Telefone não encontrado.");
         } else if (action === 'whatsapp_modal') {
-             // Abre o novo modal de escrever mensagem (usado na lista)
              setIsWhatsappOpen(true);
         }
     };
@@ -104,7 +106,7 @@ export default function StaysPage() {
 
     return (
         <div className="flex flex-col h-[calc(100vh-2rem)] gap-4 p-4 md:p-6 bg-slate-50/50 w-full overflow-hidden">
-            {/* HEADER */}
+            {/* HEADER DA PÁGINA */}
             <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-4 flex-none">
                 <div className="flex items-center gap-4">
                     <Link href="/admin/dashboard">
@@ -134,35 +136,37 @@ export default function StaysPage() {
                 </div>
             </div>
 
-            {/* CONTEÚDO */}
+            {/* CONTEÚDO PRINCIPAL (TABS) */}
             <div className="flex-1 min-h-0 w-full">
-                <Tabs defaultValue="map" className="h-full flex flex-col w-full">
-                    <TabsList className="grid w-full max-w-2xl grid-cols-4 mb-4 flex-none">
-                        <TabsTrigger value="map"><Calendar className="mr-2 h-4 w-4"/> Mapa</TabsTrigger>
+                {/* ALTERAÇÃO 1: defaultValue="list" para iniciar na lista 
+                */}
+                <Tabs defaultValue="list" className="h-full flex flex-col w-full">
+                    <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-4 flex-none">
                         <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/> Lista</TabsTrigger>
                         <TabsTrigger value="fast"><Zap className="mr-2 h-4 w-4"/> Aguardando</TabsTrigger>
                         <TabsTrigger value="pending"><FileCheck2 className="mr-2 h-4 w-4"/> Validação</TabsTrigger>
                     </TabsList>
                     
-                    <TabsContent value="map" className="flex-1 min-h-0 mt-0 data-[state=active]:flex flex-col w-full">
-                        <SchedulerTimeline 
-                            cabins={data.cabins}
-                            stays={data.stays}
-                            currentDate={viewDate}
-                            onDateChange={setViewDate}
-                            onAction={handleAction}
-                            isLoading={loading}
-                        />
-                    </TabsContent>
-
+                    {/* TAB LISTA (PRINCIPAL) */}
                     <TabsContent value="list" className="flex-1 overflow-auto mt-0">
-                        <Card className="shadow-sm border-none">
-                            <CardHeader>
-                                <CardTitle>Estadias Ativas</CardTitle>
-                                <CardDescription>Visualização em lista das estadias atuais.</CardDescription>
+                        <Card className="shadow-sm border-none h-full flex flex-col">
+                            <CardHeader className="flex-none flex flex-row items-center justify-between pb-4">
+                                <div>
+                                    <CardTitle>Estadias Ativas</CardTitle>
+                                    <CardDescription>Visualização em lista das estadias atuais.</CardDescription>
+                                </div>
+                                {/* ALTERAÇÃO 2: Botão para abrir o Mapa em Tela Cheia 
+                                */}
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => setIsMapFullScreen(true)}
+                                    className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                                >
+                                    <Calendar className="h-4 w-4" />
+                                    Abrir Mapa
+                                </Button>
                             </CardHeader>
-                            <CardContent>
-                                {/* Passando Cabins e onAction para o StaysList */}
+                            <CardContent className="flex-1 overflow-auto min-h-0">
                                 <StaysList 
                                     stays={data.stays.filter(s => s.status === 'active')} 
                                     cabins={data.cabins}
@@ -179,7 +183,6 @@ export default function StaysPage() {
                                 <CardDescription>Estadias criadas via Fast Stay aguardando preenchimento.</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                {/* Aqui conectamos o onEdit para abrir o modal de edição (handleAction usa 'edit' ou 'details') */}
                                 <FastStaysList 
                                     stays={data.fastStays} 
                                     onEdit={(stay) => handleAction('edit', stay)} 
@@ -201,9 +204,38 @@ export default function StaysPage() {
                 </Tabs>
             </div>
 
+            {/* --- MODAL DE MAPA EM TELA CHEIA --- */}
+            {/* ALTERAÇÃO 3: Dialog que cobre tudo (w-screen h-screen) sem layout 
+            */}
+            <Dialog open={isMapFullScreen} onOpenChange={setIsMapFullScreen}>
+                <DialogContent className="max-w-[100vw] w-screen h-screen p-0 m-0 rounded-none border-none bg-slate-50 flex flex-col overflow-hidden">
+                    {/* Header do Mapa */}
+                    <div className="flex items-center justify-between px-4 py-2 bg-white border-b shadow-sm z-50 shrink-0">
+                        <div className="flex items-center gap-2">
+                            <Calendar className="h-5 w-5 text-blue-600" />
+                            <h2 className="font-bold text-lg text-slate-800">Mapa de Ocupação</h2>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => setIsMapFullScreen(false)} className="hover:bg-red-50 hover:text-red-600">
+                            <X className="h-6 w-6" />
+                        </Button>
+                    </div>
+                    
+                    {/* Corpo do Mapa */}
+                    <div className="flex-1 relative w-full h-full overflow-hidden">
+                        <SchedulerTimeline 
+                            cabins={data.cabins}
+                            stays={data.stays}
+                            currentDate={viewDate}
+                            onDateChange={setViewDate}
+                            onAction={handleAction}
+                            isLoading={loading}
+                        />
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* MODAIS GLOBAIS DA PÁGINA */}
             
-            {/* 1. Editar Estadia */}
             {selectedStay && (
                 <EditStayDialog 
                     isOpen={isEditOpen}
@@ -214,7 +246,6 @@ export default function StaysPage() {
                 />
             )}
 
-            {/* 2. Check-out Alert */}
             <AlertDialog open={isCheckoutAlertOpen} onOpenChange={setIsCheckoutAlertOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -228,7 +259,6 @@ export default function StaysPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* 3. Enviar WhatsApp Modal */}
             <SendWhatsappDialog 
                 isOpen={isWhatsappOpen} 
                 onClose={() => setIsWhatsappOpen(false)} 

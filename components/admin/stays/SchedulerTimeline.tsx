@@ -3,12 +3,12 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
     format, addDays, subDays, differenceInDays, 
-    isToday, startOfDay 
+    isToday, startOfDay, isWeekend 
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
     ChevronLeft, ChevronRight, Calendar as CalendarIcon, 
-    Loader2, MoreHorizontal, LogOut, LogIn, Edit, Eye, MessageCircle, CheckCircle2
+    Loader2, LogOut, Edit, MessageCircle, CheckCircle2
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -29,13 +29,14 @@ interface SchedulerTimelineProps {
     onDateChange: (date: Date) => void;
     onAction: (action: 'edit' | 'checkout' | 'checkin' | 'details' | 'whatsapp' | 'validate', stay: Stay) => void;
     isLoading?: boolean;
+    holidays?: string[]; 
 }
 
-const CELL_WIDTH = 64; 
-const ROW_HEIGHT = 60; 
-const SIDEBAR_WIDTH = 200;
+// --- CONFIGURAÇÕES VISUAIS ---
+const CELL_WIDTH = 48;   
+const ROW_HEIGHT = 52;   
+const SIDEBAR_WIDTH = 150; 
 
-// Função auxiliar para data local
 const parseLocalDate = (dateStr: string) => {
     if (!dateStr) return new Date();
     const cleanDate = dateStr.split('T')[0];
@@ -49,7 +50,8 @@ export function SchedulerTimeline({
     currentDate, 
     onDateChange,
     onAction,
-    isLoading
+    isLoading,
+    holidays = [] 
 }: SchedulerTimelineProps) {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const daysToShow = 30;
@@ -69,6 +71,12 @@ export function SchedulerTimeline({
     const handleNextClick = () => onDateChange(addDays(currentDate, 7));
     const handleTodayClick = () => onDateChange(new Date());
 
+    // Verifica se é Feriado
+    const checkIsHoliday = (date: Date) => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        return holidays.includes(dateStr);
+    };
+
     // --- RENDERIZAÇÃO DA FITA ---
     const renderStayBlock = (stay: Stay) => {
         const checkIn = parseLocalDate(stay.checkInDate);
@@ -78,7 +86,6 @@ export function SchedulerTimeline({
         const offsetDays = differenceInDays(checkIn, startCalendarNorm);
         const durationDays = differenceInDays(checkOut, checkIn);
         
-        // Ajuste Visual: Meio do dia
         const halfDayOffset = CELL_WIDTH / 2;
         let leftPos = (offsetDays * CELL_WIDTH) + halfDayOffset;
         let widthPx = (durationDays * CELL_WIDTH);
@@ -91,33 +98,22 @@ export function SchedulerTimeline({
         if (widthPx <= 4) return null;
         if (leftPos > daysToShow * CELL_WIDTH) return null;
 
-        // --- LÓGICA DE CORES (SOLICITADA) ---
-        let bgClass = "bg-slate-400 border-slate-500 text-white"; // Default (Checked out / etc)
+        let bgClass = "bg-slate-400 border-slate-500 text-white";
 
-        // 1. Aguardando Hóspede -> AMARELO
         if (stay.status === 'pending_guest_data') {
             bgClass = "bg-yellow-400 border-yellow-500 text-yellow-900 hover:bg-yellow-500";
-        }
-        // 2. Aguardando Validação -> VERDE
-        else if (stay.status === 'pending_validation') {
+        } else if (stay.status === 'pending_validation') {
             bgClass = "bg-green-500 border-green-600 text-white hover:bg-green-600";
-        }
-        // 3. Ocorrendo (Ativa) -> VERMELHO
-        else if (stay.status === 'active') {
+        } else if (stay.status === 'active') {
             bgClass = "bg-red-500 border-red-600 text-white hover:bg-red-600";
-        }
-        // 4. Check-out
-        else if (stay.status === 'checked_out') {
+        } else if (stay.status === 'checked_out') {
              bgClass = "bg-slate-400 border-slate-500 opacity-70 text-white hover:bg-slate-500";
         }
 
-        // --- LÓGICA DE PULSO (ATRASADO) ---
-        // Se está ativa e deveria ter saído antes de hoje
         const today = startOfDay(new Date());
         const isLate = stay.status === 'active' && checkOut < today;
         
         if (isLate) {
-            // Mantém vermelho mas pulsa forte e adiciona borda grossa
             bgClass = "bg-red-600 border-red-800 text-white animate-pulse ring-2 ring-red-300";
         }
 
@@ -126,11 +122,10 @@ export function SchedulerTimeline({
                 <TooltipProvider>
                     <Tooltip delayDuration={300}>
                         <TooltipTrigger asChild>
-                            {/* O Trigger do Dropdown precisa ser o filho direto do TooltipTrigger */}
                             <DropdownMenuTrigger asChild>
                                 <button
                                     className={cn(
-                                        "absolute top-2 h-[44px] rounded-md border text-[10px] text-left px-2 overflow-hidden whitespace-nowrap transition-all z-10 flex flex-col justify-center leading-tight outline-none shadow-sm",
+                                        "absolute top-1.5 h-[40px] rounded border text-[10px] text-left px-1.5 overflow-hidden whitespace-nowrap transition-all z-10 flex flex-col justify-center leading-tight outline-none shadow-sm",
                                         bgClass
                                     )}
                                     style={{
@@ -141,10 +136,10 @@ export function SchedulerTimeline({
                                     <div className="flex justify-between items-center w-full">
                                         <span className="font-bold truncate">{stay.guestName}</span>
                                         {widthPx > 80 && isLate && (
-                                            <span className="text-[9px] bg-white/20 px-1 rounded ml-1 animate-none">ATRASADO</span>
+                                            <span className="text-[9px] bg-white/20 px-1 rounded ml-1 animate-none font-bold">ATRASADO</span>
                                         )}
                                     </div>
-                                    {widthPx > 40 && <span className="opacity-90 truncate">{stay.numberOfGuests} pax</span>}
+                                    {widthPx > 40 && <span className="opacity-90 truncate text-[9px]">{stay.numberOfGuests} pax</span>}
                                 </button>
                             </DropdownMenuTrigger>
                         </TooltipTrigger>
@@ -165,16 +160,12 @@ export function SchedulerTimeline({
                 <DropdownMenuContent align="start" className="w-56 z-50">
                     <DropdownMenuLabel className="truncate">
                         {stay.guestName}
-                        {isLate && <span className="ml-2 text-[10px] text-red-500 font-bold">(Atrasado)</span>}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     
-                    <DropdownMenuItem onClick={() => onAction('details', stay)}>
-                        <Eye className="mr-2 h-4 w-4" /> Ver Detalhes
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem onClick={() => onAction('edit', stay)}>
-                        <Edit className="mr-2 h-4 w-4" /> Editar Estadia
+                    {/* --- CORREÇÃO: Botão Unificado --- */}
+                    <DropdownMenuItem onClick={() => onAction('edit', stay)} className="font-medium">
+                        <Edit className="mr-2 h-4 w-4" /> Detalhes / Editar
                     </DropdownMenuItem>
 
                     {stay.status === 'active' && (
@@ -205,129 +196,149 @@ export function SchedulerTimeline({
     };
 
     return (
-        <div className="flex flex-col h-full bg-white rounded-lg border shadow-sm w-full max-w-full">
+        <div className="flex flex-col h-full bg-white rounded-lg border shadow-sm w-full max-w-full overflow-hidden">
             {/* CONTROLES */}
-            <div className="flex items-center justify-between p-3 border-b bg-white z-20 shrink-0">
+            <div className="flex items-center justify-between p-2 border-b bg-white z-20 shrink-0">
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={handlePrevClick}>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={handlePrevClick}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <div className="flex items-center gap-2 px-2 min-w-[140px] justify-center">
+                    <div className="flex items-center gap-2 px-2 min-w-[120px] justify-center">
                         <CalendarIcon className="h-4 w-4 text-slate-500" />
                         <span className="font-medium text-sm">
                             {format(currentDate, "MMMM yyyy", { locale: ptBR })}
                         </span>
                     </div>
-                    <Button variant="outline" size="icon" onClick={handleNextClick}>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleNextClick}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={handleTodayClick} className="text-xs">
+                    <Button variant="ghost" size="sm" onClick={handleTodayClick} className="text-xs h-8">
                         Hoje
                     </Button>
                 </div>
                 
-                {/* Legenda Opcional */}
-                <div className="hidden md:flex items-center gap-3 text-[10px]">
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded bg-red-500"/> Ocorrendo</div>
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded bg-green-500"/> Validar</div>
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded bg-yellow-400"/> Aguardando</div>
+                {/* Legenda Compacta */}
+                <div className="hidden lg:flex items-center gap-3 text-[10px] text-slate-500">
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500"/> Ocorrendo</div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500"/> Validar</div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-yellow-400"/> Aguardando</div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-200 border border-blue-400"/> Hoje</div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded bg-yellow-100 border border-yellow-200"/> Fim de Semana</div>
                 </div>
             </div>
 
-            {/* AREA PRINCIPAL */}
-            <div className="flex-1 flex overflow-hidden relative min-h-0 w-full">
-                
-                {/* 1. COLUNA LATERAL (CABANAS) */}
-                <div 
-                    className="flex-none bg-white border-r z-30 shadow-[4px_0_10px_rgba(0,0,0,0.05)] overflow-hidden flex flex-col h-full"
-                    style={{ width: `${SIDEBAR_WIDTH}px` }}
-                >
-                    <div className="h-10 border-b bg-slate-50 flex items-center px-4 shrink-0">
-                        <span className="text-xs font-bold text-slate-500 uppercase">Acomodação</span>
-                    </div>
-                </div>
-
-                {/* 2. ÁREA DE SCROLL (MAPA) */}
-                <div 
-                    ref={scrollContainerRef}
-                    className="flex-1 overflow-auto bg-slate-50/30 relative w-full"
-                >
-                    <div style={{ width: `${SIDEBAR_WIDTH + (daysToShow * CELL_WIDTH)}px`, minWidth: '100%' }}>
+            {/* AREA DE SCROLL (MAPA) */}
+            <div 
+                ref={scrollContainerRef}
+                className="flex-1 overflow-auto bg-slate-50/30 relative w-full"
+            >
+                <div style={{ width: `${SIDEBAR_WIDTH + (daysToShow * CELL_WIDTH)}px`, minWidth: '100%' }}>
+                    
+                    {/* HEADER DA TABELA (DIAS) - STICKY TOP */}
+                    <div className="sticky top-0 z-30 flex bg-white border-b h-10 shadow-sm w-full">
                         
-                        {/* HEADER DA TABELA (DIAS) */}
-                        <div className="sticky top-0 z-20 flex bg-white border-b h-10 shadow-sm w-full">
-                            <div 
-                                className="sticky left-0 z-30 bg-white border-r h-full shadow-[2px_0_5px_rgba(0,0,0,0.05)]"
-                                style={{ width: `${SIDEBAR_WIDTH}px` }}
-                            />
+                        {/* Canto Superior Esquerdo Fixo */}
+                        <div 
+                            className="sticky left-0 z-40 bg-slate-50 border-r h-full flex items-center px-2 font-bold text-xs text-slate-600 uppercase shadow-[2px_0_5px_rgba(0,0,0,0.05)]"
+                            style={{ width: `${SIDEBAR_WIDTH}px` }}
+                        >
+                            Acomodações
+                        </div>
 
+                        {/* Dias do Calendário */}
+                        {calendarDays.map((day, i) => {
+                            const isCurrentDay = isToday(day);
+                            const isSpecialDay = isWeekend(day) || checkIsHoliday(day);
+
+                            return (
+                                <div 
+                                    key={i}
+                                    className={cn(
+                                        "flex-none border-r flex flex-col items-center justify-center text-xs transition-colors",
+                                        isCurrentDay 
+                                            ? "bg-blue-200 text-blue-900 border-b-2 border-b-blue-500 font-extrabold" 
+                                            : isSpecialDay
+                                                ? "bg-yellow-100/80 text-yellow-900 font-semibold"
+                                                : "bg-white"
+                                    )}
+                                    style={{ width: `${CELL_WIDTH}px` }}
+                                >
+                                    <span className={cn(
+                                        "font-bold uppercase text-[9px]", 
+                                        isCurrentDay ? "text-blue-800" : isSpecialDay ? "text-yellow-700" : "text-slate-400"
+                                    )}>
+                                        {format(day, 'EEE', { locale: ptBR })}
+                                    </span>
+                                    <span className={cn(
+                                        "font-semibold text-[11px]", 
+                                        isCurrentDay ? "text-blue-900" : isSpecialDay ? "text-yellow-900" : "text-slate-700"
+                                    )}>
+                                        {format(day, 'dd')}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* CORPO DA TABELA */}
+                    <div className="relative">
+                        {/* Linhas de fundo (Grid Vertical) */}
+                        <div className="absolute inset-0 z-0 flex pointer-events-none" style={{ paddingLeft: `${SIDEBAR_WIDTH}px` }}>
                             {calendarDays.map((day, i) => {
                                 const isCurrentDay = isToday(day);
+                                const isSpecialDay = isWeekend(day) || checkIsHoliday(day);
+
                                 return (
                                     <div 
-                                        key={i}
+                                        key={i} 
                                         className={cn(
-                                            "flex-none border-r flex flex-col items-center justify-center text-xs",
-                                            isCurrentDay ? "bg-blue-50/50" : "bg-white"
+                                            "flex-none border-r h-full transition-colors", 
+                                            isCurrentDay 
+                                                ? "bg-blue-100/50 border-l border-l-blue-300 border-r-blue-300 shadow-[inset_0_0_30px_rgba(59,130,246,0.15)]" 
+                                                : isSpecialDay
+                                                    ? "bg-yellow-50/50"
+                                                    : ""
                                         )}
-                                        style={{ width: `${CELL_WIDTH}px` }}
-                                    >
-                                        <span className={cn("font-bold uppercase text-[10px]", isCurrentDay ? "text-blue-600" : "text-slate-400")}>
-                                            {format(day, 'EEE', { locale: ptBR })}
-                                        </span>
-                                        <span className={cn("font-semibold", isCurrentDay ? "text-blue-600" : "text-slate-700")}>
-                                            {format(day, 'dd')}
-                                        </span>
-                                    </div>
+                                        style={{ width: `${CELL_WIDTH}px` }} 
+                                    />
                                 );
                             })}
                         </div>
 
-                        {/* CORPO DA TABELA */}
-                        <div className="relative">
-                            <div className="absolute inset-0 z-0 flex pointer-events-none" style={{ paddingLeft: `${SIDEBAR_WIDTH}px` }}>
-                                {calendarDays.map((day, i) => (
-                                    <div 
-                                        key={i} 
-                                        className={cn("flex-none border-r h-full", isToday(day) ? "bg-blue-50/20" : "")}
-                                        style={{ width: `${CELL_WIDTH}px` }} 
-                                    />
-                                ))}
-                            </div>
-
-                            {cabins.map((cabin) => (
+                        {/* Linhas das Cabanas */}
+                        {cabins.map((cabin) => (
+                            <div 
+                                key={cabin.id}
+                                className="relative flex w-full hover:bg-slate-50/50 transition-colors group border-b bg-white/50"
+                                style={{ height: `${ROW_HEIGHT}px` }}
+                            >
+                                {/* Nome da Cabana (STICKY LEFT) */}
                                 <div 
-                                    key={cabin.id}
-                                    className="relative flex w-full hover:bg-slate-50/50 transition-colors group"
-                                    style={{ height: `${ROW_HEIGHT}px` }}
+                                    className="sticky left-0 z-20 bg-white group-hover:bg-slate-50 border-r flex items-center px-2 gap-2 transition-colors shadow-[2px_0_5px_rgba(0,0,0,0.02)]"
+                                    style={{ width: `${SIDEBAR_WIDTH}px` }}
                                 >
-                                    {/* Sidebar Item (STICKY LEFT) */}
-                                    <div 
-                                        className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-r border-b flex items-center px-4 gap-3 transition-colors shadow-[2px_0_5px_rgba(0,0,0,0.02)]"
-                                        style={{ width: `${SIDEBAR_WIDTH}px` }}
-                                    >
-                                        <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xs border shrink-0">
-                                            {cabin.posicao || "#"}
-                                        </div>
-                                        <div className="flex flex-col overflow-hidden min-w-0">
-                                            <span className="text-sm font-medium truncate text-slate-700">
-                                                {cabin.name}
-                                            </span>
-                                            <span className="text-[10px] text-slate-400 truncate">
-                                                Cap: {cabin.capacity}
-                                            </span>
-                                        </div>
+                                    <div className="h-6 w-6 rounded bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-[10px] border shrink-0">
+                                        {cabin.posicao || "#"}
                                     </div>
-
-                                    <div className="relative flex-1 border-b">
-                                        {stays
-                                            .filter(s => s.cabinId === cabin.id)
-                                            .map(stay => renderStayBlock(stay))
-                                        }
+                                    <div className="flex flex-col overflow-hidden min-w-0">
+                                        <span className="text-xs font-semibold truncate text-slate-700">
+                                            {cabin.name}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400 truncate">
+                                            Cap: {cabin.capacity}
+                                        </span>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+
+                                {/* Área das Fitas */}
+                                <div className="relative flex-1">
+                                    {stays
+                                        .filter(s => s.cabinId === cabin.id)
+                                        .map(stay => renderStayBlock(stay))
+                                    }
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

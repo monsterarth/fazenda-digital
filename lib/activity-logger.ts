@@ -25,6 +25,7 @@ export type ActivityLogData = {
   | "booking_cancelled_by_guest"
   | "survey_submitted"
   | "stay_token_updated"
+  | "stay_updated"
   // Tipos de Solicitação (já estavam no dashboard, mas faltando aqui)
   | 'request_created'       
   | 'request_cancelled'

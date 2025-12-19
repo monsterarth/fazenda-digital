@@ -61,20 +61,39 @@ export interface Stay {
   checkInDate: string;
   checkOutDate: string;
   numberOfGuests: number;
+  token: string;
+  status: 'pending_validation' | 'pending_guest_data' | 'active' | 'checked_out' | 'canceled';
+  preCheckInId: string;
+  createdAt: Timestamp;
+  endedAt?: Timestamp;
+  endedBy?: string;
+  source?: string; // Ex: 'fast_reception' | 'web'
+  
+  // --- DADOS DE CONTATO E OBSERVAÇÕES ---
+  guestPhone?: string;
+  guestEmail?: string;
+  tempGuestPhone?: string; // Telefone temporário (Fast Stay)
+  notes?: string; // Observações gerais da estadia
+
+  // --- DETALHAMENTO DE HÓSPEDES (ACF) ---
   guestCount?: {
       adults: number;
       children: number;
       babies: number;
       total: number;
+      pets?: number;
   };
-  token: string;
-status: 'pending_validation' | 'pending_guest_data' | 'active' | 'checked_out' | 'canceled';
-  preCheckInId: string;
-  createdAt: Timestamp;
-  endedAt?: Timestamp;
-  endedBy?: string;
-  guestPhone?: string;
-  
+
+  // --- ACOMPANHANTES ---
+  // Acompanhantes salvos diretamente na estadia para performance
+  companions?: {
+      fullName: string;
+      category?: 'adult' | 'child' | 'baby';
+      age?: string | number; // Legado
+      cpf?: string;
+  }[];
+
+  // --- RELACIONAMENTOS ---
   guest?: Guest;
   cabin?: Cabin;
   bookings?: Booking[];
@@ -83,11 +102,14 @@ status: 'pending_validation' | 'pending_guest_data' | 'active' | 'checked_out' |
     general?: Timestamp;
     pet?: Timestamp;
   }
+  
   communicationStatus?: {
     welcomeMessageSentAt?: Timestamp | null;
     feedbackMessageSentAt?: Timestamp | null;
+    preCheckInSentAt?: Timestamp | null;
   };
-  pets: any;
+  
+  pets: any; // Pode ser number (count) ou array de objetos (detalhes)
 }
 
 
@@ -445,6 +467,7 @@ export type ActivityLogType =
   | 'checkin_rejected'
   // Estadia
   | 'stay_created_manually'
+  | 'stay_updated' 
   | 'stay_ended'
   | 'stay_token_updated'
   // Café

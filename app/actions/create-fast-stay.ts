@@ -14,7 +14,9 @@ interface FastStayData {
     cpf?: string;
     guestName: string;
     guestPhone: string;
-    cabinId?: string; // AGORA OPCIONAL
+    cabinId: string; // Obrigatório para definir período
+    checkInDate: string; // YYYY-MM-DD
+    checkOutDate: string; // YYYY-MM-DD
     guests: {
         adults: number;
         children: number;
@@ -32,23 +34,19 @@ export async function createFastStayAction(data: FastStayData) {
         }
 
         const token = generateNumericToken();
-        let cabinName = "A Definir"; // Padrão se não houver cabana
 
-        // Se houver ID de cabana (futuro), busca o nome. Senão, ignora.
-        if (data.cabinId) {
-            const cabinSnap = await adminDb.collection('cabins').doc(data.cabinId).get();
-            if (cabinSnap.exists) {
-                cabinName = cabinSnap.data()?.name || "A Definir";
-            }
-        }
+        // 1. Buscar Cabana (Obrigatória)
+        const cabinSnap = await adminDb.collection('cabins').doc(data.cabinId).get();
+        if (!cabinSnap.exists) throw new Error("Cabana não encontrada");
+        const cabinName = cabinSnap.data()?.name || "Cabana";
         
-        // Busca configurações globais para template de whats
+        // 2. Configurações e Template
         const propertySnap = await adminDb.collection('properties').doc('default').get();
         const propertyData = propertySnap.data();
         let whatsappTemplate = propertyData?.messages?.whatsappPreCheckIn || propertyData?.whatsappPreCheckIn;
 
+        // 3. Gestão do Guest (CPF)
         let guestId = null;
-
         if (data.cpf) {
             guestId = data.cpf.replace(/\D/g, '');
             const guestRef = adminDb.collection('guests').doc(guestId);
@@ -74,7 +72,12 @@ export async function createFastStayAction(data: FastStayData) {
             }
         }
 
+        // 4. Criar a Estadia
         const stayRef = adminDb.collection('stays').doc();
+        
+        // Define horários padrão (Check-in 14h / Check-out 12h)
+        const checkInISO = new Date(`${data.checkInDate}T14:00:00`).toISOString();
+        const checkOutISO = new Date(`${data.checkOutDate}T12:00:00`).toISOString();
         
         const totalHumans = data.guests.adults + data.guests.children + data.guests.babies;
         const totalPets = data.guests.pets;
@@ -83,19 +86,17 @@ export async function createFastStayAction(data: FastStayData) {
             token: token,
             status: 'pending_guest_data', 
             
-            // DATAS INDEFINIDAS (NULL)
-            checkInDate: null,
-            checkOutDate: null,
+            checkInDate: checkInISO,
+            checkOutDate: checkOutISO,
             
             guestName: data.guestName,
             numberOfGuests: totalHumans,
             
-            // CABANA PODE SER NULL/VAZIA
-            cabinId: data.cabinId || null,
+            cabinId: data.cabinId,
             cabinName: cabinName,
             
-            guestId: guestId, 
-            guestPhone: data.guestPhone, 
+            guestId: guestId,
+            guestPhone: data.guestPhone,
             tempGuestPhone: data.guestPhone,
             
             guestCount: {
@@ -106,6 +107,7 @@ export async function createFastStayAction(data: FastStayData) {
             },
             
             pets: totalPets, 
+            
             source: 'fast_reception',
             createdAt: Timestamp.now(),
         });
@@ -113,7 +115,7 @@ export async function createFastStayAction(data: FastStayData) {
         // 5. Mensagem WhatsApp
         const dynamicLink = `https://portal.fazendadorosa.com.br/?token=${token}`;
         
-        let message = `Olá *${data.guestName.split(' ')[0]}*! Sua reserva foi iniciada. Código de acesso: *${token}*. Confirme seus dados aqui: ${dynamicLink}`;
+        let message = `Olá *${data.guestName.split(' ')[0]}*! Sua reserva na *${cabinName}* foi iniciada. Código de acesso: *${token}*. Confirme seus dados aqui: ${dynamicLink}`;
 
         if (whatsappTemplate) {
             message = whatsappTemplate;
@@ -122,15 +124,7 @@ export async function createFastStayAction(data: FastStayData) {
             message = message.replace('https://portal.fazendadorosa.com.br/pre-check-in', dynamicLink); 
 
             message = message.replace(/{guestName}/gi, data.guestName.split(' ')[0]);
-            
-            // Se não tiver cabana, ajusta texto para não ficar estranho "Sua reserva na A Definir"
-            if (!data.cabinId) {
-                 message = message.replace(/na *{cabinName}/gi, ""); // Remove "na {cabinName}"
-                 message = message.replace(/{cabinName}/gi, "");
-            } else {
-                 message = message.replace(/{cabinName}/gi, cabinName);
-            }
-            
+            message = message.replace(/{cabinName}/gi, cabinName);
             message = message.replace(/{token}/gi, token);
             
             if (!message.includes(dynamicLink) && !message.includes(token)) {
@@ -157,7 +151,7 @@ export async function createFastStayAction(data: FastStayData) {
                     'communicationStatus.preCheckInSentAt': Timestamp.now()
                 });
             } catch (error) {
-                // Ignora erro de log
+                // Log silencioso
             }
         }
         

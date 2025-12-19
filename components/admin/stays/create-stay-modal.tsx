@@ -7,30 +7,67 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Loader2, CheckCircle, AlertCircle, PawPrint, User, Users, Baby } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle, PawPrint, User, Users, Baby, Calendar } from "lucide-react";
 import { createFastStayAction } from "@/app/actions/create-fast-stay";
-import { isValidCPF } from "@/lib/validators"; 
+import { addDays, format } from "date-fns";
+
+// Validação de CPF
+function validateCPF(cpf: string): boolean {
+    cpf = cpf.replace(/[^\d]+/g, '');
+    if (cpf.length !== 11 || !!cpf.match(/(\d)\1{10}/)) return false;
+    let sum = 0, remainder;
+    for (let i = 1; i <= 9; i++) sum += parseInt(cpf.substring(i-1, i)) * (11 - i);
+    remainder = (sum * 10) % 11;
+    if (remainder === 10 || remainder === 11) remainder = 0;
+    if (remainder !== parseInt(cpf.substring(9, 10))) return false;
+    sum = 0;
+    for (let i = 1; i <= 10; i++) sum += parseInt(cpf.substring(i-1, i)) * (12 - i);
+    remainder = (sum * 10) % 11;
+    if (remainder === 10 || remainder === 11) remainder = 0;
+    if (remainder !== parseInt(cpf.substring(10, 11))) return false;
+    return true;
+}
 
 export const CreateStayModal = () => {
-    const { isOpen, type, onClose } = useModalStore();
+    const { isOpen, type, onClose, data } = useModalStore();
+    const cabins = data.cabins || [];
     const isModalOpen = isOpen && type === "createStay";
 
     const [isLoading, setIsLoading] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
     const [cpfError, setCpfError] = useState(false);
     
-    // FORMULÁRIO SIMPLIFICADO: Sem datas, sem cabana
+    // Cálculos de data inicial (Padrão: Daqui a 2 dias)
+    const today = new Date();
+    const defaultCheckIn = addDays(today, 0); // Padrão hoje para agilidade
+    const defaultCheckOut = addDays(defaultCheckIn, 1);
+
     const [formData, setFormData] = useState({
         cpf: "",
         guestName: "",
         guestPhone: "",
+        cabinId: "",
+        checkInDate: format(defaultCheckIn, 'yyyy-MM-dd'),
+        checkOutDate: format(defaultCheckOut, 'yyyy-MM-dd'),
         adults: 2,
         children: 0,
         babies: 0,
         pets: 0
     });
+
+    // Resetar datas ao abrir
+    useEffect(() => {
+        if (isModalOpen) {
+            setFormData(prev => ({
+                ...prev,
+                checkInDate: format(new Date(), 'yyyy-MM-dd'),
+                checkOutDate: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+            }));
+        }
+    }, [isModalOpen]);
 
     const handleCpfBlur = async () => {
         const cleanCpf = formData.cpf.replace(/\D/g, '');
@@ -38,23 +75,19 @@ export const CreateStayModal = () => {
             setCpfError(false);
             return;
         }
-
-        if (!isValidCPF(cleanCpf)) {
+        if (!validateCPF(cleanCpf)) {
             setCpfError(true);
             toast.error("CPF Inválido");
             return;
         }
-
         setCpfError(false);
         setIsSearching(true);
-        
         try {
             const response = await fetch('/api/admin/guests/lookup-by-cpf', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cpf: cleanCpf }),
             });
-
             if (response.ok) {
                 const guest = await response.json();
                 if (guest) {
@@ -77,9 +110,9 @@ export const CreateStayModal = () => {
 
     const handleClose = () => {
         setFormData({
-            cpf: "", 
-            guestName: "", 
-            guestPhone: "", 
+            cpf: "", guestName: "", guestPhone: "", cabinId: "", 
+            checkInDate: format(new Date(), 'yyyy-MM-dd'),
+            checkOutDate: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
             adults: 2, children: 0, babies: 0, pets: 0
         });
         setCpfError(false);
@@ -89,14 +122,13 @@ export const CreateStayModal = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const cleanCpf = formData.cpf.replace(/\D/g, '');
-        
-        if (cleanCpf.length > 0 && !isValidCPF(cleanCpf)) {
+        if (cleanCpf.length > 0 && !validateCPF(cleanCpf)) {
             toast.error("Corrija o CPF antes de continuar.");
             return;
         }
 
-        if (!formData.guestName || !formData.guestPhone) {
-            toast.error("Preencha os campos obrigatórios (*)");
+        if (!formData.guestName || !formData.guestPhone || !formData.cabinId || !formData.checkInDate || !formData.checkOutDate) {
+            toast.error("Preencha todos os campos obrigatórios (*)");
             return;
         }
 
@@ -106,7 +138,9 @@ export const CreateStayModal = () => {
                 cpf: cleanCpf || undefined,
                 guestName: formData.guestName,
                 guestPhone: formData.guestPhone,
-                // CabinId removido
+                cabinId: formData.cabinId,
+                checkInDate: formData.checkInDate,
+                checkOutDate: formData.checkOutDate,
                 guests: {
                     adults: Number(formData.adults),
                     children: Number(formData.children),
@@ -130,20 +164,16 @@ export const CreateStayModal = () => {
 
     return (
         <Dialog open={isModalOpen} onOpenChange={handleClose}>
-            <DialogContent 
-                className="sm:max-w-[650px]"
-                onInteractOutside={(e) => {
-                    e.preventDefault();
-                }}
-            >
+            <DialogContent className="sm:max-w-[650px]">
                 <DialogHeader>
-                    <DialogTitle>Estadia Rápida (Open)</DialogTitle>
+                    <DialogTitle>Estadia Rápida</DialogTitle>
                     <DialogDescription>
-                        Cria uma reserva em aberto. Cabana e Datas serão definidas depois.
+                        Crie um link de cadastro rápido para o hóspede. Defina o período abaixo.
                     </DialogDescription>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="grid gap-4 py-2">
+                    {/* Linha 1: CPF */}
                     <div className={`grid grid-cols-4 gap-4 items-end p-3 rounded-md border ${cpfError ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
                         <div className="col-span-2">
                             <Label className={cpfError ? "text-red-700" : "text-blue-900 font-semibold"}>CPF (Opcional)</Label>
@@ -151,10 +181,7 @@ export const CreateStayModal = () => {
                                 <Input 
                                     placeholder="Apenas números..." 
                                     value={formData.cpf}
-                                    onChange={(e) => {
-                                        setFormData({...formData, cpf: e.target.value});
-                                        if(cpfError) setCpfError(false); 
-                                    }}
+                                    onChange={(e) => setFormData({...formData, cpf: e.target.value})}
                                     onBlur={handleCpfBlur}
                                     className={`pr-8 bg-white ${cpfError ? 'border-red-500' : ''}`}
                                     maxLength={14}
@@ -164,10 +191,11 @@ export const CreateStayModal = () => {
                         </div>
                         <div className={`col-span-2 text-xs pb-2 ${cpfError ? 'text-red-600' : 'text-blue-700'}`}>
                             <AlertCircle className="inline h-3 w-3 mr-1"/>
-                            {cpfError ? "CPF Inválido." : "Busca automática de cadastro."}
+                            {cpfError ? "CPF Inválido." : "Busca automática no histórico."}
                         </div>
                     </div>
 
+                    {/* Linha 2: Dados Básicos */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>Nome Completo *</Label>
@@ -183,13 +211,39 @@ export const CreateStayModal = () => {
                                 value={formData.guestPhone}
                                 onChange={(e) => setFormData({...formData, guestPhone: e.target.value})}
                                 placeholder="31 99999-9999"
-                                className="bg-white"
                             />
                         </div>
                     </div>
 
-                    {/* SELEÇÃO DE CABANA REMOVIDA */}
+                    {/* Linha 3: Reserva (Datas Obrigatórias) */}
+                    <div className="grid grid-cols-3 gap-4 bg-slate-50 p-3 rounded border border-slate-100">
+                        <div className="col-span-1">
+                            <Label className="flex items-center gap-2"><CheckCircle className="h-3 w-3 text-green-600"/> Cabana *</Label>
+                            <Select 
+                                value={formData.cabinId} 
+                                onValueChange={(v) => setFormData({...formData, cabinId: v})}
+                            >
+                                <SelectTrigger className="bg-white"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                                <SelectContent>
+                                    {cabins.length > 0 ? (
+                                        cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)
+                                    ) : (
+                                        <SelectItem value="loading" disabled>Carregando...</SelectItem>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label className="flex items-center gap-2"><Calendar className="h-3 w-3 text-blue-600"/> Entrada *</Label>
+                            <Input type="date" className="bg-white" value={formData.checkInDate} onChange={(e) => setFormData({...formData, checkInDate: e.target.value})} />
+                        </div>
+                        <div>
+                            <Label className="flex items-center gap-2"><Calendar className="h-3 w-3 text-red-600"/> Saída *</Label>
+                            <Input type="date" className="bg-white" value={formData.checkOutDate} onChange={(e) => setFormData({...formData, checkOutDate: e.target.value})} />
+                        </div>
+                    </div>
 
+                    {/* Linha 4: Ocupação (ACFP) */}
                     <div className="bg-gray-50 p-3 rounded-md border border-gray-100">
                         <Label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Ocupação (ACFP)</Label>
                         <div className="grid grid-cols-4 gap-3">
@@ -216,7 +270,7 @@ export const CreateStayModal = () => {
                         <Button type="button" variant="ghost" onClick={handleClose} className="mr-2">Cancelar</Button>
                         <Button type="submit" disabled={isLoading || cpfError} className="bg-green-700 hover:bg-green-800 text-white">
                             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle className="mr-2 h-4 w-4"/>}
-                            Criar Estadia
+                            Criar e Enviar
                         </Button>
                     </div>
                 </form>

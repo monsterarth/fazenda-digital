@@ -1,4 +1,3 @@
-// components/admin/stays/fast-stays-list.tsx
 "use client";
 
 import React, { useState } from 'react';
@@ -6,45 +5,47 @@ import { Stay } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Phone, Loader2, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { Send, Phone, Loader2, Trash2, AlertTriangle, Edit } from 'lucide-react';
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { resendFastStayWhatsapp } from '@/app/actions/resend-whatsapp';
 import { deleteFastStayAction } from '@/app/actions/delete-fast-stay';
-import { CounterCheckinModal } from './counter-checkin-modal'; 
 
 interface FastStaysListProps {
     stays: Stay[];
+    // Nova prop para permitir edição pelo pai
+    onEdit?: (stay: Stay) => void;
 }
 
-export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
+export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) => {
+    // Estado para Reenvio
     const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
     const [phoneToEdit, setPhoneToEdit] = useState("");
     const [isResendDialogOpen, setIsResendDialogOpen] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
 
+    // Estado para Exclusão
     const [stayToDelete, setStayToDelete] = useState<Stay | null>(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-
-    const [selectedStayForCheckin, setSelectedStayForCheckin] = useState<Stay | null>(null);
 
     // --- FUNÇÕES DE REENVIO ---
     const handleOpenResend = (stay: Stay) => {
@@ -112,7 +113,7 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
                     <TableRow>
                         <TableHead>Hóspede</TableHead>
                         <TableHead>Cabana</TableHead>
-                        <TableHead title="Adultos · Crianças · Bebês · Pets">ACFP</TableHead> 
+                        <TableHead>Check-in</TableHead>
                         <TableHead>Telefone (Atual)</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
@@ -121,40 +122,26 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
                     {stays.length > 0 ? (
                         stays.map(stay => {
                             const s = stay as any;
-                            
-                            const adults = s.guestCount?.adults || 0;
-                            const children = s.guestCount?.children || 0;
-                            const babies = s.guestCount?.babies || 0;
-                            const pets = typeof s.pets === 'number' ? s.pets : (Array.isArray(s.pets) ? s.pets.length : 0);
-
                             return (
                                 <TableRow key={stay.id}>
                                     <TableCell className="font-medium">
                                         {stay.guestName}
                                         <div className="text-xs text-muted-foreground">Token: {s.token}</div>
                                     </TableCell>
-                                    <TableCell>
-                                        {stay.cabinName || <span className="text-muted-foreground italic">A Definir</span>}
-                                    </TableCell>
-                                    
-                                    {/* COLUNA ACFP SIMPLIFICADA */}
-                                    <TableCell>
-                                        <span className="font-mono text-xs font-medium bg-slate-100 text-slate-700 px-2 py-1 rounded-md whitespace-nowrap border border-slate-200" title="Adultos / Crianças / Bebês / Pets">
-                                            {adults} · {children} · {babies} · {pets}
-                                        </span>
-                                    </TableCell>
-
+                                    <TableCell>{stay.cabinName}</TableCell>
+                                    <TableCell>{format(new Date(stay.checkInDate), "dd/MM")}</TableCell>
                                     <TableCell>{s.guestPhone || s.tempGuestPhone}</TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                className="text-green-600 border-green-200 hover:bg-green-50 h-8"
-                                                onClick={() => setSelectedStayForCheckin(stay)}
-                                                title="Realizar Check-in de Balcão"
+                                            {/* BOTÃO EDITAR */}
+                                            <Button 
+                                                size="sm" 
+                                                variant="outline" 
+                                                className="h-8 px-2"
+                                                onClick={() => onEdit && onEdit(stay)}
+                                                title="Editar / Inserir mais dados"
                                             >
-                                                <CheckCircle2 className="w-3 h-3 mr-1" /> Check-in
+                                                <Edit className="w-4 h-4 text-blue-600" />
                                             </Button>
 
                                             <Button 
@@ -187,6 +174,7 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
                 </TableBody>
             </Table>
 
+            {/* Modal de Reenvio */}
             <Dialog open={isResendDialogOpen} onOpenChange={setIsResendDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
@@ -216,6 +204,7 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
                 </DialogContent>
             </Dialog>
 
+            {/* Alerta de Exclusão */}
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -240,14 +229,6 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays }) => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-
-            {selectedStayForCheckin && (
-                <CounterCheckinModal 
-                    stay={selectedStayForCheckin}
-                    isOpen={!!selectedStayForCheckin}
-                    onClose={() => setSelectedStayForCheckin(null)}
-                />
-            )}
         </>
     );
 };

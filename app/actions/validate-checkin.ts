@@ -36,15 +36,20 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
 
         // LÓGICA DE DETECÇÃO DE DUPLICIDADE
         if (staySnap.exists) {
-            // CENÁRIO 1: O ID passado JÁ É de uma estadia (Fluxo Fast Stay)
+            // CENÁRIO 1: O ID passado JÁ É de uma estadia (Fluxo Fast Stay sendo validada)
             console.log("[Validate] Documento encontrado na coleção 'stays'. Atualizando estadia existente.");
             sourceData = { ...staySnap.data(), id: staySnap.id };
             isExistingStay = true;
             
-            // Se tiver um preCheckInId vinculado na estadia, atualizamos ele também
+            // Se tiver um preCheckInId vinculado na estadia, usamos ele como fonte secundária se necessário
             if (sourceData.preCheckInId) {
                 preCheckInId = sourceData.preCheckInId;
                 preCheckInRef = adminDb.collection('preCheckIns').doc(sourceData.preCheckInId);
+                const linkedPreCheckInSnap = await preCheckInRef.get();
+                if (linkedPreCheckInSnap.exists) {
+                    // Mescla dados do pre-checkin sobre a estadia (prioridade para o pre-checkin que tem os dados frescos)
+                    sourceData = { ...sourceData, ...linkedPreCheckInSnap.data() };
+                }
             }
         } else if (preCheckInSnap.exists) {
             // CENÁRIO 2: O ID passado é de um Pré-Check-in (Fluxo Web Padrão)
@@ -79,10 +84,11 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
         const rawName = sourceData.leadGuestName || sourceData.guestName || "Hóspede";
         const normalizedGuestName = normalizeString(rawName);
         
-        const rawCompanions = sourceData.companions || [];
+        // Garante que companions seja um array
+        const rawCompanions = Array.isArray(sourceData.companions) ? sourceData.companions : [];
         const normalizedCompanions = rawCompanions.map((c: any) => ({
             ...c,
-            fullName: normalizeString(c.fullName)
+            fullName: normalizeString(c.fullName || c.name || "")
         }));
 
         // LÓGICA ACF: Conta o hóspede principal como Adulto + Acompanhantes
@@ -95,14 +101,14 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
             else if (c.category === 'child') children++;
             else if (c.category === 'baby') babies++;
             else {
-                // Fallback para legado (se vier idade numérica antiga)
+                // Fallback para legado
                 const age = parseInt(c.age);
                 if (!isNaN(age)) {
-                    if (age >= 18) adults++;
-                    else if (age >= 6) children++;
+                    if (age >= 12) adults++;
+                    else if (age >= 2) children++;
                     else babies++;
                 } else {
-                    adults++; // Padrão se não souber
+                    adults++;
                 }
             }
         });
@@ -113,12 +119,20 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
         const batch = adminDb.batch();
         const checkInTimestamp = Timestamp.fromDate(new Date(data.dates.from));
         
-        // Se a estadia já existe, mantemos o token dela. Se nova, geramos um.
         const token = (isExistingStay && sourceData.token) ? sourceData.token : generateToken();
+
+        // Extração de dados de contato para salvar na raiz da estadia
+        const guestPhone = sourceData.leadGuestPhone || sourceData.guestPhone || "";
+        const guestEmail = sourceData.leadGuestEmail || sourceData.email || "";
 
         const stayPayload: any = {
             status: 'active',
             guestName: normalizedGuestName,
+            
+            // ## CORREÇÃO: Salvando contatos na raiz para facilitar acesso
+            guestPhone: guestPhone,
+            guestEmail: guestEmail,
+
             cabinId: selectedCabin.id,
             cabinName: selectedCabin.name,
             checkInDate: data.dates.from.toISOString(),
@@ -134,6 +148,10 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
             
             token: token,
             pets: sourceData.pets || [],
+            
+            // ## CORREÇÃO: Copiando Explicitamente os Acompanhantes para a Estadia
+            companions: normalizedCompanions, 
+            
             updatedAt: Timestamp.now(),
         };
 
@@ -154,29 +172,32 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
                 status: 'validado', 
                 stayId: stayRef.id,
                 leadGuestName: normalizedGuestName,
+                // Garante que o pré-checkin também tenha a versão normalizada
                 companions: normalizedCompanions,
             });
         }
 
         // 5. Atualização/Criação do Perfil do Hóspede (Guest)
-        const rawDoc = sourceData.leadGuestDocument || sourceData.guestId || sourceData.cpf;
+        // Busca CPF em várias propriedades possíveis
+        const rawDoc = sourceData.leadGuestDocument || sourceData.guestId || sourceData.cpf || sourceData.document;
         
         if (rawDoc) {
             const numericCpf = rawDoc.replace(/\D/g, '');
-            if (numericCpf) {
+            if (numericCpf.length > 5) { // Validação mínima de comprimento
                 const guestRef = adminDb.collection('guests').doc(numericCpf);
                 const guestSnap = await guestRef.get();
 
                 const guestCommonData = {
                     name: normalizedGuestName,
-                    email: sourceData.leadGuestEmail || sourceData.email || "",
-                    phone: sourceData.leadGuestPhone || sourceData.guestPhone || "",
+                    email: guestEmail,
+                    phone: guestPhone,
                     address: sourceData.address || {},
                     updatedAt: Timestamp.now(),
                 };
 
                 if (guestSnap.exists) {
                     const guestData = guestSnap.data() as Guest;
+                    // Adiciona nova estadia ao histórico sem duplicar
                     const history = new Set(guestData.stayHistory || []);
                     history.add(stayRef.id);
 
@@ -185,6 +206,7 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
                         stayHistory: Array.from(history),
                     });
                 } else {
+                    console.log(`[Validate] Criando novo perfil de hóspede para CPF: ${numericCpf}`);
                     batch.set(guestRef, {
                         ...guestCommonData,
                         document: numericCpf,
@@ -203,7 +225,7 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
             timestamp: Timestamp.now(),
             type: 'checkin_validated',
             actor: { type: 'admin', identifier: adminEmail },
-            details: `Estadia de ${normalizedGuestName} validada via ${isExistingStay ? 'Atualização Fast Stay' : 'Novo Check-in'}.`,
+            details: `Estadia de ${normalizedGuestName} validada.`,
             link: '/admin/stays'
         });
 
@@ -212,9 +234,7 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
 
         // 7. Integração WhatsApp (Boas Vindas)
         let whatsappStatus = "não enviado";
-        const guestPhone = sourceData.leadGuestPhone || sourceData.guestPhone;
 
-        // Só envia mensagem se tiver telefone e configuração ativa
         if (propertyData && propertyData.messages?.whatsappWelcome && guestPhone) {
             try {
                 const firstName = normalizedGuestName.split(' ')[0];
@@ -244,11 +264,9 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
                 if (zapResult.success) {
                     whatsappStatus = "enviado com sucesso";
                     
-                    // --- CORREÇÃO: REGISTRO DO LOG PARA TIMELINE ---
                     try {
-                        // A) Log na coleção message_logs (Para a Timeline funcionar)
                         await adminDb.collection('message_logs').add({
-                            type: 'whatsappWelcome', // ID CRUCIAL
+                            type: 'whatsappWelcome',
                             content: messageBody,
                             guestName: normalizedGuestName,
                             stayId: stayRef.id,
@@ -258,7 +276,6 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
                             phone: guestPhone
                         });
 
-                        // B) Atualiza status na estadia (Redundância)
                         await stayRef.update({
                             'communicationStatus.welcomeMessageSentAt': Timestamp.now()
                         });
@@ -266,7 +283,6 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
                     } catch (logErr) {
                         console.error("Erro ao registrar log de boas-vindas:", logErr);
                     }
-                    // --------------------------------------------------
 
                 } else {
                     whatsappStatus = `erro no envio: ${zapResult.error}`;
@@ -278,11 +294,11 @@ export async function validateCheckinAction(checkInId: string, data: ValidationD
 
         revalidatePath('/admin/stays');
         revalidatePath('/admin/hospedes');
-        revalidatePath('/admin/comunicacao'); // Garante que o painel atualize
+        revalidatePath('/admin/comunicacao'); 
 
         return { 
             success: true, 
-            message: `Estadia validada com sucesso! (${isExistingStay ? 'Atualizada' : 'Criada'}). WhatsApp: ${whatsappStatus}.`, 
+            message: `Estadia validada com sucesso! Token: ${token}`, 
             token: token 
         };
 

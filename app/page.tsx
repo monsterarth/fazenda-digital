@@ -1,5 +1,3 @@
-// fazenda-digital/app/page.tsx
-
 "use client";
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -9,10 +7,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { setCookie } from 'cookies-next';
 import Link from 'next/link';
-// Usamos Image apenas para a logo, não para o fundo
 import Image from 'next/image';
+import { getDoc, doc } from 'firebase/firestore'; // Importação do Firestore
+import { getFirebaseDb } from '@/lib/firebase';   // Sua função de conexão
 
-import { useProperty } from '@/context/PropertyContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
@@ -22,6 +20,7 @@ import { Loader2, KeyRound, Clock, Home } from 'lucide-react';
 
 import { checkStayStatusAction, StayStatusResponse } from '@/app/actions/check-stay-status';
 import { PreCheckinForm } from '@/components/pre-checkin-form';
+import { Property } from '@/types'; // Importar tipo Property
 
 const loginSchema = z.object({
   token: z.string().length(6, "O código deve ter 6 dígitos."),
@@ -31,7 +30,9 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 type ViewState = 'LOADING' | 'LOGIN' | 'FORM' | 'WAITING' | 'ENDED';
 
 function GuestPortalContent() {
-  const { property, loading: propertyLoading } = useProperty();
+  const [propertyData, setPropertyData] = useState<Property | null>(null);
+  const [loadingProperty, setLoadingProperty] = useState(true);
+  
   const [view, setView] = useState<ViewState>('LOGIN');
   const [stayData, setStayData] = useState<any>(null);
   const [currentToken, setCurrentToken] = useState<string>("");
@@ -44,6 +45,34 @@ function GuestPortalContent() {
     resolver: zodResolver(loginSchema),
     defaultValues: { token: "" },
   });
+
+  // --- CARREGAR PROPRIEDADE DIRETAMENTE ---
+  useEffect(() => {
+    const loadProperty = async () => {
+        try {
+            const db = await getFirebaseDb();
+            // Tenta buscar 'main_property', se falhar tenta 'default'
+            let snap = await getDoc(doc(db, 'properties', 'main_property'));
+            
+            if (!snap.exists()) {
+                console.warn("main_property não encontrado, tentando 'default'...");
+                snap = await getDoc(doc(db, 'properties', 'default'));
+            }
+
+            if (snap.exists()) {
+                console.log("Propriedade carregada:", snap.data()); // Debug
+                setPropertyData({ id: snap.id, ...snap.data() } as Property);
+            } else {
+                console.error("Nenhuma configuração de propriedade encontrada.");
+            }
+        } catch (error) {
+            console.error("Erro ao carregar propriedade:", error);
+        } finally {
+            setLoadingProperty(false);
+        }
+    };
+    loadProperty();
+  }, []);
 
   const handleTokenProcessing = async (token: string) => {
     if(!token || token.length < 6) return;
@@ -116,7 +145,7 @@ function GuestPortalContent() {
     }
   }, [searchParams]);
 
-  if (propertyLoading) {
+  if (loadingProperty) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 text-white p-8 bg-black/40 rounded-lg backdrop-blur-md">
         <Loader2 className="h-10 w-10 animate-spin" />
@@ -125,18 +154,20 @@ function GuestPortalContent() {
     );
   }
 
-  const safeProperty = property || { 
+  // Fallback seguro se não carregar nada
+  const safeProperty = propertyData || { 
     id: 'default', 
     name: 'Portal do Hóspede', 
     logoUrl: '', 
-    messages: { preCheckInSuccessTitle: 'Sucesso', preCheckInSuccessSubtitle: 'Dados enviados' } 
+    messages: { preCheckInSuccessTitle: 'Sucesso', preCheckInSuccessSubtitle: 'Dados enviados' },
+    policies: { general: { content: "Erro ao carregar políticas." }, pet: { content: "" } }
   } as any;
 
   // 1. TELA: FORMULÁRIO PRE-CHECK-IN
   if (view === 'FORM') {
     return (
       <div className="w-full max-w-4xl animate-in fade-in zoom-in-95 duration-500 p-4">
-        {/* Container semi-transparente para o formulário */}
+        {/* Passamos a propriedade carregada diretamente do banco */}
         <div className="bg-white/95 rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden">
              <PreCheckinForm property={safeProperty} prefilledData={stayData} token={currentToken} />
         </div>

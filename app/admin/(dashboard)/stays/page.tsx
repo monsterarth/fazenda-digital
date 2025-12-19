@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link'; // Importante para a navegação
+import Link from 'next/link';
 import { 
     RefreshCcw, Plus, History, Calendar, List, Zap, FileCheck2, 
     ArrowLeft, UserPlus 
@@ -17,8 +17,9 @@ import { SchedulerTimeline } from '@/components/admin/stays/SchedulerTimeline';
 import { StaysList } from '@/components/admin/stays/stays-list';
 import { FastStaysList } from '@/components/admin/stays/fast-stays-list';
 import { PendingCheckInsList } from '@/components/admin/stays/pending-checkins-list';
-import { CreateStayDialog } from '@/components/admin/stays/create-stay-dialog'; // Manual (Legacy)
+import { CreateStayDialog } from '@/components/admin/stays/create-stay-dialog'; 
 import { EditStayDialog } from '@/components/admin/stays/edit-stay-dialog';
+import { SendWhatsappDialog } from '@/components/admin/stays/send-whatsapp-dialog'; // NOVO IMPORT
 import { 
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle 
@@ -37,10 +38,11 @@ export default function StaysPage() {
     const [loading, setLoading] = useState(true);
     const [viewDate, setViewDate] = useState(new Date());
 
-    // Estado para ações
+    // Estados de Ação
     const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isCheckoutAlertOpen, setIsCheckoutAlertOpen] = useState(false);
+    const [isWhatsappOpen, setIsWhatsappOpen] = useState(false); // NOVO ESTADO
 
     const loadData = async () => {
         setLoading(true);
@@ -62,8 +64,8 @@ export default function StaysPage() {
         loadData();
     }, [viewDate]);
 
-    // --- HANDLERS ---
-    const handleMapAction = (action: string, stay: Stay) => {
+    // --- HANDLER UNIFICADO ---
+    const handleAction = (action: string, stay: Stay) => {
         setSelectedStay(stay);
         
         if (action === 'edit' || action === 'details' || action === 'checkin' || action === 'validate') {
@@ -71,18 +73,18 @@ export default function StaysPage() {
         } else if (action === 'checkout') {
             setIsCheckoutAlertOpen(true);
         } else if (action === 'whatsapp') {
+             // Abre link direto (como no mapa)
              const phone = stay.guest?.phone || stay.guestPhone || ""; 
-             if (phone) {
-                window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
-             } else {
-                toast.error("Telefone não encontrado.");
-             }
+             if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
+             else toast.error("Telefone não encontrado.");
+        } else if (action === 'whatsapp_modal') {
+             // Abre o novo modal de escrever mensagem (usado na lista)
+             setIsWhatsappOpen(true);
         }
     };
 
     const confirmCheckout = async () => {
         if (!selectedStay || !user) return;
-        
         const toastId = toast.loading("Realizando check-out...");
         try {
             const result = await finalizeStayAction(selectedStay.id, user.email || 'Admin');
@@ -105,13 +107,11 @@ export default function StaysPage() {
             {/* HEADER */}
             <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-4 flex-none">
                 <div className="flex items-center gap-4">
-                    {/* BOTÃO VOLTAR AO DASHBOARD */}
                     <Link href="/admin/dashboard">
                         <Button variant="outline" size="icon" title="Voltar ao Dashboard">
                             <ArrowLeft className="h-4 w-4 text-slate-600" />
                         </Button>
                     </Link>
-                    
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Gestão de Estadias</h1>
                         <p className="text-muted-foreground text-sm hidden md:block">
@@ -124,27 +124,12 @@ export default function StaysPage() {
                     <Button variant="outline" size="sm" onClick={loadData} title="Atualizar">
                         <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     </Button>
-                    
-                    {/* ESTADIA MANUAL (Antigo Legado) - Agora Secundário */}
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => onOpen('createStayLegacy')}
-                        className="hidden md:flex"
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => onOpen('createStayLegacy')} className="hidden md:flex">
                         <History className="mr-2 h-4 w-4" /> Manual
                     </Button>
-
-                    {/* ESTADIA RÁPIDA - Botão Principal Verde */}
-                    {/* Chama 'createStay' que é o modal de link rápido */}
-                    <Button 
-                        onClick={() => onOpen('createStay', { cabins: data.cabins })} 
-                        className="bg-green-600 hover:bg-green-700 text-white shadow-sm"
-                    >
+                    <Button onClick={() => onOpen('createStay', { cabins: data.cabins })} className="bg-green-600 hover:bg-green-700 text-white shadow-sm">
                         <Zap className="mr-2 h-4 w-4" /> Estadia Rápida
                     </Button>
-
-                    {/* Modal Manual fica aqui para ser controlado pelo hook se necessário */}
                     <CreateStayDialog cabins={data.cabins} onSuccess={loadData} />
                 </div>
             </div>
@@ -165,7 +150,7 @@ export default function StaysPage() {
                             stays={data.stays}
                             currentDate={viewDate}
                             onDateChange={setViewDate}
-                            onAction={handleMapAction}
+                            onAction={handleAction}
                             isLoading={loading}
                         />
                     </TabsContent>
@@ -174,9 +159,15 @@ export default function StaysPage() {
                         <Card className="shadow-sm border-none">
                             <CardHeader>
                                 <CardTitle>Estadias Ativas</CardTitle>
+                                <CardDescription>Visualização em lista das estadias atuais.</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <StaysList stays={data.stays.filter(s => s.status === 'active')} />
+                                {/* Passando Cabins e onAction para o StaysList */}
+                                <StaysList 
+                                    stays={data.stays.filter(s => s.status === 'active')} 
+                                    cabins={data.cabins}
+                                    onAction={handleAction}
+                                />
                             </CardContent>
                         </Card>
                     </TabsContent>
@@ -188,7 +179,11 @@ export default function StaysPage() {
                                 <CardDescription>Estadias criadas via Fast Stay aguardando preenchimento.</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <FastStaysList stays={data.fastStays} />
+                                {/* Aqui conectamos o onEdit para abrir o modal de edição (handleAction usa 'edit' ou 'details') */}
+                                <FastStaysList 
+                                    stays={data.fastStays} 
+                                    onEdit={(stay) => handleAction('edit', stay)} 
+                                />
                             </CardContent>
                         </Card>
                     </TabsContent>
@@ -206,7 +201,9 @@ export default function StaysPage() {
                 </Tabs>
             </div>
 
-            {/* MODAIS */}
+            {/* MODAIS GLOBAIS DA PÁGINA */}
+            
+            {/* 1. Editar Estadia */}
             {selectedStay && (
                 <EditStayDialog 
                     isOpen={isEditOpen}
@@ -217,22 +214,26 @@ export default function StaysPage() {
                 />
             )}
 
+            {/* 2. Check-out Alert */}
             <AlertDialog open={isCheckoutAlertOpen} onOpenChange={setIsCheckoutAlertOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Check-out</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Confirmar saída de <b>{selectedStay?.guestName}</b>?
-                        </AlertDialogDescription>
+                        <AlertDialogDescription>Confirmar saída de <b>{selectedStay?.guestName}</b>?</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmCheckout} className="bg-red-600 hover:bg-red-700">
-                            Confirmar Saída
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={confirmCheckout} className="bg-red-600 hover:bg-red-700">Confirmar Saída</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* 3. Enviar WhatsApp Modal */}
+            <SendWhatsappDialog 
+                isOpen={isWhatsappOpen} 
+                onClose={() => setIsWhatsappOpen(false)} 
+                stay={selectedStay} 
+            />
         </div>
     );
 }

@@ -1,29 +1,18 @@
+// components/admin/stays/fast-stays-list.tsx
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Stay } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { Send, Phone, Loader2, Trash2, AlertTriangle, Edit } from 'lucide-react';
+import { Send, Phone, Loader2, Trash2, Edit, Users } from 'lucide-react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
@@ -32,32 +21,61 @@ import { deleteFastStayAction } from '@/app/actions/delete-fast-stay';
 
 interface FastStaysListProps {
     stays: Stay[];
-    // Nova prop para permitir edição pelo pai
     onEdit?: (stay: Stay) => void;
 }
 
 export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) => {
-    // Estado para Reenvio
-    const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
+    // --- ESTADOS ---
+    const [selectedGroup, setSelectedGroup] = useState<Stay[] | null>(null);
     const [phoneToEdit, setPhoneToEdit] = useState("");
     const [isResendDialogOpen, setIsResendDialogOpen] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Estado para Exclusão
-    const [stayToDelete, setStayToDelete] = useState<Stay | null>(null);
+    const [groupToDelete, setGroupToDelete] = useState<Stay[] | null>(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-    // --- FUNÇÕES DE REENVIO ---
-    const handleOpenResend = (stay: Stay) => {
-        const s = stay as any;
+    // --- AGRUPAMENTO DE ESTADIAS ---
+    const groupedStays = useMemo(() => {
+        const groups: { [key: string]: Stay[] } = {};
+        const singles: Stay[] = [];
+
+        stays.forEach(stay => {
+            if (stay.groupId) {
+                if (!groups[stay.groupId]) groups[stay.groupId] = [];
+                groups[stay.groupId].push(stay);
+            } else {
+                singles.push(stay);
+            }
+        });
+
+        // Converte o objeto de grupos em array
+        const groupArrays = Object.values(groups);
+        // Combina grupos (como arrays) e singles (como arrays de 1 item)
+        return [...groupArrays, ...singles.map(s => [s])].sort((a, b) => {
+             // Ordena pela data de criação do primeiro item
+             const dateA = a[0]?.createdAt ? new Date(a[0].createdAt as any).getTime() : 0;
+             const dateB = b[0]?.createdAt ? new Date(b[0].createdAt as any).getTime() : 0;
+             return dateB - dateA;
+        });
+    }, [stays]);
+
+    // --- AÇÕES ---
+
+    const handleOpenResend = (group: Stay[]) => {
+        // Pega o líder ou o primeiro
+        const leader = group.find(s => s.isMainBooker) || group[0];
+        const s = leader as any;
         const currentPhone = s.guestPhone || s.tempGuestPhone || "";
+        
         setPhoneToEdit(currentPhone);
-        setSelectedStay(stay);
+        setSelectedGroup(group);
         setIsResendDialogOpen(true);
     };
 
     const handleResend = async () => {
-        if (!selectedStay) return;
+        if (!selectedGroup) return;
+        const leader = selectedGroup.find(s => s.isMainBooker) || selectedGroup[0];
+        
         const cleanPhone = phoneToEdit.replace(/\D/g, '');
         if (cleanPhone.length < 10) {
             toast.error("Telefone inválido.");
@@ -66,9 +84,10 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
 
         setIsProcessing(true);
         try {
-            const result = await resendFastStayWhatsapp(selectedStay.id, cleanPhone);
+            // Reenvia apenas para o líder (que detém o token principal)
+            const result = await resendFastStayWhatsapp(leader.id, cleanPhone);
             if (result.success) {
-                toast.success(result.message);
+                toast.success("Enviado para o líder do grupo!");
                 setIsResendDialogOpen(false);
             } else {
                 toast.error(result.message);
@@ -80,29 +99,25 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
         }
     };
 
-    // --- FUNÇÕES DE EXCLUSÃO ---
-    const handleOpenDelete = (stay: Stay) => {
-        setStayToDelete(stay);
+    const handleOpenDelete = (group: Stay[]) => {
+        setGroupToDelete(group);
         setIsDeleteDialogOpen(true);
     };
 
     const handleDelete = async () => {
-        if (!stayToDelete) return;
+        if (!groupToDelete) return;
 
         setIsProcessing(true);
         try {
-            const result = await deleteFastStayAction(stayToDelete.id);
-            if (result.success) {
-                toast.success(result.message);
-                setIsDeleteDialogOpen(false);
-            } else {
-                toast.error(result.message);
-            }
+            // Deleta todas as estadias do grupo em paralelo
+            await Promise.all(groupToDelete.map(stay => deleteFastStayAction(stay.id)));
+            toast.success(`${groupToDelete.length} estadia(s) removida(s).`);
+            setIsDeleteDialogOpen(false);
         } catch (error) {
-            toast.error("Erro ao excluir.");
+            toast.error("Erro ao excluir algumas estadias.");
         } finally {
             setIsProcessing(false);
-            setStayToDelete(null);
+            setGroupToDelete(null);
         }
     };
 
@@ -112,34 +127,46 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
                 <TableHeader>
                     <TableRow>
                         <TableHead>Hóspede</TableHead>
-                        <TableHead>Cabana</TableHead>
+                        <TableHead>Cabana(s)</TableHead>
                         <TableHead>Check-in</TableHead>
-                        <TableHead>Telefone (Atual)</TableHead>
+                        <TableHead>Telefone</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {stays.length > 0 ? (
-                        stays.map(stay => {
-                            const s = stay as any;
+                    {groupedStays.length > 0 ? (
+                        groupedStays.map((group, idx) => {
+                            const leader = group.find(s => s.isMainBooker) || group[0];
+                            const isGroup = group.length > 1;
+                            const s = leader as any;
+                            const cabinNames = group.map(i => i.cabinName).join(', ');
+
                             return (
-                                <TableRow key={stay.id}>
-                                    <TableCell className="font-medium">
-                                        {stay.guestName}
-                                        <div className="text-xs text-muted-foreground">Token: {s.token}</div>
+                                <TableRow key={leader.id || idx} className={isGroup ? "bg-slate-50/50" : ""}>
+                                    <TableCell>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium flex items-center gap-2">
+                                                {leader.guestName}
+                                                {isGroup && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full flex items-center gap-1"><Users className="w-3 h-3"/> Grupo</span>}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">Token: {leader.token}</span>
+                                        </div>
                                     </TableCell>
-                                    <TableCell>{stay.cabinName}</TableCell>
-                                    <TableCell>{format(new Date(stay.checkInDate), "dd/MM")}</TableCell>
+                                    <TableCell>
+                                        <div className="max-w-[200px] truncate" title={cabinNames}>
+                                            {cabinNames}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>{format(new Date(leader.checkInDate), "dd/MM")}</TableCell>
                                     <TableCell>{s.guestPhone || s.tempGuestPhone}</TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">
-                                            {/* BOTÃO EDITAR */}
                                             <Button 
                                                 size="sm" 
                                                 variant="outline" 
                                                 className="h-8 px-2"
-                                                onClick={() => onEdit && onEdit(stay)}
-                                                title="Editar / Inserir mais dados"
+                                                onClick={() => onEdit && onEdit(leader)}
+                                                title="Editar Líder"
                                             >
                                                 <Edit className="w-4 h-4 text-blue-600" />
                                             </Button>
@@ -148,7 +175,7 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
                                                 size="sm" 
                                                 variant="outline" 
                                                 className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8"
-                                                onClick={() => handleOpenResend(stay)}
+                                                onClick={() => handleOpenResend(group)}
                                                 title="Reenviar WhatsApp"
                                             >
                                                 <Send className="w-3 h-3 mr-1" /> Reenviar
@@ -158,8 +185,8 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
                                                 size="sm" 
                                                 variant="ghost" 
                                                 className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
-                                                onClick={() => handleOpenDelete(stay)}
-                                                title="Cancelar/Excluir"
+                                                onClick={() => handleOpenDelete(group)}
+                                                title="Cancelar Reserva"
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </Button>
@@ -169,7 +196,7 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
                             );
                         })
                     ) : (
-                        <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">Nenhum Fast Stay aguardando preenchimento.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">Nenhum Fast Stay aguardando.</TableCell></TableRow>
                     )}
                 </TableBody>
             </Table>
@@ -178,13 +205,13 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
             <Dialog open={isResendDialogOpen} onOpenChange={setIsResendDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Reenviar Convite WhatsApp</DialogTitle>
+                        <DialogTitle>Reenviar Convite</DialogTitle>
                         <DialogDescription>
-                            Corrija o número se necessário e reenvie o link de acesso.
+                            Enviar link para <b>{selectedGroup?.[0]?.guestName}</b> referente a {selectedGroup?.length} cabana(s).
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">
-                        <Label>Número do Celular</Label>
+                        <Label>Celular do Líder</Label>
                         <div className="flex items-center gap-2 mt-1.5">
                             <Phone className="w-4 h-4 text-muted-foreground" />
                             <Input 
@@ -198,7 +225,7 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
                         <Button variant="ghost" onClick={() => setIsResendDialogOpen(false)}>Cancelar</Button>
                         <Button onClick={handleResend} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white">
                             {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Send className="w-4 h-4 mr-2"/>}
-                            Enviar
+                            Enviar Link Único
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -208,13 +235,11 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2 text-red-600">
-                            <AlertTriangle className="h-5 w-5" /> Cancelar Estadia Rápida?
-                        </AlertDialogTitle>
+                        <AlertDialogTitle className="text-red-600">Cancelar Reserva{groupToDelete && groupToDelete.length > 1 ? 's' : ''}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Você tem certeza que deseja excluir a reserva pendente de <strong>{stayToDelete?.guestName}</strong>?
+                            Você está prestes a excluir <b>{groupToDelete?.length} estadia(s)</b> vinculadas a {groupToDelete?.[0]?.guestName}.
                             <br/><br/>
-                            Essa ação não pode ser desfeita e o link enviado no WhatsApp deixará de funcionar.
+                            O link enviado deixará de funcionar imediatamente.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -222,9 +247,9 @@ export const FastStaysList: React.FC<FastStaysListProps> = ({ stays, onEdit }) =
                         <AlertDialogAction 
                             onClick={handleDelete} 
                             disabled={isProcessing}
-                            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                            className="bg-red-600 hover:bg-red-700"
                         >
-                            {isProcessing ? "Excluindo..." : "Sim, Excluir"}
+                            {isProcessing ? "Excluindo..." : "Sim, Excluir Tudo"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

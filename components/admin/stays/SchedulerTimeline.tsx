@@ -1,3 +1,4 @@
+//components\admin\stays\SchedulerTimeline.tsx
 "use client";
 
 import React, { useState, useMemo, useRef } from 'react';

@@ -1,3 +1,4 @@
+//app\admin\(dashboard)\stays\page.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';

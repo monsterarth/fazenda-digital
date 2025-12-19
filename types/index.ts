@@ -67,6 +67,9 @@ export interface Stay {
   createdAt: Timestamp;
   endedAt?: Timestamp;
   endedBy?: string;
+  groupId?: string; // Identificador único do grupo (gerado na reserva)
+  isMainBooker?: boolean; // Se true, este é a estadia "mãe" que originou o grupo
+  originalBookerName?: string; // Nome de quem fez a reserva (para rastreio se o titular mudar)
   source?: string; // Ex: 'fast_reception' | 'web'
   
   // --- DADOS DE CONTATO E OBSERVAÇÕES ---
@@ -164,6 +167,14 @@ export interface PreCheckIn {
   createdAt: Timestamp;
   status: PreCheckInStatus;
   stayId?: string;
+  relatedStayIds?: string[]; // IDs de todas as estadias do grupo
+  cabinAssignments?: CabinAssignment[]; // O mapa de quem fica onde
+}
+export interface CabinAssignment {
+    cabinId: string;
+    responsibleName: string;
+    responsiblePhone: string; // Essencial para o sistema assumir a nova identidade
+    guestsCount: number;
 }
 
 // ========================================================================

@@ -1,3 +1,4 @@
+//components\admin\stays\pending-checkins-list.tsx
 "use client"
 
 import React, { useState } from "react"
@@ -73,6 +74,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useAuth } from "@/context/AuthContext"
 import { validateCheckinAction } from "@/app/actions/validate-checkin"
+import { rejectCheckinAction } from "@/app/actions/reject-checkin"
 import { CopyButton } from "@/components/ui/copy-button"
 
 // Helper para traduzir a categoria
@@ -106,6 +108,7 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
 }) => {
   const { user } = useAuth()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isRejecting, setIsRejecting] = useState(false);
   const [selectedCheckIn, setSelectedCheckIn] = useState<PreCheckIn | null>(
     null
   )
@@ -208,7 +211,26 @@ export const PendingCheckInsList: React.FC<PendingCheckInsListProps> = ({
   }
 
   const handleRejectStay = async () => {
-    toast.info("Funcionalidade de recusa em desenvolvimento.")
+    if (!selectedCheckIn || !user?.email) return;
+    
+    setIsRejecting(true);
+    const toastId = toast.loading("Recusando pré-check-in...");
+
+    try {
+        const result = await rejectCheckinAction(selectedCheckIn.id, user.email);
+        
+        if (result.success) {
+            toast.success(result.message, { id: toastId });
+            setIsModalOpen(false);
+            setSelectedCheckIn(null);
+        } else {
+            toast.error("Erro ao recusar", { id: toastId, description: result.message });
+        }
+    } catch (error) {
+        toast.error("Erro inesperado", { id: toastId });
+    } finally {
+        setIsRejecting(false);
+    }
   }
 
   const formatAddress = (address: PreCheckIn["address"]) => {

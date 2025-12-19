@@ -1,4 +1,4 @@
-//lib\schemas\stay-schema.ts
+// lib/schemas/stay-schema.ts
 import { z } from 'zod';
 import { isValidCPF } from '@/lib/validators';
 import { normalizeString } from '@/lib/utils';
@@ -46,8 +46,9 @@ export const fullStaySchema = z.object({
     companions: z.array(companionSchema),
     pets: z.array(petSchema),
 
-    // Stay
-    cabinId: z.string().min(1, "É obrigatório selecionar uma cabana."),
+    // Stay - ALTERADO PARA ARRAY
+    cabinIds: z.array(z.string()).min(1, "Selecione pelo menos uma cabana."),
+    
     dates: z.object({
         from: z.date({ required_error: "Data de check-in é obrigatória." }),
         to: z.date({ required_error: "Data de check-out é obrigatória." }),
@@ -70,13 +71,12 @@ export const fullStaySchema = z.object({
 
 export type FullStayFormValues = z.infer<typeof fullStaySchema>;
 
-// --- SCHEMA DO CHECK-IN DE BALCÃO ---
+// --- SCHEMA DO CHECK-IN DE BALCÃO (Mantido igual) ---
 export const counterCheckinSchema = z.object({
     stayId: z.string(),
     guestName: z.string().min(3, "Nome do hóspede é obrigatório.").transform(normalizeString),
     guestPhone: z.string().optional(),
     
-    // CPF OBRIGATÓRIO AQUI
     guestDocument: z.string().min(11, "CPF é obrigatório para cadastrar o hóspede."), 
     
     vehiclePlate: z.string().optional(),

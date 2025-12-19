@@ -1,3 +1,4 @@
+//components\admin\stays\stays-list.tsx
 "use client";
 
 import React, { useState, useTransition, useMemo } from 'react';

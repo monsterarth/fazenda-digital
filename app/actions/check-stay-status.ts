@@ -7,21 +7,21 @@ export type StayStatusResponse = {
     valid: boolean;
     message?: string;
     action?: 'GO_TO_FORM' | 'SHOW_WAITING' | 'DO_LOGIN' | 'SHOW_ENDED';
-    stayData?: any; // Dados para pré-preencher o formulário ou mostrar na tela
+    stayData?: any; 
 };
 
 export async function checkStayStatusAction(token: string): Promise<StayStatusResponse> {
-    noStore(); // Garante que não haja cache na validação
+    noStore(); 
     
     try {
-        // 1. Validação básica
+        // 1. Validação do Token
         if (!token || token.length < 3) {
             return { valid: false, message: "Código inválido." };
         }
 
         console.log(`[CheckStatus] Verificando token: ${token}`);
 
-        // 2. Busca no Firestore
+        // 2. Busca da Estadia no Firestore
         const snapshot = await adminDb.collection('stays')
             .where('token', '==', token)
             .limit(1)
@@ -33,16 +33,73 @@ export async function checkStayStatusAction(token: string): Promise<StayStatusRe
 
         const doc = snapshot.docs[0];
         const data = doc.data();
-        const status = data.status || 'pending_guest_data'; // Fallback seguro
+        const status = data.status || 'pending_guest_data'; 
 
-        console.log(`[CheckStatus] Estadia encontrada. Status: ${status} | Pets: ${JSON.stringify(data.pets)}`);
-
-        // 3. Roteamento Inteligente (State Machine)
+        // ---------------------------------------------------------
+        // NOVO: Busca Inteligente do Perfil do Hóspede (Guest Profile)
+        // ---------------------------------------------------------
+        let guestProfile: any = null;
         
-        // CASO A: Hóspede ainda não preencheu os dados
+        // Coleta possíveis chaves para encontrar o hóspede (CPF na estadia, GuestID, etc)
+        const possibleIds = [
+            data.guestId,           
+            data.guestDocument,     
+            data.cpf,               
+            data.document           
+        ].filter(id => id && typeof id === 'string');
+
+        const uniqueIds = Array.from(new Set(possibleIds));
+
+        for (const rawId of uniqueIds) {
+            if (guestProfile) break;
+            const cleanId = rawId.replace(/\D/g, ''); 
+            
+            if (cleanId.length >= 10) { 
+                // Tenta pelo ID do documento (Se o ID do doc for o CPF)
+                const docRef = await adminDb.collection('guests').doc(cleanId).get();
+                if (docRef.exists) {
+                    guestProfile = docRef.data();
+                    break;
+                }
+                // Tenta query pelo campo 'document' dentro do doc
+                const queryCpf = await adminDb.collection('guests').where('document', '==', cleanId).limit(1).get();
+                if (!queryCpf.empty) {
+                    guestProfile = queryCpf.docs[0].data();
+                    break;
+                }
+            }
+        }
+        // ---------------------------------------------------------
+
+        // 3. Lógica de Grupo
+        let relatedStays: any[] = [];
+        
+        if (data.groupId) {
+            const groupSnap = await adminDb.collection('stays')
+                .where('groupId', '==', data.groupId)
+                .get();
+            
+            relatedStays = groupSnap.docs.map(d => ({
+                id: d.id,
+                cabinId: d.data().cabinId,
+                cabinName: d.data().cabinName,
+                status: d.data().status,
+                guestCount: d.data().guestCount || { adults: 1, children: 0, babies: 0, total: 1 }
+            }));
+            
+            relatedStays.sort((a, b) => a.cabinName.localeCompare(b.cabinName));
+        } else {
+            relatedStays = [{ 
+                id: doc.id, 
+                cabinId: data.cabinId, 
+                cabinName: data.cabinName,
+                guestCount: data.guestCount 
+            }];
+        }
+
+        // 4. Roteamento Inteligente
         if (status === 'pending_guest_data') {
             
-            // Normalização rápida dos pets para garantir integridade
             let normalizedPets: any = 0;
             if (Array.isArray(data.pets)) {
                 normalizedPets = data.pets;
@@ -55,25 +112,38 @@ export async function checkStayStatusAction(token: string): Promise<StayStatusRe
                 action: 'GO_TO_FORM',
                 stayData: {
                     id: doc.id,
-                    guestName: data.guestName,
-                    guestPhone: data.guestPhone || data.tempGuestPhone, // Prioriza o oficial
-                    guestId: data.guestId, // CPF se houver
-                    email: data.email,
+                    groupId: data.groupId,
+                    
+                    // --- DADOS PESSOAIS E ENDEREÇO (Prioridade: Perfil > Estadia) ---
+                    guestName: guestProfile?.name || data.guestName,
+                    guestPhone: guestProfile?.phone || data.guestPhone || data.tempGuestPhone,
+                    email: guestProfile?.email || data.email || '',
+                    guestId: guestProfile?.document || data.guestId || '', // CPF
+                    
+                    // Endereço completo puxado do perfil (se existir)
+                    address: guestProfile?.address || data.address || {
+                        cep: '', street: '', number: '', complement: '', 
+                        neighborhood: '', city: '', state: '', country: 'Brasil'
+                    },
+                    
+                    // Outros dados complementares
+                    vehiclePlate: guestProfile?.vehiclePlate || data.vehiclePlate || '',
+                    isForeigner: guestProfile?.isForeigner || data.isForeigner || false,
+                    country: guestProfile?.country || data.country || 'Brasil',
+                    
+                    // --- DADOS DA ESTADIA (Imutáveis) ---
                     cabinName: data.cabinName,
                     cabinId: data.cabinId,
-                    // Passamos as datas para mostrar no cabeçalho do form se quiser
                     checkInDate: data.checkInDate, 
                     checkOutDate: data.checkOutDate,
                     guestCount: data.guestCount,
-                    
-                    // --- CORREÇÃO AQUI: Passando os dados de Pets e Placa ---
                     pets: normalizedPets,
-                    vehiclePlate: data.vehiclePlate || ''
+                    
+                    relatedStays: relatedStays 
                 }
             };
         }
 
-        // CASO B: Hóspede já preencheu, mas recepção não aprovou
         if (status === 'pending_validation') {
             return {
                 valid: true,
@@ -85,18 +155,16 @@ export async function checkStayStatusAction(token: string): Promise<StayStatusRe
             };
         }
 
-        // CASO C: Estadia Ativa (Login direto)
         if (status === 'active') {
             return {
                 valid: true,
                 action: 'DO_LOGIN',
                 stayData: {
-                    token: token // Confirma o token para o login
+                    token: token 
                 }
             };
         }
 
-        // CASO D: Estadia Encerrada
         if (status === 'checked_out') {
             return {
                 valid: true,
@@ -105,7 +173,6 @@ export async function checkStayStatusAction(token: string): Promise<StayStatusRe
             };
         }
 
-        // Fallback para status desconhecidos
         return { valid: false, message: "Status da estadia desconhecido." };
 
     } catch (error: any) {

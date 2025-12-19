@@ -5,18 +5,14 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { sendWhatsAppMessage } from '@/lib/whatsapp-client';
 import { revalidatePath } from 'next/cache';
 import { isValidCPF } from '@/lib/validators'; 
+import { v4 as uuidv4 } from 'uuid';
 
 function generateNumericToken(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-interface FastStayData {
-    cpf?: string;
-    guestName: string;
-    guestPhone: string;
-    cabinId: string; // Obrigatório para definir período
-    checkInDate: string; // YYYY-MM-DD
-    checkOutDate: string; // YYYY-MM-DD
+interface CabinConfig {
+    cabinId: string;
     guests: {
         adults: number;
         children: number;
@@ -25,22 +21,43 @@ interface FastStayData {
     }
 }
 
+interface FastStayData {
+    cpf?: string;
+    guestName: string;
+    guestPhone: string;
+    cabinConfigurations: CabinConfig[];
+    checkInDate: string; 
+    checkOutDate: string; 
+}
+
 export async function createFastStayAction(data: FastStayData) {
     try {
-        if (data.cpf) {
-            if (!isValidCPF(data.cpf)) {
-                return { success: false, message: "O CPF informado é inválido." };
-            }
+        if (data.cpf && !isValidCPF(data.cpf)) {
+            return { success: false, message: "O CPF informado é inválido." };
+        }
+        
+        if (!data.cabinConfigurations || data.cabinConfigurations.length === 0) {
+            return { success: false, message: "Selecione pelo menos uma cabana." };
         }
 
-        const token = generateNumericToken();
-
-        // 1. Buscar Cabana (Obrigatória)
-        const cabinSnap = await adminDb.collection('cabins').doc(data.cabinId).get();
-        if (!cabinSnap.exists) throw new Error("Cabana não encontrada");
-        const cabinName = cabinSnap.data()?.name || "Cabana";
+        const batch = adminDb.batch();
+        const mainToken = generateNumericToken();
         
-        // 2. Configurações e Template
+        // --- CORREÇÃO DO ERRO ---
+        // Se houver mais de uma cabana, gera ID. Se não, usa null (o Firestore aceita null, mas não undefined)
+        const groupId = data.cabinConfigurations.length > 1 ? uuidv4() : null;
+
+        // 1. Validar e Buscar Nomes das Cabanas
+        const cabinIds = data.cabinConfigurations.map(c => c.cabinId);
+        const cabinPromises = cabinIds.map(id => adminDb.collection('cabins').doc(id).get());
+        const cabinSnaps = await Promise.all(cabinPromises);
+        
+        const validCabinsMap = new Map();
+        cabinSnaps.forEach(snap => {
+            if (snap.exists) validCabinsMap.set(snap.id, snap.data()?.name || "Cabana");
+        });
+
+        // 2. Configurações de Mensagem
         const propertySnap = await adminDb.collection('properties').doc('default').get();
         const propertyData = propertySnap.data();
         let whatsappTemplate = propertyData?.messages?.whatsappPreCheckIn || propertyData?.whatsappPreCheckIn;
@@ -60,9 +77,9 @@ export async function createFastStayAction(data: FastStayData) {
             };
 
             if (guestSnap.exists) {
-                await guestRef.update(guestUpdatePayload);
+                batch.update(guestRef, guestUpdatePayload);
             } else {
-                await guestRef.set({
+                batch.set(guestRef, {
                     ...guestUpdatePayload,
                     cpf: guestId,
                     createdAt: Timestamp.now(),
@@ -72,50 +89,79 @@ export async function createFastStayAction(data: FastStayData) {
             }
         }
 
-        // 4. Criar a Estadia
-        const stayRef = adminDb.collection('stays').doc();
-        
-        // Define horários padrão (Check-in 14h / Check-out 12h)
+        // 4. Criar as Estadias
         const checkInISO = new Date(`${data.checkInDate}T14:00:00`).toISOString();
         const checkOutISO = new Date(`${data.checkOutDate}T12:00:00`).toISOString();
-        
-        const totalHumans = data.guests.adults + data.guests.children + data.guests.babies;
-        const totalPets = data.guests.pets;
+        let mainStayId = "";
+        let cabinNamesList: string[] = [];
 
-        await stayRef.set({
-            token: token,
-            status: 'pending_guest_data', 
+        for (let i = 0; i < data.cabinConfigurations.length; i++) {
+            const config = data.cabinConfigurations[i];
+            const cabinName = validCabinsMap.get(config.cabinId);
+            if (!cabinName) continue; 
+
+            cabinNamesList.push(cabinName);
+
+            const stayRef = adminDb.collection('stays').doc();
+            const isMain = i === 0; 
             
-            checkInDate: checkInISO,
-            checkOutDate: checkOutISO,
-            
-            guestName: data.guestName,
-            numberOfGuests: totalHumans,
-            
-            cabinId: data.cabinId,
-            cabinName: cabinName,
-            
-            guestId: guestId,
-            guestPhone: data.guestPhone,
-            tempGuestPhone: data.guestPhone,
-            
-            guestCount: {
-                adults: data.guests.adults,
-                children: data.guests.children,
-                babies: data.guests.babies,
-                total: totalHumans
-            },
-            
-            pets: totalPets, 
-            
-            source: 'fast_reception',
-            createdAt: Timestamp.now(),
-        });
+            if (isMain) mainStayId = stayRef.id;
+
+            const g = config.guests;
+            const totalHumans = g.adults + g.children + g.babies;
+            const totalPets = g.pets;
+
+            const thisToken = isMain ? mainToken : generateNumericToken();
+
+            // Montagem do Objeto Stay
+            const stayPayload: any = {
+                token: thisToken,
+                status: 'pending_guest_data', 
+                
+                checkInDate: checkInISO,
+                checkOutDate: checkOutISO,
+                
+                guestName: data.guestName, 
+                numberOfGuests: totalHumans, 
+                
+                cabinId: config.cabinId,
+                cabinName: cabinName,
+                
+                guestId: guestId,
+                guestPhone: data.guestPhone,
+                tempGuestPhone: data.guestPhone,
+                
+                guestCount: {
+                    adults: g.adults,
+                    children: g.children,
+                    babies: g.babies,
+                    total: totalHumans
+                },
+                pets: totalPets, 
+                
+                source: 'fast_reception',
+                createdAt: Timestamp.now(),
+                isMainBooker: isMain,
+            };
+
+            // Adiciona groupId apenas se ele existir (não for null/undefined)
+            // Ou passa explicitamente null se o banco aceitar, mas 'undefined' quebra o Firestore.
+            if (groupId) {
+                stayPayload.groupId = groupId;
+            } else {
+                stayPayload.groupId = null; // Garante que não vá undefined
+            }
+
+            batch.set(stayRef, stayPayload);
+        }
+
+        await batch.commit();
 
         // 5. Mensagem WhatsApp
-        const dynamicLink = `https://portal.fazendadorosa.com.br/?token=${token}`;
+        const dynamicLink = `https://portal.fazendadorosa.com.br/?token=${mainToken}`;
+        const cabinNamesString = cabinNamesList.join(', ');
         
-        let message = `Olá *${data.guestName.split(' ')[0]}*! Sua reserva na *${cabinName}* foi iniciada. Código de acesso: *${token}*. Confirme seus dados aqui: ${dynamicLink}`;
+        let message = `Olá *${data.guestName.split(' ')[0]}*! Sua reserva na *${cabinNamesString}* foi iniciada. Código de acesso: *${mainToken}*. Confirme seus dados aqui: ${dynamicLink}`;
 
         if (whatsappTemplate) {
             message = whatsappTemplate;
@@ -124,35 +170,32 @@ export async function createFastStayAction(data: FastStayData) {
             message = message.replace('https://portal.fazendadorosa.com.br/pre-check-in', dynamicLink); 
 
             message = message.replace(/{guestName}/gi, data.guestName.split(' ')[0]);
-            message = message.replace(/{cabinName}/gi, cabinName);
-            message = message.replace(/{token}/gi, token);
+            message = message.replace(/{cabinName}/gi, cabinNamesString); 
+            message = message.replace(/{token}/gi, mainToken);
             
-            if (!message.includes(dynamicLink) && !message.includes(token)) {
+            if (!message.includes(dynamicLink) && !message.includes(mainToken)) {
                 message += `\n\nLink: ${dynamicLink}`;
             }
         }
 
         const result = await sendWhatsAppMessage(data.guestPhone, message);
         
-        if (result.success) {
+        if (result.success && mainStayId) {
             try {
                 await adminDb.collection('message_logs').add({
                     type: 'whatsappPreCheckIn', 
                     content: message,
                     guestName: data.guestName,
-                    stayId: stayRef.id,
+                    stayId: mainStayId,
                     actor: 'Sistema (Fast Stay)',
                     sentAt: Timestamp.now(),
                     status: 'sent_via_api',
                     phone: data.guestPhone
                 });
-
-                await stayRef.update({
+                await adminDb.collection('stays').doc(mainStayId).update({
                     'communicationStatus.preCheckInSentAt': Timestamp.now()
                 });
-            } catch (error) {
-                // Log silencioso
-            }
+            } catch (e) { console.log("Erro log msg", e); }
         }
         
         revalidatePath('/admin/stays');
@@ -160,7 +203,7 @@ export async function createFastStayAction(data: FastStayData) {
 
         return { 
             success: true, 
-            message: result.success ? "Estadia criada e Link enviado!" : "Estadia criada, mas erro no Whats." 
+            message: `Reserva criada para ${cabinNamesList.length} cabana(s)! Link enviado.` 
         };
 
     } catch (error: any) {

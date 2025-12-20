@@ -19,18 +19,22 @@ import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 
+// Estendemos a interface para permitir flexibilidade se o schema mudar
 interface StayFormFieldsProps {
-    form: UseFormReturn<FullStayFormValues>;
+    form: UseFormReturn<any>; // Usando any temporariamente para flexibilidade com ExtendedFormValues
     cabins: Cabin[];
-    onCpfBlur: (cpf: string) => void;
-    isLookingUp: boolean;
-    foundGuest: Guest | null;
-    onUseFoundGuest: () => void;
+    onCpfBlur?: (cpf: string) => void;
+    isLookingUp?: boolean;
+    foundGuest?: Guest | null;
+    onUseFoundGuest?: () => void;
+    isEditMode?: boolean; // Novo: Para saber se estamos editando
 }
 
 const generateSimpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, onCpfBlur, isLookingUp, foundGuest, onUseFoundGuest }) => {
+export const StayFormFields: React.FC<StayFormFieldsProps> = ({ 
+    form, cabins, onCpfBlur, isLookingUp, foundGuest, onUseFoundGuest, isEditMode = false 
+}) => {
     const isForeigner = form.watch('isForeigner');
     const { fields: companions, append: appendCompanion, remove: removeCompanion } = useFieldArray({ control: form.control, name: "companions" });
     const { fields: pets, append: appendPet, remove: removePet } = useFieldArray({ control: form.control, name: "pets" });
@@ -71,6 +75,8 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
         
         setIsLoadingCep(true);
         try {
+            // Tenta usar a server action se disponível, senão fallback para fetch direto (legado)
+            // Aqui mantemos fetch direto para compatibilidade com o componente atual
             const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
             if (!response.ok) throw new Error('Falha na resposta da API');
             
@@ -85,7 +91,12 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
             form.setValue('address.city', data.localidade, { shouldValidate: true });
             form.setValue('address.state', data.uf, { shouldValidate: true });
             
-            document.getElementById('address.number')?.focus();
+            // Foca no número (usando getElementById que deve existir no DOM)
+            // O ID deve corresponder ao ID do input de número
+            setTimeout(() => {
+                 const numInput = document.querySelector('input[name="address.number"]') as HTMLInputElement;
+                 if(numInput) numInput.focus();
+            }, 100);
             
         } catch (error) {
             toast.error("Falha ao buscar o CEP. Verifique sua conexão.");
@@ -101,27 +112,44 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                 <AccordionTrigger className="text-lg font-semibold">1. Detalhes da Reserva</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* CORREÇÃO: Logica Híbrida para Cabana
+                            Se for edição ou criação manual, lidamos com cabinId único na UI, 
+                            mas salvamos no array cabinIds[] se necessário.
+                            Aqui, assumimos que o form tem um campo 'cabinIds' (array) ou 'cabinId' (string).
+                            Para simplificar a UI de criação manual, tratamos como string única.
+                        */}
                         <FormField 
                             control={form.control} 
-                            name="cabinId" 
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Cabana</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                        <FormControl>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Selecione..." />
-                                            </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                            <ScrollArea className="h-72">
-                                                {cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                            </ScrollArea>
-                                        </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                </FormItem>
-                            )} 
+                            name="cabinIds" // Nome oficial do schema novo
+                            render={({ field }) => {
+                                // Converte array para valor único para o Select
+                                const currentValue = Array.isArray(field.value) && field.value.length > 0 ? field.value[0] : (typeof field.value === 'string' ? field.value : '');
+                                
+                                return (
+                                    <FormItem>
+                                        <FormLabel>Cabana</FormLabel>
+                                        <Select 
+                                            onValueChange={(val) => {
+                                                // Ao selecionar, salva como array de 1 elemento
+                                                field.onChange([val]);
+                                            }} 
+                                            value={currentValue}
+                                        >
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Selecione..." />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <ScrollArea className="h-72">
+                                                    {cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                                </ScrollArea>
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                );
+                            }} 
                         />
                         <FormField control={form.control} name="dates" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Período da Estadia</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("w-full justify-start text-left font-normal", !field.value?.from && "text-muted-foreground")}>{field.value?.from && field.value?.to ? (`${format(field.value.from, "dd/MM/yy")} até ${format(field.value.to, "dd/MM/yy")}`) : (<span>Selecione as datas</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="range" selected={field.value as DateRange} onSelect={field.onChange} numberOfMonths={2}/></PopoverContent></Popover><FormMessage /></FormItem>)} />
                     </div>
@@ -156,7 +184,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                         <FormLabel>País</FormLabel>
                                         <Select 
                                             onValueChange={field.onChange} 
-                                            value={field.value} 
+                                            value={field.value as string} 
                                             disabled={isLoadingCountries}
                                         >
                                             <FormControl>
@@ -189,7 +217,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                                 <Input 
                                                     placeholder="000.000.000-00" 
                                                     {...field}
-                                                    onBlur={(e) => onCpfBlur(e.target.value)}
+                                                    onBlur={(e) => onCpfBlur && onCpfBlur(e.target.value)}
                                                     onChange={(e) => {
                                                         const numericValue = e.target.value.replace(/\D/g, '');
                                                         field.onChange(numericValue);
@@ -242,9 +270,9 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                             <FormItem className="col-span-3 md:col-span-1">
                                 <FormLabel>CEP</FormLabel>
                                 <FormControl>
-                                    <div className="flex items-center">
-                                       <Input {...field} onBlur={(e) => handleCepLookup(e.target.value)} disabled={isForeigner} />
-                                       {isLoadingCep && <Loader2 className="h-5 w-5 ml-2 animate-spin" />}
+                                    <div className="relative">
+                                           <Input {...field} onBlur={(e) => handleCepLookup(e.target.value)} disabled={isForeigner} />
+                                           {isLoadingCep && <Loader2 className="h-5 w-5 ml-2 animate-spin absolute right-2 top-2 text-blue-500" />}
                                     </div>
                                 </FormControl>
                                 <FormMessage />
@@ -253,7 +281,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                         <FormField name="address.street" control={form.control} render={({ field }) => (<FormItem className="col-span-3 md:col-span-2"><FormLabel>Logradouro</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                     <div className="grid grid-cols-3 gap-4">
-                        <FormField name="address.number" control={form.control} render={({ field }) => (<FormItem><FormLabel>Número</FormLabel><FormControl><Input id="address.number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="address.number" control={form.control} render={({ field }) => (<FormItem><FormLabel>Número</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="address.complement" control={form.control} render={({ field }) => (<FormItem><FormLabel>Complemento</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                          <FormField name="address.neighborhood" control={form.control} render={({ field }) => (<FormItem><FormLabel>Bairro</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
@@ -267,7 +295,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
             <AccordionItem value="item-4">
                 <AccordionTrigger className="text-lg font-semibold">4. Detalhes da Chegada</AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-4">
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField name="estimatedArrivalTime" control={form.control} render={({ field }) => (<FormItem><FormLabel>Horário Previsto</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
                             <FormField name="vehiclePlate" control={form.control} render={({ field }) => (<FormItem><FormLabel>Placa do Veículo</FormLabel><FormControl><Input placeholder="ABC-1234" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         </div>
@@ -290,13 +318,12 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                     </FormItem>
                                 )} />
                                 
-                                {/* APENAS CATEGORIA AGORA */}
                                 <FormField 
                                     control={form.control} 
                                     name={`companions.${index}.category`} 
                                     render={({ field }) => (
                                         <FormItem className="col-span-4">
-                                            <Select onValueChange={field.onChange} value={field.value}>
+                                            <Select onValueChange={field.onChange} value={field.value as string}>
                                                 <FormControl>
                                                     <SelectTrigger>
                                                         <SelectValue placeholder="Categoria" />
@@ -326,7 +353,7 @@ export const StayFormFields: React.FC<StayFormFieldsProps> = ({ form, cabins, on
                                 <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => removePet(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                 <div className="grid grid-cols-2 gap-4">
                                     <FormField name={`pets.${index}.name`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Nome</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                    <FormField name={`pets.${index}.species`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Espécie</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="cachorro">Cachorro</SelectItem><SelectItem value="gato">Gato</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                                    <FormField name={`pets.${index}.species`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Espécie</FormLabel><Select onValueChange={field.onChange} value={field.value as string}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="cachorro">Cachorro</SelectItem><SelectItem value="gato">Gato</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                                 </div>
                                  <div className="grid grid-cols-3 gap-4">
                                     <FormField name={`pets.${index}.breed`} control={form.control} render={({ field }) => (<FormItem><FormLabel>Raça</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />

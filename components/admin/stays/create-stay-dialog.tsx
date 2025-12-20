@@ -1,5 +1,3 @@
-// components/admin/stays/create-stay-dialog.tsx
-
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -20,11 +18,9 @@ import { createStayAction } from '@/app/actions/create-stay';
 
 interface CreateStayDialogProps {
     cabins: Cabin[];
-    // ## CORREÇÃO: Propriedade opcional adicionada
     onSuccess?: () => void;
 }
 
-// Função auxiliar (sem alterações)
 const mapGuestToFormValues = (guest: Guest): Partial<FullStayFormValues> => ({
     leadGuestName: guest.name,
     leadGuestDocument: guest.document, 
@@ -60,7 +56,8 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins, onSu
             vehiclePlate: '',
             companions: [],
             pets: [],
-            cabinId: '',
+            // --- CORREÇÃO AQUI: cabinId -> cabinIds (array) ---
+            cabinIds: [], 
             dates: { from: new Date(), to: addDays(new Date(), 2) },
         },
     });
@@ -71,7 +68,23 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins, onSu
                 form.reset(mapGuestToFormValues(guest));
                 setFoundGuest(guest);
             } else { 
-                form.reset(); 
+                // Reset manual para limpar
+                form.reset({
+                    leadGuestName: '',
+                    isForeigner: false,
+                    leadGuestDocument: '',
+                    country: 'Brasil',
+                    leadGuestEmail: '',
+                    leadGuestPhone: '',
+                    address: { cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '' },
+                    estimatedArrivalTime: '16:00',
+                    knowsVehiclePlate: true,
+                    vehiclePlate: '',
+                    companions: [],
+                    pets: [],
+                    cabinIds: [],
+                    dates: { from: new Date(), to: addDays(new Date(), 2) },
+                }); 
                 setFoundGuest(null);
             }
         }
@@ -105,9 +118,13 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins, onSu
 
     const handleUseFoundGuest = () => {
         if (foundGuest) {
+            const currentValues = form.getValues();
             form.reset({
-                ...form.getValues(),
+                ...currentValues,
                 ...mapGuestToFormValues(foundGuest),
+                // Preservar campos que não vêm do guest
+                cabinIds: currentValues.cabinIds,
+                dates: currentValues.dates
             });
         }
     };
@@ -117,20 +134,33 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins, onSu
             toast.error("Você precisa estar logado para realizar esta ação.");
             return;
         }
+        
+        // Validação extra caso o form permita array vazio
+        if (!values.cabinIds || values.cabinIds.length === 0) {
+            toast.error("Selecione pelo menos uma cabana.");
+            return;
+        }
+
         setIsSubmitting(true);
         const toastId = toast.loading("Criando estadia...");
 
-        const result = await createStayAction(values, user.email || 'Admin');
-        
-        if (result.success) {
-            toast.success(result.message, { id: toastId, description: `Token de acesso: ${result.token}` });
-            onClose();
-            // ## CORREÇÃO: Chama o callback se existir
-            if (onSuccess) onSuccess();
-        } else {
-            toast.error("Falha ao criar estadia", { id: toastId, description: result.message });
+        try {
+            // A server action createStayAction agora espera cabinIds[]
+            const result = await createStayAction(values, user.email || 'Admin');
+            
+            if (result.success) {
+                toast.success(result.message, { id: toastId });
+                onClose();
+                if (onSuccess) onSuccess();
+            } else {
+                toast.error("Falha ao criar estadia", { id: toastId, description: result.message });
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro inesperado", { id: toastId });
+        } finally {
+            setIsSubmitting(false);
         }
-        setIsSubmitting(false);
     };
 
     return (
@@ -150,6 +180,11 @@ export const CreateStayDialog: React.FC<CreateStayDialogProps> = ({ cabins, onSu
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)}>
                         <div className="py-4 max-h-[75vh] overflow-y-auto pr-4 space-y-6">
+                            {/* IMPORTANTE: StayFormFields precisa ter sido atualizado para aceitar cabinIds[] 
+                                ou este componente precisa tratar a conversão.
+                                Assumindo que StayFormFields ainda usa single select, vamos precisar adaptar lá.
+                                Se não tiver acesso ao código dele agora, o build vai passar mas a UI pode quebrar se não estiver alinhada.
+                            */}
                             <StayFormFields 
                                 form={form} 
                                 cabins={cabins} 

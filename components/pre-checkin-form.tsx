@@ -1,8 +1,7 @@
-//components/pre-checkin-form.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form'; 
+import { useForm, useFieldArray, Controller } from 'react-hook-form'; 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import * as firestore from 'firebase/firestore';
@@ -23,10 +22,11 @@ import { toast, Toaster } from 'sonner';
 import { 
     Loader2, Plus, Trash2, PawPrint, ArrowRight, ArrowLeft, 
     User, MapPin, Car, Phone, CheckCircle2, Users, FileText, AlertTriangle,
-    Home,
+    Home, Search
 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { completeFastStayAction } from '@/app/actions/complete-fast-stay';
+import { lookupCepAction } from '@/app/actions/lookup-cep'; // IMPORTANTE
 import { Badge } from './ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -139,24 +139,15 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
     const currentPets = form.watch('pets') || [];
     const hasPetWarning = currentPets.length > 1 || currentPets.some(p => parseFloat(p.weight || '0') > 15);
 
-
     useEffect(() => {
         if (prefilledData) {
-            // Inicialização padrão para modo Individual
             let initialCompanions: any[] = [];
-            
-            // Inicialização para modo Grupo (Abas)
             let initialAssignments: any[] = [];
             
             if (isGroup) {
-                // Mapeia cada estadia do grupo para uma aba, respeitando o GuestCount individual
                 initialAssignments = relatedStays.map((stay: any, index: number) => {
-                    // Recupera a capacidade definida pelo admin para esta cabana específica
                     const gc = stay.guestCount || { adults: 1, children: 0, babies: 0 };
-                    
                     const stayGuests: any[] = [];
-                    
-                    // Gera slots vazios. Subtrai 1 adulto para o "Responsável da Cabana".
                     const extraAdults = Math.max(0, Number(gc.adults) - 1);
                     
                     for(let k=0; k<extraAdults; k++) stayGuests.push({ fullName: '', category: 'adult', cpf: '' });
@@ -168,22 +159,18 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                         cabinName: stay.cabinName,
                         cabinId: stay.cabinId,
                         isMain: index === 0, 
-                        // A primeira cabana recebe o titular financeiro como responsável padrão
                         responsibleName: index === 0 ? (prefilledData.guestName || '') : '',
                         responsiblePhone: index === 0 ? (prefilledData.guestPhone?.replace(/\D/g, '') || '') : '',
                         guests: stayGuests
                     };
                 });
             } else {
-                // Modo Individual: Usa a contagem da estadia única
                 const guestCount = prefilledData.guestCount || { adults: 1, children: 0, babies: 0 };
-                
                 const extraAdults = Math.max(0, Number(guestCount.adults) - 1);
                 for(let i=0; i<extraAdults; i++) initialCompanions.push({ fullName: '', category: 'adult', cpf: '' });
                 for(let i=0; i<Number(guestCount.children); i++) initialCompanions.push({ fullName: '', category: 'child', cpf: '' });
                 for(let i=0; i<Number(guestCount.babies); i++) initialCompanions.push({ fullName: '', category: 'baby', cpf: '' });
                 
-                // Se já houver companions salvos (edição), usa eles. Senão, usa os slots gerados.
                 if (prefilledData.companions && prefilledData.companions.length > 0) {
                     initialCompanions = prefilledData.companions;
                 }
@@ -212,7 +199,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                 cabinAssignments: initialAssignments
             });
         }
-    }, [prefilledData, form, property, isGroup]); // Dependências do Effect
+    }, [prefilledData, form, property, isGroup]); 
 
     useEffect(() => {
         fetch('https://restcountries.com/v3.1/all?fields=name,translations')
@@ -224,28 +211,47 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
             .catch(() => setCountriesList(["Brasil", "Outro"]));
     }, []);
 
-    const handleCepLookup = async (cep: string) => {
+    // --- NOVA LÓGICA DE BUSCA DE CEP ---
+    const executeCepLookup = async (rawValue: string) => {
         if (form.watch('isForeigner')) return;
-        const cleanCep = cep.replace(/\D/g, '');
-        if (cleanCep.length !== 8) return;
+        
+        const cep = rawValue.replace(/\D/g, '');
+        if (cep.length !== 8) {
+            // Só avisa se o usuário clicou no botão de busca
+            return;
+        }
+        
         setIsLoadingCep(true);
         try {
-            const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-            const data = await res.json();
-            if (!data.erro) {
-                form.setValue('address.street', data.logradouro);
-                form.setValue('address.neighborhood', data.bairro);
-                form.setValue('address.city', data.localidade);
-                form.setValue('address.state', data.uf);
-                document.getElementById('address-number')?.focus();
+            // Usa a Server Action
+            const result = await lookupCepAction(cep);
+            
+            if (result.success && result.data) {
+                const { logradouro, bairro, localidade, uf } = result.data;
+                form.setValue('address.street', logradouro);
+                form.setValue('address.neighborhood', bairro);
+                form.setValue('address.city', localidade);
+                form.setValue('address.state', uf);
+                
+                // Foca no número
+                setTimeout(() => {
+                    const numberInput = document.getElementById('address-number');
+                    if (numberInput) numberInput.focus();
+                }, 100);
+                
+                toast.success("Endereço encontrado!");
             } else {
-                toast.error("CEP não encontrado");
+                toast.error(result.message || "CEP não encontrado.");
             }
         } catch {
-            toast.error("Erro ao buscar CEP");
+            toast.error("Erro ao buscar CEP.");
         } finally {
             setIsLoadingCep(false);
         }
+    };
+
+    const handleCepBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+        executeCepLookup(e.target.value);
     };
 
     const steps = [
@@ -331,8 +337,6 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
         <div className="max-w-2xl mx-auto p-4">
             <Toaster richColors position="top-center" />
             
-            
-
             <div className="text-center mb-8">
                 {property.logoUrl && <Image src={property.logoUrl} alt="Logo" width={80} height={80} className="mx-auto mb-4" />}
                 <h1 className="text-2xl font-bold text-slate-800">Pré-Check-in Digital</h1>
@@ -408,12 +412,39 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                                 </div>
                             )}
 
-                            {/* --- ETAPA 1: ENDEREÇO --- */}
+                            {/* --- ETAPA 1: ENDEREÇO (COM BUSCA DE CEP) --- */}
                             {currentStep === 1 && (
                                 <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
                                     <div className="grid grid-cols-3 gap-4">
                                         <FormField control={form.control} name="address.cep" render={({ field }) => (
-                                            <FormItem className="col-span-1"><FormLabel>CEP</FormLabel><FormControl><Input {...field} onBlur={(e) => handleCepLookup(e.target.value)} /></FormControl>{isLoadingCep && <span className="text-xs text-blue-500">Buscando...</span>}<FormMessage /></FormItem>
+                                            <FormItem className="col-span-1">
+                                                <FormLabel>CEP</FormLabel>
+                                                <FormControl>
+                                                    <div className="relative">
+                                                        <Input 
+                                                            {...field} 
+                                                            // Busca automática no onBlur
+                                                            onBlur={(e) => {
+                                                                field.onBlur();
+                                                                handleCepBlur(e);
+                                                            }}
+                                                            placeholder="00000-000"
+                                                            className="pr-8"
+                                                        />
+                                                        {isLoadingCep ? (
+                                                            <div className="absolute right-2 top-2"><Loader2 className="h-4 w-4 animate-spin text-blue-500"/></div>
+                                                        ) : (
+                                                            <div 
+                                                                className="absolute right-2 top-2 cursor-pointer text-slate-400 hover:text-blue-500"
+                                                                onClick={() => executeCepLookup(field.value || '')}
+                                                            >
+                                                                <Search className="h-4 w-4"/>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
                                         )} />
                                         <FormField control={form.control} name="address.city" render={({ field }) => (
                                             <FormItem className="col-span-2"><FormLabel>Cidade</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
@@ -441,7 +472,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                                 </div>
                             )}
 
-                            {/* --- ETAPA 2: CHEGADA --- */}
+                            {/* --- ETAPA 2: CHEGADA (Mantida igual) --- */}
                             {currentStep === 2 && (
                                 <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
                                     <div className="bg-blue-50 p-4 rounded-lg flex items-start gap-3 text-blue-800 text-sm">
@@ -482,7 +513,7 @@ export const PreCheckinForm: React.FC<PreCheckinFormProps> = ({ property, prefil
                                             </TabsList>
                                             
                                             {assignedCabins.map((cabinItem, cabinIndex) => (
-                                                <TabsContent key={cabinItem.id} value={cabinItem.stayId} className="space-y-4 border rounded-lg p-4 bg-slate-50/50">
+                                                <TabsContent key={cabinItem.stayId} value={cabinItem.stayId} className="space-y-4 border rounded-lg p-4 bg-slate-50/50">
                                                     
                                                     {/* Responsável da Cabana */}
                                                     <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">

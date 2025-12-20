@@ -1,21 +1,21 @@
+// components/admin/stays/edit-stay-dialog.tsx
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as firestore from 'firebase/firestore';
 import { Cabin, PreCheckIn, Property, Stay } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-// CORREÇÃO: Adicionados Phone e Users na importação
 import { 
     Loader2, X, User, MapPin, Car, Key, 
     Pencil, Save, AlertCircle, Copy, 
-    Baby, PawPrint, Globe, MessageSquare, CalendarDays, Phone, Users
+    Baby, PawPrint, Globe, MessageSquare, CalendarDays, Phone, Users, UserCheck, Search
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { createActivityLog } from '@/lib/activity-logger';
@@ -27,22 +27,23 @@ import { FullStayFormValues } from '@/lib/schemas/stay-schema';
 import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { advanceCounterCheckinAction } from '@/app/actions/advance-counter-checkin';
+import { lookupCepAction } from '@/app/actions/lookup-cep';
 
 // Tipo estendido
 type ExtendedFormValues = FullStayFormValues & {
     notes?: string;
+    cabinId: string; 
 };
 
 const permissiveSchema = z.object({}).passthrough(); 
 
 // --- HELPERS DE DATA ---
-// Converte string do input (YYYY-MM-DD) para Date ao meio-dia
 const parseDateInputValue = (value: string) => {
     if (!value) return undefined;
     return new Date(`${value}T12:00:00`);
 };
 
-// Converte Date para string do input (YYYY-MM-DD)
 const formatDateForInput = (date: Date | undefined | null) => {
     if (!date) return '';
     return format(new Date(date), 'yyyy-MM-dd');
@@ -50,20 +51,10 @@ const formatDateForInput = (date: Date | undefined | null) => {
 
 // --- COMPONENTE DE SEÇÃO (CARD) ---
 const SectionCard = ({ 
-    title, 
-    subtitle,
-    icon: Icon, 
-    isEditing, 
-    onEdit, 
-    onSave, 
-    onCancel, 
-    children,
-    hasWarning = false,
-    loading = false
+    title, subtitle, icon: Icon, isEditing, onEdit, onSave, onCancel, children, hasWarning = false, loading = false
 }: any) => {
     return (
         <div className={`bg-white rounded-lg border ${hasWarning ? 'border-orange-200' : 'border-slate-200'} shadow-sm overflow-hidden flex flex-col transition-all duration-200 ${isEditing ? 'ring-2 ring-blue-100 border-blue-300' : ''}`}>
-            {/* Header do Card */}
             <div className={`px-4 py-3 border-b ${hasWarning ? 'bg-orange-50/50' : 'bg-slate-50'} flex justify-between items-center h-14`}>
                 <div className="flex flex-col justify-center">
                     <div className="flex items-center gap-2 text-slate-700 font-semibold text-sm uppercase tracking-wide">
@@ -72,7 +63,6 @@ const SectionCard = ({
                     </div>
                     {subtitle && <span className="text-[10px] text-slate-400 font-mono ml-6">{subtitle}</span>}
                 </div>
-                
                 <div>
                     {!isEditing && (
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50" onClick={onEdit} title="Editar">
@@ -81,21 +71,12 @@ const SectionCard = ({
                     )}
                 </div>
             </div>
-
-            {/* Corpo do Card */}
-            <div className="p-4 flex-1 flex flex-col gap-4">
-                {children}
-            </div>
-
-            {/* Rodapé de Ação (VISÍVEL APENAS NA EDIÇÃO) */}
+            <div className="p-4 flex-1 flex flex-col gap-4">{children}</div>
             {isEditing && (
                 <div className="px-4 py-3 bg-slate-50 border-t flex justify-end gap-2 animate-in slide-in-from-top-2">
-                    <Button variant="ghost" size="sm" onClick={onCancel} disabled={loading} className="text-slate-500 hover:text-slate-700">
-                        Cancelar
-                    </Button>
+                    <Button variant="ghost" size="sm" onClick={onCancel} disabled={loading} className="text-slate-500 hover:text-slate-700">Cancelar</Button>
                     <Button size="sm" onClick={onSave} disabled={loading} className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-sm font-semibold px-6">
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Save className="h-4 w-4" />}
-                        Salvar
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Save className="h-4 w-4" />} Salvar
                     </Button>
                 </div>
             )}
@@ -125,11 +106,7 @@ interface EditStayDialogProps {
 }
 
 export const EditStayDialog: React.FC<EditStayDialogProps> = ({ 
-    cabins, 
-    isOpen: propIsOpen,
-    onClose: propOnClose,
-    stay: propStay,
-    onSuccess
+    cabins, isOpen: propIsOpen, onClose: propOnClose, stay: propStay, onSuccess
 }) => {
     const { user } = useAuth();
     const { isOpen: storeIsOpen, onClose: storeOnClose, type, data } = useModalStore();
@@ -142,12 +119,60 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
     const [editingSection, setEditingSection] = useState<string | null>(null);
     const [loadingData, setLoadingData] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [isAdvancing, setIsAdvancing] = useState(false);
+    const [isLoadingCep, setIsLoadingCep] = useState(false);
 
     const form = useForm<ExtendedFormValues>({
         // @ts-ignore
         resolver: zodResolver(permissiveSchema), 
         mode: 'onChange'
     });
+
+    // --- FUNÇÃO DE BUSCA DE CEP ---
+    const executeCepLookup = async (rawValue: string) => {
+        const cep = rawValue.replace(/\D/g, '');
+        console.log("Tentando buscar CEP:", cep); // DEBUG
+
+        if (cep.length !== 8) {
+            if (cep.length > 0) toast.error("CEP incompleto (precisa de 8 números).");
+            return;
+        }
+        
+        setIsLoadingCep(true);
+        try {
+            const result = await lookupCepAction(cep);
+            console.log("Resultado CEP:", result); // DEBUG
+            
+            if (result.success && result.data) {
+                const { logradouro, bairro, localidade, uf } = result.data;
+                
+                form.setValue('address.street', logradouro);
+                form.setValue('address.neighborhood', bairro);
+                form.setValue('address.city', localidade);
+                form.setValue('address.state', uf);
+                form.setValue('address.country', 'Brasil');
+                
+                // UX: Foca no número
+                setTimeout(() => {
+                    const numberInput = document.querySelector('input[name="address.number"]') as HTMLInputElement;
+                    if (numberInput) numberInput.focus();
+                }, 100);
+                
+                toast.success("Endereço encontrado!");
+            } else {
+                toast.error(result.message || "CEP não encontrado.");
+            }
+        } catch (error) {
+            console.error("Erro no front CEP:", error);
+            toast.error("Erro de conexão ao buscar CEP.");
+        } finally {
+            setIsLoadingCep(false);
+        }
+    };
+
+    const handleCepBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+        executeCepLookup(e.target.value);
+    };
 
     useEffect(() => {
         if (!isModalOpen) setEditingSection(null);
@@ -173,7 +198,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
             form.reset({
                 leadGuestName: stay.guestName,
                 cabinId: stay.cabinId,
-                // Garante que as datas venham como objeto Date do JS
                 dates: { 
                     from: new Date(stay.checkInDate), 
                     to: new Date(stay.checkOutDate) 
@@ -207,7 +231,8 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                     notes: p.notes 
                 })),
                 
-                notes: notes
+                notes: notes,
+                cabinIds: [stay.cabinId] 
             });
 
             setLoadingData(false);
@@ -221,7 +246,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
         
         const data = form.getValues();
 
-        // VALIDAÇÃO DE DATAS NO SALVAMENTO
         if (data.dates.to <= data.dates.from) {
             toast.error("A data de saída deve ser posterior à data de entrada.");
             return;
@@ -235,7 +259,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
             const batch = firestore.writeBatch(db);
             const stayRef = firestore.doc(db, 'stays', stay.id);
 
-            // Garante formato ISO correto
             const checkInISO = data.dates.from instanceof Date ? data.dates.from.toISOString() : new Date(data.dates.from).toISOString();
             const checkOutISO = data.dates.to instanceof Date ? data.dates.to.toISOString() : new Date(data.dates.to).toISOString();
 
@@ -292,6 +315,36 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
         }
     };
 
+    const handleCounterCheckIn = async () => {
+        if (!user || !stay) return;
+        
+        const values = form.getValues();
+        if (!values.leadGuestName || !values.leadGuestPhone || !values.leadGuestDocument) {
+            toast.error("Preencha Nome, Telefone e Documento para realizar o check-in.");
+            setEditingSection('guest'); 
+            return;
+        }
+
+        setIsAdvancing(true);
+        const toastId = toast.loading("Processando Check-in de Balcão...");
+
+        try {
+            const result = await advanceCounterCheckinAction(stay.id, values, user.email || 'Admin');
+            
+            if (result.success) {
+                toast.success("Enviado para Validação!", { id: toastId });
+                if (onSuccess) onSuccess();
+                handleClose();
+            } else {
+                toast.error("Erro ao processar", { id: toastId, description: result.message });
+            }
+        } catch (error) {
+            toast.error("Erro inesperado", { id: toastId });
+        } finally {
+            setIsAdvancing(false);
+        }
+    };
+
     const getAcfpSummary = () => {
         const companions = form.watch('companions') || [];
         const pets = form.watch('pets') || [];
@@ -310,9 +363,11 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
 
     return (
         <Dialog open={isModalOpen} onOpenChange={handleClose}>
-            <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 gap-0 bg-slate-50/50">
-                
-                {/* --- TOPO --- */}
+            <DialogContent 
+                className="max-w-5xl h-[90vh] flex flex-col p-0 gap-0 bg-slate-50/50"
+                onInteractOutside={(e) => e.preventDefault()}
+            >
+                {/* ... (TOPO e Header iguais ao anterior) ... */}
                 <div className="bg-white border-b p-5 flex-none shadow-sm z-10">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div>
@@ -342,14 +397,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                 onClick={() => values.leadGuestPhone && window.open(`https://wa.me/${values.leadGuestPhone.replace(/\D/g, '')}`, '_blank')}
                             >
                                 <Phone className="h-4 w-4"/> WhatsApp
-                            </Button>
-                            <Button variant="outline" size="sm" className="gap-2"
-                                onClick={() => {
-                                    navigator.clipboard.writeText(`https://portal.fazendadorosa.com.br/?token=${stay.token}`);
-                                    toast.success("Link copiado!");
-                                }}
-                            >
-                                <Copy className="h-4 w-4"/> Link
                             </Button>
                             <Button variant="ghost" size="icon" onClick={handleClose}>
                                 <X className="h-5 w-5 text-slate-400"/>
@@ -405,7 +452,7 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                 )}
                             </SectionCard>
 
-                            {/* 2. ENDEREÇO */}
+                            {/* 2. ENDEREÇO (COM BUSCA DE CEP CORRIGIDA) */}
                             <SectionCard 
                                 title="Endereço (N.F.)" 
                                 icon={MapPin}
@@ -420,7 +467,45 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                     <div className="space-y-3">
                                         <div className="grid grid-cols-3 gap-2">
                                             <FormField control={form.control} name="address.cep" render={({ field }) => (
-                                                <FormItem className="col-span-1"><FormLabel>CEP</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+                                                <FormItem className="col-span-1">
+                                                    <FormLabel>CEP</FormLabel>
+                                                    <FormControl>
+                                                        <div className="relative flex items-center">
+                                                            <Input 
+                                                                {...field} 
+                                                                // CHAINING CORRETO: Chama o RHF e depois a nossa busca
+                                                                onBlur={(e) => {
+                                                                    field.onBlur(); 
+                                                                    handleCepBlur(e);
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter') {
+                                                                        e.preventDefault();
+                                                                        executeCepLookup(form.getValues('address.cep') || '');
+                                                                    }
+                                                                }}
+                                                                placeholder="00000-000"
+                                                                className="pr-8"
+                                                            />
+                                                            <div className="absolute right-1 top-1 h-7 w-7 flex items-center justify-center">
+                                                                {isLoadingCep ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin text-blue-500"/>
+                                                                ) : (
+                                                                    <Button 
+                                                                        type="button" 
+                                                                        size="icon" 
+                                                                        variant="ghost" 
+                                                                        className="h-6 w-6 hover:bg-transparent"
+                                                                        onClick={() => executeCepLookup(form.getValues('address.cep') || '')}
+                                                                        title="Buscar CEP"
+                                                                    >
+                                                                        <Search className="h-4 w-4 text-slate-400 hover:text-blue-500"/>
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </FormControl>
+                                                </FormItem>
                                             )} />
                                             <FormField control={form.control} name="address.city" render={({ field }) => (
                                                 <FormItem className="col-span-2"><FormLabel>Cidade</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
@@ -449,8 +534,8 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                 )}
                             </SectionCard>
 
-                             {/* 3. LOGÍSTICA & OBSERVAÇÕES */}
-                             <SectionCard 
+                            {/* ... (Demais cards: Logistics, Config, Companions - MANTIDOS) ... */}
+                            <SectionCard 
                                 title="Detalhes da Chegada" 
                                 icon={Car}
                                 isEditing={editingSection === 'logistics'}
@@ -505,7 +590,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                 )}
                             </SectionCard>
 
-                            {/* 4. CONFIG DA ESTADIA (COM LÓGICA DE DATA) */}
                             <SectionCard 
                                 title="Configuração" 
                                 icon={Globe}
@@ -519,7 +603,7 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                     <div className="space-y-3">
                                         <FormField control={form.control} name="cabinId" render={({ field }) => (
                                             <FormItem><FormLabel>Cabana</FormLabel>
-                                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <Select onValueChange={field.onChange} defaultValue={field.value as string}>
                                                     <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
                                                     <SelectContent>{cabins.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                                                 </Select>
@@ -527,7 +611,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                         )} />
                                         
                                         <div className="grid grid-cols-2 gap-2">
-                                            {/* CHECK-IN */}
                                             <FormField control={form.control} name="dates.from" render={({ field }) => (
                                                 <FormItem>
                                                     <FormLabel>Check-in</FormLabel>
@@ -538,8 +621,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                                             onChange={e => {
                                                                 const newStart = parseDateInputValue(e.target.value);
                                                                 field.onChange(newStart);
-                                                                
-                                                                // Lógica: Se a data de saída for menor/igual à nova entrada, empurra saída pra frente
                                                                 if (newStart) {
                                                                     const currentEnd = form.getValues('dates.to');
                                                                     if (currentEnd <= newStart) {
@@ -551,8 +632,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                                     </FormControl>
                                                 </FormItem>
                                             )} />
-                                            
-                                            {/* CHECK-OUT (Com restrição visual min) */}
                                             <FormField control={form.control} name="dates.to" render={({ field }) => (
                                                 <FormItem>
                                                     <FormLabel>Check-out</FormLabel>
@@ -579,7 +658,6 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                 )}
                             </SectionCard>
 
-                             {/* 5. ACOMPANHANTES (ACFP) */}
                              <SectionCard 
                                 title="Hóspedes & Pets"
                                 subtitle={getAcfpSummary()}
@@ -600,14 +678,16 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                                         <Input {...field} placeholder="Nome" className="h-8 text-sm flex-1" />
                                                     )} />
                                                     <FormField control={form.control} name={`companions.${index}.category`} render={({ field }) => (
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value || 'adult'}>
-                                                            <FormControl><SelectTrigger className="h-8 w-[100px] text-xs"><SelectValue /></SelectTrigger></FormControl>
-                                                            <SelectContent>
-                                                                <SelectItem value="adult">Adulto</SelectItem>
-                                                                <SelectItem value="child">Criança</SelectItem>
-                                                                <SelectItem value="baby">Bebê</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
+                                                        <FormItem>
+                                                            <Select onValueChange={field.onChange} defaultValue={field.value || 'adult'}>
+                                                                <FormControl><SelectTrigger className="h-8 w-[100px] text-xs"><SelectValue /></SelectTrigger></FormControl>
+                                                                <SelectContent>
+                                                                    <SelectItem value="adult">Adulto</SelectItem>
+                                                                    <SelectItem value="child">Criança</SelectItem>
+                                                                    <SelectItem value="baby">Bebê</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </FormItem>
                                                     )} />
                                                     <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50"
                                                         onClick={() => {
@@ -693,27 +773,22 @@ export const EditStayDialog: React.FC<EditStayDialogProps> = ({
                                 )}
                             </SectionCard>
 
-                            {/* 6. ACESSO */}
-                            <div className="bg-slate-800 text-white rounded-lg p-4 shadow-md flex flex-col justify-between">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Key className="h-4 w-4 text-yellow-400" />
-                                    <span className="font-bold text-sm uppercase tracking-wider">Acesso Digital</span>
-                                </div>
-                                <div className="text-center py-2">
-                                    <span className="text-xs text-slate-400 uppercase block mb-1">Token de Entrada</span>
-                                    <div className="text-3xl font-mono font-bold tracking-[0.2em] text-yellow-400">
-                                        {values.token}
-                                    </div>
-                                </div>
-                                <div className="mt-4 pt-4 border-t border-slate-700">
-                                    <div className="flex justify-between items-center text-xs">
-                                        <span className="text-slate-400">Status</span>
-                                        <Badge className="bg-green-500 hover:bg-green-600 text-white border-0">Ativo</Badge>
-                                    </div>
-                                </div>
-                            </div>
-
                         </div>
+
+                        {/* --- FOOTER COM AÇÃO DE BALCÃO --- */}
+                        {stay.status === 'pending_guest_data' && (
+                            <DialogFooter className="bg-white border-t p-4 flex justify-between items-center">
+                                <Button 
+                                    type="button" 
+                                    onClick={handleCounterCheckIn}
+                                    disabled={isAdvancing || isSaving}
+                                    className="bg-orange-600 hover:bg-orange-700 text-white w-full md:w-auto"
+                                >
+                                    {isAdvancing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserCheck className="mr-2 h-4 w-4"/>}
+                                    Realizar Check-in de Balcão
+                                </Button>
+                            </DialogFooter>
+                        )}
                     </Form>
                 )}
             </DialogContent>

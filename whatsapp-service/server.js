@@ -51,15 +51,20 @@ client.initialize();
 
 // --- FUNÇÃO DE INTELIGÊNCIA DE NÚMERO ---
 async function getWhatsAppId(number) {
-    // 1. Limpeza básica
+    // 1. Verifica se veio com sinal de + (Indicador de Internacional Explícito)
+    const isExplicitInternational = number.toString().startsWith('+');
+
+    // 2. Limpeza básica para processamento (remove o + e outros caracteres)
     let formatted = number.replace(/\D/g, '');
     
-    // Se não tiver DDI, adiciona 55 (Brasil)
-    if (formatted.length >= 10 && formatted.length <= 11) {
+    // 3. Lógica de DDI Automático
+    // Apenas aplica a lógica de "Adicionar 55" se NÃO for internacional explícito
+    // Se o usuário mandou "+31...", o isExplicitInternational é true, então pula esse if.
+    if (!isExplicitInternational && (formatted.length >= 10 && formatted.length <= 11)) {
         formatted = '55' + formatted;
     }
 
-    // 2. Tenta verificar o ID exato que o usuário mandou
+    // 4. Tenta verificar o ID exato que foi processado
     try {
         const id = await client.getNumberId(formatted);
         if (id) return id._serialized;
@@ -67,9 +72,8 @@ async function getWhatsAppId(number) {
         console.log('Erro ao verificar ID inicial:', e.message);
     }
 
-    // 3. ESTRATÉGIA BRASIL (Correção do 9º dígito)
-    // Se for Brasil (começa com 55) e tiver 13 dígitos (55 + 2 DDD + 9 + 8 num),
-    // significa que tem o nono dígito. Vamos tentar SEM ele.
+    // 5. ESTRATÉGIA BRASIL (Correção do 9º dígito)
+    // Só tenta remover o 9 se começar com 55 (Brasil) e tiver o tamanho de celular BR com 9º dígito.
     if (formatted.startsWith('55') && formatted.length === 13 && formatted[4] === '9') {
         const withoutNine = formatted.slice(0, 4) + formatted.slice(5); // Remove o dígito na posição 4 (o primeiro 9 do número)
         console.log(`Tentando variante sem o 9: ${withoutNine}`);
@@ -79,7 +83,7 @@ async function getWhatsAppId(number) {
         } catch (e) { }
     }
 
-    // 4. Se nada der certo, retorna o formato padrão como tentativa final (Blind Send)
+    // 6. Retorno Blind (se nada der certo, tenta enviar direto concatenando @c.us)
     return formatted.includes('@c.us') ? formatted : `${formatted}@c.us`;
 }
 
@@ -104,7 +108,7 @@ app.post('/send', async (req, res) => {
     try {
         console.log(`Recebido pedido para: ${number}`);
         
-        // Usa nossa função inteligente para descobrir o ID real (com ou sem 9)
+        // Usa nossa função inteligente atualizada
         const targetId = await getWhatsAppId(number);
         
         console.log(`ID Resolvido: ${targetId}`);

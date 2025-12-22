@@ -9,19 +9,28 @@ interface WhatsAppResponse {
 }
 
 /**
- * Formata números brasileiros para o padrão internacional (55 + DDD + Número)
+ * Formata números. 
+ * - Se começar com '+', respeita o DDI informado (Internacional).
+ * - Se não, aplica a lógica de conveniência para o Brasil (adiciona 55).
  */
-function formatToBRInternational(phone: string): string {
-  // 1. Remove tudo que não for número
+function formatPhoneForApi(phone: string): string {
+  // Verifica se é explicitamente internacional (começa com +)
+  const isExplicitInternational = phone.trim().startsWith('+');
+  
+  // Remove tudo que não for número para limpar a string
   let cleanPhone = phone.replace(/\D/g, '');
 
-  // 2. Lógica inteligente de DDD
-  // Se tiver entre 10 e 11 dígitos (ex: 31999999999 ou 3133333333), assume que é BR sem DDI
+  // Se o usuário digitou +, mantemos o + para o servidor saber que não deve mexer no DDI
+  if (isExplicitInternational) {
+    return '+' + cleanPhone;
+  }
+
+  // Lógica inteligente de DDD (apenas se não for internacional explícito)
+  // Se tiver entre 10 e 11 dígitos (ex: 31999999999), assume que é BR sem DDI e adiciona 55
   if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
     cleanPhone = '55' + cleanPhone;
   }
 
-  // Se já vier com 55 (ex: 5531999999999), mantém como está.
   return cleanPhone;
 }
 
@@ -31,8 +40,8 @@ export async function sendWhatsAppMessage(phone: string, message: string): Promi
       throw new Error('Telefone e mensagem são obrigatórios.');
     }
 
-    // AQUI ESTÁ A CORREÇÃO: Formatamos antes de enviar
-    const formattedPhone = formatToBRInternational(phone);
+    // AQUI ESTÁ A CORREÇÃO: Usamos a nova função que respeita o '+'
+    const formattedPhone = formatPhoneForApi(phone);
 
     console.log(`[WhatsApp Client] Enviando para: ${formattedPhone} (Original: ${phone})`);
 
@@ -42,7 +51,7 @@ export async function sendWhatsAppMessage(phone: string, message: string): Promi
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        number: formattedPhone, // Enviamos o número já corrigido
+        number: formattedPhone, // Envia com ou sem '+' dependendo da origem
         message: message,
       }),
       cache: 'no-store', 

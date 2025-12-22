@@ -42,3 +42,8 @@ next-env.d.ts
 
 # Chave de Serviço do Firebase - NÃO ENVIAR PARA O GIT!
 serviceAccountKey.json.json 
+
+# WhatsApp Session
+whatsapp-service/session/
+whatsapp-service/.wwebjs_auth/
+whatsapp-service/.wwebjs_cache/

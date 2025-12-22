@@ -49,45 +49,35 @@ client.on('disconnected', (reason) => {
 
 client.initialize();
 
-// --- FUNÇÃO DE INTELIGÊNCIA DE NÚMERO ---
 async function getWhatsAppId(number) {
-    // 1. Verifica se veio com sinal de + (Indicador de Internacional Explícito)
+    // 1. Identifica internacional
     const isExplicitInternational = number.toString().startsWith('+');
-
-    // 2. Limpeza básica para processamento (remove o + e outros caracteres)
     let formatted = number.replace(/\D/g, '');
-    
-    // 3. Lógica de DDI Automático
-    // Apenas aplica a lógica de "Adicionar 55" se NÃO for internacional explícito
-    // Se o usuário mandou "+31...", o isExplicitInternational é true, então pula esse if.
+
+    // 2. Lógica BR apenas se não tiver '+'
     if (!isExplicitInternational && (formatted.length >= 10 && formatted.length <= 11)) {
         formatted = '55' + formatted;
     }
 
-    // 4. Tenta verificar o ID exato que foi processado
+    // 3. Formata ID padrão do WhatsApp
+    // Importante: Números internacionais no whats são apenas [DDI][NUMERO]@c.us
+    const defaultId = `${formatted}@c.us`;
+
+    // 4. Tenta validar se o número existe (getNumberId)
+    // Se der erro de LID aqui, nós IGNORAMOS e usamos o defaultId para forçar o envio.
     try {
         const id = await client.getNumberId(formatted);
-        if (id) return id._serialized;
+        if (id && id._serialized) {
+            return id._serialized;
+        }
     } catch (e) {
-        console.log('Erro ao verificar ID inicial:', e.message);
+        console.log(`⚠️ Validação falhou para ${formatted} (Erro: ${e.message}). Tentando envio direto.`);
     }
 
-    // 5. ESTRATÉGIA BRASIL (Correção do 9º dígito)
-    // Só tenta remover o 9 se começar com 55 (Brasil) e tiver o tamanho de celular BR com 9º dígito.
-    if (formatted.startsWith('55') && formatted.length === 13 && formatted[4] === '9') {
-        const withoutNine = formatted.slice(0, 4) + formatted.slice(5); // Remove o dígito na posição 4 (o primeiro 9 do número)
-        console.log(`Tentando variante sem o 9: ${withoutNine}`);
-        try {
-            const idNoNine = await client.getNumberId(withoutNine);
-            if (idNoNine) return idNoNine._serialized;
-        } catch (e) { }
-    }
-
-    // 6. Retorno Blind (se nada der certo, tenta enviar direto concatenando @c.us)
-    return formatted.includes('@c.us') ? formatted : `${formatted}@c.us`;
+    // 5. Retorno de segurança (Blind Send)
+    // Mesmo que a validação falhe, o WhatsApp Web muitas vezes aceita enviar se o formato estiver certo.
+    return defaultId;
 }
-
-// --- Endpoints ---
 
 app.get('/qr', (req, res) => {
     if (isReady) return res.send('<html><body><h1 style="color:green">✅ WhatsApp Conectado!</h1></body></html>');
@@ -106,18 +96,16 @@ app.post('/send', async (req, res) => {
     if (!number || !message) return res.status(400).json({ error: 'Dados inválidos.' });
 
     try {
-        console.log(`Recebido pedido para: ${number}`);
+        console.log(`📨 Enviando para: ${number}`);
         
-        // Usa nossa função inteligente atualizada
         const targetId = await getWhatsAppId(number);
-        
-        console.log(`ID Resolvido: ${targetId}`);
+        console.log(`🎯 ID Alvo: ${targetId}`);
 
         const response = await client.sendMessage(targetId, message);
         res.json({ success: true, targetId, response });
 
     } catch (error) {
-        console.error('Erro no envio:', error);
+        console.error('❌ Erro Fatal no envio:', error.message);
         res.status(500).json({ error: error.message });
     }
 });

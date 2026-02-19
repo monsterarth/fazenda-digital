@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Cores da Fazenda do Rosa - Modo Claro */
+    --background: 39 71% 97%; /* #F7FDF2 - Bege Muito Claro */
+    --foreground: 64 8% 30%; /* #4B4F36 - Verde Musgo Escuro */
+
+    --card: 40 33% 91%; /* #E9D9CD - Bege Rosado (para cards) */
+    --card-foreground: 64 8% 30%; /* #4B4F36 */
+
+    --popover: 39 71% 97%; /* #F7FDF2 */
+    --popover-foreground: 64 8% 30%; /* #4B4F36 */
+
+    --primary: 68 26% 50%; /* #97A25F - Verde Oliva */
+    --primary-foreground: 39 71% 97%; /* #F7FDF2 - Texto claro para contraste */
+
+    --secondary: 70 12% 65%; /* #ADA192 - Cinza Terroso */
+    --secondary-foreground: 39 71% 97%; /* #F7FDF2 */
+
+    --muted: 40 33% 91%; /* #E9D9CD */
+    --muted-foreground: 70 12% 55%; /* Tom mais escuro de #ADA192 */
+
+    --accent: 40 33% 88%; /* Tom mais escuro de #E9D9CD para hover */
+    --accent-foreground: 64 8% 30%; /* #4B4F36 */
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 40 33% 85%; /* Tom mais escuro de #E9D9CD para bordas */
+    --input: 40 33% 85%;
+    --ring: 68 26% 50%; /* #97A25F */
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Cores da Fazenda do Rosa - Modo Escuro (Sugestão) */
+    --background: 64 8% 30%; /* #4B4F36 */
+    --foreground: 39 71% 97%; /* #F7FDF2 */
+
+    --card: 66 6% 35%; /* Tom pouco mais claro que o fundo */
+    --card-foreground: 39 71% 97%; /* #F7FDF2 */
+
+    --popover: 64 8% 30%; /* #4B4F36 */
+    --popover-foreground: 39 71% 97%; /* #F7FDF2 */
+
+    --primary: 68 26% 50%; /* #97A25F */
+    --primary-foreground: 64 8% 25%; /* Tom bem escuro para contraste */
+
+    --secondary: 70 12% 65%; /* #ADA192 */
+    --secondary-foreground: 64 8% 30%; /* #4B4F36 */
+
+    --muted: 66 6% 35%;
+    --muted-foreground: 70 12% 75%; /* Tom mais claro de #ADA192 */
+
+    --accent: 66 6% 40%;
+    --accent-foreground: 39 71% 97%; /* #F7FDF2 */
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 66 6% 40%;
+    --input: 66 6% 40%;
+    --ring: 68 26% 50%; /* #97A25F */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ======================================================================
+  Estilos do Calendário de Casamentos (Estilo Airbnb/Range)
+======================================================================
+*/
+
+/* Define a aparência dos dias DENTRO de um range */
+.rdp-day_range_middle {
+  border-radius: 0 !important;
+}
+
+/* Define a aparência dos dias de INÍCIO e FIM */
+.rdp-day_range_start {
+  border-top-left-radius: 50% !important;
+  border-bottom-left-radius: 50% !important;
+}
+.rdp-day_range_end {
+  border-top-right-radius: 50% !important;
+  border-bottom-right-radius: 50% !important;
+}
+
+/* --- Cores de RANGE (Hospedagem) --- */
+
+/* Maram (Azul) */
+.rdp-day_range_maram {
+  background-color: #dbeafe; /* Tailwind blue-100 */
+}
+.rdp-day_range_start.rdp-day_range_maram,
+.rdp-day_range_end.rdp-day_range_maram {
+  background-color: #3b82f6 !important; /* Tailwind blue-500 */
+  color: white !important;
+}
+
+/* Mayam (Rosa) */
+.rdp-day_range_mayam {
+  background-color: #fce7f3; /* Tailwind pink-100 */
+}
+.rdp-day_range_start.rdp-day_range_mayam,
+.rdp-day_range_end.rdp-day_range_mayam {
+  background-color: #ec4899 !important; /* Tailwind pink-500 */
+  color: white !important;
+}
+
+/* Outro (Verde) */
+.rdp-day_range_outro {
+  background-color: #dcfce7; /* Tailwind green-100 */
+}
+.rdp-day_range_start.rdp-day_range_outro,
+.rdp-day_range_end.rdp-day_range_outro {
+  background-color: #22c55e !important; /* Tailwind green-500 */
+  color: white !important;
+}
+
+
+/* --- Cores do DIA DO EVENTO (Círculo Sólido) --- */
+.rdp-day_event {
+  font-weight: bold;
+  border-radius: 50% !important;
+  color: white !important; /* Força a cor do texto do dia */
+}
+
+/* Cor do Evento Maram (Azul Escuro) */
+.rdp-day_event_maram {
+  background-color: #2563eb !important; /* Tailwind blue-600 */
+}
+
+/* Cor do Evento Mayam (Rosa Escuro) */
+.rdp-day_event_mayam {
+  background-color: #db2777 !important; /* Tailwind pink-600 */
+}
+
+/* Cor do Evento Outro (Verde Escuro) */
+.rdp-day_event_outro {
+  background-color: #16a34a !important; /* Tailwind green-600 */
+}
